@@ -1,5 +1,5 @@
 {
-  "name": "context-mcp",
+  "name": "@fellanh/context-mcp",
   "version": "2.0.1",
   "type": "module",
   "description": "Personal context vault — connects any AI agent to your accumulated knowledge",
@@ -12,13 +12,14 @@
     "src/",
     "ui/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "smithery.yaml"
   ],
   "license": "MIT",
   "engines": { "node": ">=20" },
   "author": "Felix Hellstrom",
-  "repository": { "type": "git", "url": "https://github.com/klar/context-mcp.git" },
-  "homepage": "https://github.com/klar/context-mcp",
+  "repository": { "type": "git", "url": "https://github.com/fellanH/context-mcp.git" },
+  "homepage": "https://github.com/fellanH/context-mcp",
   "keywords": ["mcp", "ai", "knowledge-base", "vault", "rag", "sqlite", "embeddings", "claude"],
   "dependencies": {
     "@huggingface/transformers": "^3.0.0",

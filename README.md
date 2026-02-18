@@ -34,7 +34,7 @@ Requires **Node.js 20** or later.
 ### npm (Recommended)
 
 ```bash
-npm install -g context-mcp
+npm install -g @fellanh/context-mcp
 context-mcp setup
 ```
 
@@ -43,7 +43,7 @@ The `setup` command auto-detects installed tools (Claude Code, Claude Desktop, C
 ### Local Development
 
 ```bash
-git clone https://github.com/klar/context-mcp.git
+git clone https://github.com/fellanH/context-mcp.git
 cd context-mcp
 npm install
 

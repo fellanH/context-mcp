@@ -1,0 +1,10 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      vaultDir:
+        type: string
+        description: "Path to the vault directory containing your knowledge files. Defaults to ~/vault/"
+  commandFunction: |-
+    (config) => ({ command: 'npx', args: ['-y', '@fellanh/context-mcp', 'serve', ...(config.vaultDir ? ['--vault-dir', config.vaultDir] : [])] })
