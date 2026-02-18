@@ -175,7 +175,11 @@ export function registerTools(server, ctx) {
       const finalMeta = Object.keys(mergedMeta).length ? mergedMeta : undefined;
 
       const entry = await captureAndIndex(ctx, { kind, title, body, meta: finalMeta, tags, source, folder, identity_key, expires_at }, indexEntry);
-      return ok(`Saved ${kind} ${entry.id}\nFile: ${entry.filePath}${title ? "\nTitle: " + title : ""}`);
+      const relPath = entry.filePath ? entry.filePath.replace(config.vaultDir + "/", "") : entry.filePath;
+      const parts = [`✓ Saved ${kind} → ${relPath}`, `  id: ${entry.id}`];
+      if (title) parts.push(`  title: ${title}`);
+      if (tags?.length) parts.push(`  tags: ${tags.join(", ")}`);
+      return ok(parts.join("\n"));
     }
   );
 
@@ -294,19 +298,28 @@ export function registerTools(server, ctx) {
     () => {
       const status = gatherVaultStatus(ctx);
 
+      const hasIssues = status.stalePaths || (status.embeddingStatus?.missing > 0);
+      const healthIcon = hasIssues ? "⚠" : "✓";
+
       const lines = [
-        `## Vault Status`,
+        `## ${healthIcon} Vault Status`,
         ``,
-        `Vault:     ${config.vaultDir} (exists: ${config.vaultDirExists}, ${status.fileCount} files)`,
-        `Database:  ${config.dbPath} (exists: ${existsSync(config.dbPath)}, ${status.dbSize})`,
+        `Vault:     ${config.vaultDir} (${config.vaultDirExists ? status.fileCount + " files" : "missing"})`,
+        `Database:  ${config.dbPath} (${status.dbSize})`,
         `Dev dir:   ${config.devDir}`,
         `Data dir:  ${config.dataDir}`,
         `Config:    ${config.configPath}`,
         `Resolved via: ${status.resolvedFrom}`,
         `Schema:    v5 (categories)`,
-        ``,
-        `### Indexed`,
       ];
+
+      if (status.embeddingStatus) {
+        const { indexed, total, missing } = status.embeddingStatus;
+        const pct = total > 0 ? Math.round((indexed / total) * 100) : 100;
+        lines.push(`Embeddings: ${indexed}/${total} (${pct}%)`);
+      }
+
+      lines.push(``, `### Indexed`);
 
       if (status.kindCounts.length) {
         for (const { kind, c } of status.kindCounts) lines.push(`- ${c} ${kind}s`);
@@ -328,18 +341,9 @@ export function registerTools(server, ctx) {
 
       if (status.stalePaths) {
         lines.push(``);
-        lines.push(`### Stale Paths Detected`);
+        lines.push(`### ⚠ Stale Paths`);
         lines.push(`DB contains ${status.staleCount} paths not matching current vault dir.`);
         lines.push(`Auto-reindex will fix this on next search or save.`);
-      }
-
-      if (status.embeddingStatus) {
-        const { indexed, total, missing } = status.embeddingStatus;
-        if (missing > 0) {
-          lines.push(``);
-          lines.push(`### Embeddings`);
-          lines.push(`${indexed}/${total} entries have embeddings (${missing} missing)`);
-        }
       }
 
       return ok(lines.join("\n"));
