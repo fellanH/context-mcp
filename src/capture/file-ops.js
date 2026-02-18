@@ -5,7 +5,7 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, relative } from "node:path";
 import { formatFrontmatter } from "../core/frontmatter.js";
 import { slugify, kindToPath } from "../core/files.js";
 import { formatBody } from "./formatters.js";
@@ -14,7 +14,8 @@ function safeFolderPath(vaultDir, kind, folder) {
   const base = resolve(vaultDir, kindToPath(kind));
   if (!folder) return base;
   const resolved = resolve(base, folder);
-  if (!resolved.startsWith(base + "/") && resolved !== base) {
+  const rel = relative(base, resolved);
+  if (rel.startsWith("..") || resolve(base, rel) !== resolved) {
     throw new Error(`Folder path escapes vault: "${folder}"`);
   }
   return resolved;

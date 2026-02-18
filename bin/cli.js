@@ -495,7 +495,7 @@ async function runStatus() {
   const config = resolveConfig();
   const db = initDatabase(config.dbPath);
 
-  const status = gatherVaultStatus(db, config);
+  const status = gatherVaultStatus({ db, config });
 
   db.close();
 

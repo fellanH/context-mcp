@@ -53,6 +53,7 @@ function buildFilterClauses({ categoryFilter, since, until }) {
     clauses.push("e.created_at <= ?");
     params.push(until);
   }
+  clauses.push("(e.expires_at IS NULL OR e.expires_at > datetime('now'))");
   return { clauses, params };
 }
 
@@ -139,9 +140,12 @@ export async function hybridSearch(
           if (categoryFilter && row.category !== categoryFilter) continue;
           if (since && row.created_at < since) continue;
           if (until && row.created_at > until) continue;
+          if (row.expires_at && new Date(row.expires_at) <= new Date()) continue;
 
           const { rowid: _rowid, ...cleanRow } = row;
-          const vecScore = (1 - vr.distance) * VEC_WEIGHT;
+          // sqlite-vec returns L2 distance [0, 2] for normalized vectors.
+          // Convert to similarity [1, 0] with: 1 - distance/2
+          const vecScore = Math.max(0, 1 - vr.distance / 2) * VEC_WEIGHT;
           const existing = results.get(cleanRow.id);
           if (existing) {
             existing.score += vecScore;

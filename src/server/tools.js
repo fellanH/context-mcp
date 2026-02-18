@@ -13,6 +13,7 @@ import { hybridSearch } from "../retrieve/index.js";
 import { reindex, indexEntry } from "../index/index.js";
 import { gatherVaultStatus } from "../core/status.js";
 import { categoryFor } from "../core/categories.js";
+import { normalizeKind } from "../core/files.js";
 import { ok, err, ensureVaultExists, ensureValidKind } from "./helpers.js";
 
 /**
@@ -29,6 +30,7 @@ export function registerTools(server, ctx) {
   let reindexDone = false;
   let reindexPromise = null;
   let reindexAttempts = 0;
+  let reindexFailed = false;
   const MAX_REINDEX_ATTEMPTS = 2;
 
   async function ensureIndexed() {
@@ -48,6 +50,7 @@ export function registerTools(server, ctx) {
         if (reindexAttempts >= MAX_REINDEX_ATTEMPTS) {
           console.error(`[context-mcp] Giving up on auto-reindex. Run \`context-mcp reindex\` manually to diagnose.`);
           reindexDone = true;
+          reindexFailed = true;
         } else {
           reindexPromise = null; // Allow retry on next tool call
         }
@@ -70,9 +73,10 @@ export function registerTools(server, ctx) {
       limit: z.number().optional().describe("Max results to return (default 10)"),
     },
     async ({ query, kind, category, tags, since, until, limit }) => {
+      if (!query?.trim()) return err("Required: query (non-empty string)", "INVALID_INPUT");
       await ensureIndexed();
 
-      const kindFilter = kind ? kind.replace(/s$/, "") : null;
+      const kindFilter = kind ? normalizeKind(kind) : null;
       const sorted = await hybridSearch(ctx, query, {
         kindFilter,
         categoryFilter: category || null,
@@ -91,7 +95,9 @@ export function registerTools(server, ctx) {
 
       if (!filtered.length) return ok("No results found for: " + query);
 
-      const lines = [`## Results for "${query}" (${filtered.length} matches)\n`];
+      const lines = [];
+      if (reindexFailed) lines.push(`> **Warning:** Auto-reindex failed. Results may be stale. Run \`context-mcp reindex\` to fix.\n`);
+      lines.push(`## Results for "${query}" (${filtered.length} matches)\n`);
       for (const r of filtered) {
         const meta = r.meta ? JSON.parse(r.meta) : {};
         lines.push(`### ${r.title || "(untitled)"} [${r.kind}/${r.category}]`);

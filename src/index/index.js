@@ -232,6 +232,22 @@ export async function reindex(ctx, opts = {}) {
       }
     }
 
+    // Clean up entries for kinds whose directories no longer exist on disk
+    if (fullSync) {
+      const indexedKinds = new Set(kindEntries.map((ke) => ke.kind));
+      const allDbKinds = ctx.db.prepare("SELECT DISTINCT kind FROM vault").all();
+      for (const { kind } of allDbKinds) {
+        if (!indexedKinds.has(kind)) {
+          const orphaned = ctx.db.prepare("SELECT id, rowid FROM vault WHERE kind = ?").all(kind);
+          for (const row of orphaned) {
+            try { ctx.deleteVec(row.rowid); } catch {}
+            ctx.stmts.deleteEntry.run(row.id);
+            stats.removed++;
+          }
+        }
+      }
+    }
+
     ctx.db.exec("COMMIT");
   } catch (e) {
     ctx.db.exec("ROLLBACK");

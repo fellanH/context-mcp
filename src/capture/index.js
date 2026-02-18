@@ -7,7 +7,7 @@
  * Agent Constraint: Only imports from ../core. Never imports ../index or ../retrieve.
  */
 
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ulid, slugify, kindToPath } from "../core/files.js";
 import { categoryFor } from "../core/categories.js";
@@ -62,12 +62,28 @@ export function writeEntry(ctx, { kind, title, body, meta, tags, source, folder,
 }
 
 export async function captureAndIndex(ctx, data, indexFn) {
+  // For entity upserts, preserve previous file content for safe rollback
+  let previousContent = null;
+  if (categoryFor(data.kind) === "entity" && data.identity_key) {
+    const identitySlug = slugify(data.identity_key);
+    const dir = resolve(ctx.config.vaultDir, kindToPath(data.kind));
+    const existingPath = resolve(dir, `${identitySlug}.md`);
+    if (existsSync(existingPath)) {
+      previousContent = readFileSync(existingPath, "utf-8");
+    }
+  }
+
   const entry = writeEntry(ctx, data);
   try {
     await indexFn(ctx, entry);
     return entry;
   } catch (err) {
-    try { unlinkSync(entry.filePath); } catch {}
+    // Rollback: restore previous content for entity upserts, delete for new entries
+    if (previousContent) {
+      try { writeFileSync(entry.filePath, previousContent); } catch {}
+    } else {
+      try { unlinkSync(entry.filePath); } catch {}
+    }
     throw new Error(
       `Capture succeeded but indexing failed — file rolled back. ${err.message}`
     );

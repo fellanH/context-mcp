@@ -124,15 +124,15 @@ export function prepareStatements(db) {
 // ─── Vector Helpers (parameterized rowid via cached statements) ──────────────
 
 export function insertVec(stmts, rowid, embedding) {
-  // sqlite-vec requires INTEGER for primary key — coerce to plain int (BigInt/Number → int64)
-  const n = typeof rowid === "bigint" ? Number(rowid) : Number(rowid);
-  const safeRowid = n >= 0 ? Math.floor(n) : Math.ceil(n);
-  if (!Number.isSafeInteger(safeRowid) || safeRowid < 1) throw new Error(`Invalid rowid: ${rowid}`);
+  // sqlite-vec requires BigInt for primary key — better-sqlite3 binds Number as REAL,
+  // but vec0 virtual tables only accept INTEGER rowids
+  const safeRowid = BigInt(rowid);
+  if (safeRowid < 1n) throw new Error(`Invalid rowid: ${rowid}`);
   stmts.insertVecStmt.run(safeRowid, embedding);
 }
 
 export function deleteVec(stmts, rowid) {
-  const safeRowid = Number(rowid);
-  if (!Number.isFinite(safeRowid) || safeRowid < 0) throw new Error(`Invalid rowid: ${rowid}`);
+  const safeRowid = BigInt(rowid);
+  if (safeRowid < 1n) throw new Error(`Invalid rowid: ${rowid}`);
   stmts.deleteVecStmt.run(safeRowid);
 }

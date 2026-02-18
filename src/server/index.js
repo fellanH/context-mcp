@@ -40,8 +40,16 @@ if (!config.vaultDirExists) {
 
 // ─── Database Init ───────────────────────────────────────────────────────────
 
-const db = initDatabase(config.dbPath);
-const stmts = prepareStatements(db);
+let db, stmts;
+try {
+  db = initDatabase(config.dbPath);
+  stmts = prepareStatements(db);
+} catch (e) {
+  console.error(`[context-mcp] Database init failed: ${e.message}`);
+  console.error(`[context-mcp] DB path: ${config.dbPath}`);
+  console.error(`[context-mcp] Try deleting the DB file and restarting: rm "${config.dbPath}"`);
+  process.exit(1);
+}
 
 const ctx = {
   db,

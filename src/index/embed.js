@@ -8,7 +8,14 @@ let extractor = null;
 
 async function ensurePipeline() {
   if (!extractor) {
-    extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+    try {
+      extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
+    } catch (e) {
+      console.error(`[context-mcp] Failed to load embedding model: ${e.message}`);
+      console.error(`[context-mcp] The model (~80 MB) is downloaded on first run.`);
+      console.error(`[context-mcp] Check: network connectivity, disk space, Node.js >=20`);
+      throw e;
+    }
   }
   return extractor;
 }
@@ -36,7 +43,10 @@ export async function embedBatch(texts) {
     extractor = null;
     throw new Error("Embedding pipeline returned empty result");
   }
-  const dim = 384;
+  const dim = result.data.length / texts.length;
+  if (!Number.isInteger(dim) || dim <= 0) {
+    throw new Error(`Unexpected embedding dimension: ${result.data.length} / ${texts.length} = ${dim}`);
+  }
   return texts.map((_, i) => new Float32Array(result.data.buffer, i * dim * 4, dim));
 }
 

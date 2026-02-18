@@ -72,6 +72,13 @@ export function dirToKind(dirName) {
   return dirName.replace(/s$/, "");
 }
 
+/** Normalize a kind input (singular or plural) to its canonical singular form. */
+export function normalizeKind(input) {
+  if (PLURAL_MAP[input]) return input;           // Already a known singular kind
+  if (SINGULAR_MAP[input]) return SINGULAR_MAP[input]; // Known plural → singular
+  return input;                                   // Unknown — use as-is (don't strip 's')
+}
+
 /** Returns relative path from vault root → kind dir: "knowledge/insights", "events/sessions", etc. */
 export function kindToPath(kind) {
   return `${categoryDirFor(kind)}/${kindToDir(kind)}`;
