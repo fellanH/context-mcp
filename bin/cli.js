@@ -156,7 +156,7 @@ const TOOLS = [
 
 function showHelp() {
   console.log(`
-${bold("context-mcp")} v${VERSION} — Personal knowledge vault for AI agents
+${bold("context-mcp")} v${VERSION} — Persistent memory for AI agents
 
 ${bold("Usage:")}
   context-mcp <command> [options]
@@ -181,7 +181,9 @@ async function runSetup() {
   // Banner
   console.log();
   console.log(bold("  context-mcp") + dim(` v${VERSION}`));
-  console.log(dim("  Personal knowledge vault for AI agents"));
+  console.log(dim("  Persistent memory for AI agents — saves and searches knowledge across sessions"));
+  console.log();
+  console.log(dim("  Setup will: detect tools, configure MCP, download embeddings, and verify."));
   console.log();
 
   // Detect tools
@@ -230,11 +232,13 @@ async function runSetup() {
   if (isNonInteractive) {
     selected = detected;
   } else {
-    const listing = detected
-      .map((t, i) => `${i + 1}) ${t.name}`)
-      .join("  ");
+    console.log(bold("  Which tools should context-mcp connect to?\n"));
+    for (let i = 0; i < detected.length; i++) {
+      console.log(`    ${i + 1}) ${detected[i].name}`);
+    }
+    console.log();
     const answer = await prompt(
-      `  Configure: ${dim("all")} or enter numbers (${listing}):`,
+      `  Select (${dim("1,2,3")} or ${dim('"all"')}):`,
       "all"
     );
     if (answer === "all" || answer === "") {
@@ -294,6 +298,17 @@ async function runSetup() {
   writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + "\n");
   console.log(`\n  ${green("+")} Wrote ${configPath}`);
 
+  // Pre-download embedding model
+  console.log(`\n${bold("  Downloading embedding model...")}`);
+  console.log(dim("  all-MiniLM-L6-v2 (~22MB, one-time download)\n"));
+  try {
+    const { embed } = await import("../src/index/embed.js");
+    await embed("warmup");
+    console.log(`  ${green("+")} Embedding model ready`);
+  } catch (e) {
+    console.log(`  ${yellow("!")} Model download failed — will retry on first use`);
+  }
+
   // Clean up legacy project-root config.json if it exists
   const legacyConfigPath = join(ROOT, "config.json");
   if (existsSync(legacyConfigPath)) {
@@ -324,6 +339,12 @@ async function runSetup() {
     }
   }
 
+  // Seed entry
+  const seeded = createSeedEntry(resolvedVaultDir);
+  if (seeded) {
+    console.log(`\n  ${green("+")} Created starter entry in vault`);
+  }
+
   // Offer to launch UI
   console.log();
   if (!isNonInteractive) {
@@ -338,21 +359,27 @@ async function runSetup() {
     }
   }
 
-  // Summary
-  console.log(bold("\n  Setup complete!\n"));
+  // Health check
   const ok = results.filter((r) => r.ok);
-  if (ok.length) {
-    console.log(
-      `  ${green(ok.length)} tool${ok.length > 1 ? "s" : ""} configured:`
-    );
-    for (const r of ok) {
-      console.log(`    ${r.tool.name}`);
-    }
+  const checks = [
+    { label: "Vault directory exists", pass: existsSync(resolvedVaultDir) },
+    { label: "Config file written", pass: existsSync(configPath) },
+    { label: "At least one tool configured", pass: ok.length > 0 },
+  ];
+  const passed = checks.filter((c) => c.pass).length;
+  console.log(bold(`\n  Health check: ${passed}/${checks.length} passed\n`));
+  for (const c of checks) {
+    console.log(`  ${c.pass ? green("+") : red("x")} ${c.label}`);
   }
-  console.log(`\n  Vault dir:   ${resolvedVaultDir}`);
-  console.log(`  Config:      ${configPath}`);
-  console.log(`  MCP server:  ${isInstalledPackage() ? "context-mcp serve" : SERVER_PATH}`);
-  console.log(`\n  Run ${cyan("context-mcp ui")} to open the dashboard.`);
+
+  // First-use guidance
+  const toolName = ok.length ? ok[0].tool.name : "your AI tool";
+  console.log(bold("\n  What to do next:\n"));
+  console.log(`  1. Open ${toolName}`);
+  console.log(`  2. Try: ${cyan('"Search my vault for getting started"')}`);
+  console.log(`  3. Try: ${cyan('"Save an insight: JavaScript Date objects are mutable"')}`);
+  console.log(`\n  Vault:     ${resolvedVaultDir}`);
+  console.log(`  Dashboard: ${cyan("context-mcp ui")}`);
   console.log();
 }
 
@@ -429,6 +456,38 @@ function configureJsonTool(tool, vaultDir) {
   }
 
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
+}
+
+// ─── Seed Entry ─────────────────────────────────────────────────────────────
+
+function createSeedEntry(vaultDir) {
+  const seedDir = join(vaultDir, "knowledge", "insights");
+  const seedPath = join(seedDir, "getting-started.md");
+  if (existsSync(seedPath)) return false;
+  mkdirSync(seedDir, { recursive: true });
+  const id = Date.now().toString(36).toUpperCase().padStart(10, "0");
+  const now = new Date().toISOString();
+  const content = `---
+id: ${id}
+tags: ["getting-started"]
+source: context-mcp-setup
+created: ${now}
+---
+Welcome to your context vault! This is a seed entry created during setup.
+
+Your vault stores knowledge as plain markdown files with YAML frontmatter.
+AI agents search it using hybrid full-text + semantic search.
+
+Try these commands in your AI tool:
+- "Search my vault for getting started"
+- "Save an insight: JavaScript Date objects are mutable"
+- "Show my vault status"
+
+You can edit or delete this file anytime — it lives at:
+${seedPath}
+`;
+  writeFileSync(seedPath, content);
+  return true;
 }
 
 // ─── UI Command ──────────────────────────────────────────────────────────────

@@ -9,10 +9,11 @@ let extractor = null;
 async function ensurePipeline() {
   if (!extractor) {
     try {
+      console.error("[context-mcp] Loading embedding model (first run may download ~22MB)...");
       extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
     } catch (e) {
       console.error(`[context-mcp] Failed to load embedding model: ${e.message}`);
-      console.error(`[context-mcp] The model (~80 MB) is downloaded on first run.`);
+      console.error(`[context-mcp] The model (~22MB) is downloaded on first run.`);
       console.error(`[context-mcp] Check: network connectivity, disk space, Node.js >=20`);
       throw e;
     }
