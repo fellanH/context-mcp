@@ -176,6 +176,82 @@ describe("hosted auth + management API", () => {
     expect(keys3.length).toBe(1);
   });
 
+  // ─── Vault Import/Export ───────────────────────────────────────────────────
+
+  it("import: valid entry returns id", async () => {
+    const regRes = await fetch(`${BASE}/api/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `import-${RUN_ID}@test.com` }),
+    });
+    const { apiKey } = await regRes.json();
+    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+
+    const res = await fetch(`${BASE}/api/vault/import`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ kind: "insight", body: "Test import entry", tags: ["test"] }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.id).toBeTruthy();
+    expect(data.id).toHaveLength(26); // ULID length
+  });
+
+  it("import: missing body returns 400", async () => {
+    const regRes = await fetch(`${BASE}/api/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `import-nobody-${RUN_ID}@test.com` }),
+    });
+    const { apiKey } = await regRes.json();
+    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+
+    const res = await fetch(`${BASE}/api/vault/import`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ kind: "insight" }),
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("body");
+  });
+
+  it("import: missing kind returns 400", async () => {
+    const regRes = await fetch(`${BASE}/api/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `import-nokind-${RUN_ID}@test.com` }),
+    });
+    const { apiKey } = await regRes.json();
+    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+
+    const res = await fetch(`${BASE}/api/vault/import`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ body: "No kind provided" }),
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("kind");
+  });
+
+  it("export: free tier returns 403", async () => {
+    const regRes = await fetch(`${BASE}/api/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `export-free-${RUN_ID}@test.com` }),
+    });
+    const { apiKey } = await regRes.json();
+
+    const res = await fetch(`${BASE}/api/vault/export`, {
+      headers: { Authorization: `Bearer ${apiKey.key}` },
+    });
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toContain("free tier");
+  });
+
   it("usage tracking endpoint returns data", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",

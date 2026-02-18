@@ -100,10 +100,12 @@ export function prepareMetaStatements(db) {
     getUserById: db.prepare(`SELECT * FROM users WHERE id = ?`),
     getUserByEmail: db.prepare(`SELECT * FROM users WHERE email = ?`),
     updateUserTier: db.prepare(`UPDATE users SET tier = ?, updated_at = datetime('now') WHERE id = ?`),
+    getUserByStripeCustomerId: db.prepare(`SELECT * FROM users WHERE stripe_customer_id = ?`),
+    updateUserStripeId: db.prepare(`UPDATE users SET stripe_customer_id = ?, updated_at = datetime('now') WHERE id = ?`),
 
     // API Keys
     createApiKey: db.prepare(`INSERT INTO api_keys (id, user_id, key_hash, key_prefix, name) VALUES (?, ?, ?, ?, ?)`),
-    getKeyByHash: db.prepare(`SELECT ak.*, u.tier, u.email FROM api_keys ak JOIN users u ON ak.user_id = u.id WHERE ak.key_hash = ?`),
+    getKeyByHash: db.prepare(`SELECT ak.*, u.tier, u.email, u.stripe_customer_id FROM api_keys ak JOIN users u ON ak.user_id = u.id WHERE ak.key_hash = ?`),
     updateKeyLastUsed: db.prepare(`UPDATE api_keys SET last_used = datetime('now') WHERE id = ?`),
     listUserKeys: db.prepare(`SELECT id, key_prefix, name, scopes, last_used, expires_at, created_at FROM api_keys WHERE user_id = ? ORDER BY created_at DESC`),
     deleteApiKey: db.prepare(`DELETE FROM api_keys WHERE id = ? AND user_id = ?`),
@@ -139,5 +141,6 @@ export function validateApiKey(key) {
     email: row.email,
     tier: row.tier,
     scopes: JSON.parse(row.scopes || '["*"]'),
+    stripeCustomerId: row.stripe_customer_id || null,
   };
 }

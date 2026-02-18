@@ -23,7 +23,7 @@ import { createCtx } from "./server/ctx.js";
 import { initMetaDb, prepareMetaStatements } from "./auth/meta-db.js";
 import { bearerAuth } from "./middleware/auth.js";
 import { rateLimit } from "./middleware/rate-limit.js";
-import { managementRoutes } from "./server/management.js";
+import { createManagementRoutes } from "./server/management.js";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ app.use("*", cors({
 app.get("/health", (c) => c.json({ status: "ok", version: "0.1.0", auth: AUTH_REQUIRED }));
 
 // Management REST API (always requires auth)
-app.route("/", managementRoutes);
+app.route("/", createManagementRoutes(ctx));
 
 // MCP endpoint — optionally auth-protected
 if (AUTH_REQUIRED) {

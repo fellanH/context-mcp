@@ -21,21 +21,18 @@ let stripe = null;
  * Initialize the Stripe client.
  * @returns {import("stripe").default | null}
  */
-export function getStripe() {
+export async function getStripe() {
   if (stripe) return stripe;
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null;
 
-  // Dynamic import to avoid requiring stripe in local mode
   try {
-    const Stripe = globalThis._stripe_constructor;
-    if (Stripe) {
-      stripe = new Stripe(key);
-      return stripe;
-    }
-  } catch {}
-
-  return null;
+    const Stripe = globalThis._stripe_constructor || (await import("stripe")).default;
+    stripe = new Stripe(key);
+    return stripe;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -50,7 +47,7 @@ export function getStripe() {
  * @returns {Promise<{ url: string, sessionId: string } | null>}
  */
 export async function createCheckoutSession({ userId, email, customerId, successUrl, cancelUrl }) {
-  const s = getStripe();
+  const s = await getStripe();
   if (!s) return null;
 
   const priceId = process.env.STRIPE_PRICE_PRO;
@@ -82,8 +79,8 @@ export async function createCheckoutSession({ userId, email, customerId, success
  * @param {string} signature - Stripe-Signature header
  * @returns {{ type: string, data: object } | null}
  */
-export function verifyWebhookEvent(body, signature) {
-  const s = getStripe();
+export async function verifyWebhookEvent(body, signature) {
+  const s = await getStripe();
   if (!s) return null;
 
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
