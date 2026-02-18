@@ -1,0 +1,12 @@
+node_modules
+.git
+.github
+test
+*.test.js
+*.md
+.env
+.env.*
+.DS_Store
+vitest.config.js
+packages/local
+fly.toml

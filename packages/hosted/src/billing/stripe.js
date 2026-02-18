@@ -88,7 +88,7 @@ export async function verifyWebhookEvent(body, signature) {
 
   try {
     const event = s.webhooks.constructEvent(body, signature, secret);
-    return { type: event.type, data: event.data.object };
+    return { id: event.id, type: event.type, data: event.data.object };
   } catch {
     return null;
   }

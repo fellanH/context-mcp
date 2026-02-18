@@ -15,11 +15,12 @@ import {
   getMetaDb,
   validateApiKey,
 } from "../auth/meta-db.js";
-import { createCheckoutSession, verifyWebhookEvent, getTierLimits, isOverEntryLimit } from "../billing/stripe.js";
+import { createCheckoutSession, verifyWebhookEvent, getStripe, getTierLimits, isOverEntryLimit } from "../billing/stripe.js";
 import { writeEntry } from "@context-vault/core/capture";
 import { indexEntry } from "@context-vault/core/index";
-import { generateDek } from "../encryption/keys.js";
+import { generateDek, clearDekCache } from "../encryption/keys.js";
 import { decryptFromStorage } from "../encryption/vault-crypto.js";
+import { unlinkSync } from "node:fs";
 
 // ─── Validation Constants ────────────────────────────────────────────────────
 
@@ -32,12 +33,12 @@ const MAX_META_LENGTH = 10 * 1024; // 10KB
 const MAX_SOURCE_LENGTH = 200;
 const MAX_IDENTITY_KEY_LENGTH = 200;
 const KIND_PATTERN = /^[a-z0-9-]+$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// ─── Registration Rate Limiting ──────────────────────────────────────────────
+// ─── Registration Rate Limiting (SQLite-backed, survives restarts) ───────────
 
-const registrationAttempts = new Map();
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const RATE_LIMIT_MAX = 5;
+let rateLimitPruneCounter = 0;
 
 function getClientIp(c) {
   return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
@@ -46,30 +47,34 @@ function getClientIp(c) {
 }
 
 function checkRegistrationRate(ip) {
-  const now = Date.now();
-  const entry = registrationAttempts.get(ip);
+  const stmts = prepareMetaStatements(getMetaDb());
+  const key = `reg:${ip}`;
 
-  // Clean expired
-  if (entry && now > entry.resetAt) {
-    registrationAttempts.delete(ip);
+  // Check current state
+  const row = stmts.checkRateLimit.get(key);
+  if (row) {
+    // If window expired, the upsert will reset — just check current count
+    const windowExpired = new Date(row.window_start + "Z").getTime() + 3600_000 < Date.now();
+    if (!windowExpired && row.count >= RATE_LIMIT_MAX) {
+      return false;
+    }
   }
 
-  const current = registrationAttempts.get(ip);
-  if (current && current.count >= RATE_LIMIT_MAX) {
-    return false;
+  // Atomically increment (or reset if window expired)
+  stmts.upsertRateLimit.run(key);
+
+  // Prune expired entries periodically (every 100 calls)
+  if (++rateLimitPruneCounter % 100 === 0) {
+    try { stmts.pruneRateLimits.run(); } catch {}
   }
 
-  if (current) {
-    current.count++;
-  } else {
-    registrationAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-  }
   return true;
 }
 
-/** Exported for testing — resets the in-memory rate limit state. */
+/** Exported for testing — resets all rate limit state. */
 export function _resetRateLimits() {
-  registrationAttempts.clear();
+  const db = getMetaDb();
+  db.prepare("DELETE FROM rate_limits").run();
 }
 
 /**
@@ -104,6 +109,17 @@ export function createManagementRoutes(ctx) {
     const user = requireAuth(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
+    const stmts = prepareMetaStatements(getMetaDb());
+
+    // Enforce API key count limit
+    const limits = getTierLimits(user.tier);
+    if (limits.apiKeys !== Infinity) {
+      const existing = stmts.listUserKeys.all(user.userId);
+      if (existing.length >= limits.apiKeys) {
+        return c.json({ error: `API key limit reached (${limits.apiKeys}). Upgrade to Pro for unlimited keys.` }, 403);
+      }
+    }
+
     const body = await c.req.json().catch(() => ({}));
     const name = body.name || "default";
 
@@ -112,7 +128,6 @@ export function createManagementRoutes(ctx) {
     const prefix = keyPrefix(rawKey);
     const id = randomUUID();
 
-    const stmts = prepareMetaStatements(getMetaDb());
     stmts.createApiKey.run(id, user.userId, hash, prefix, name);
 
     // Return the raw key ONCE — it cannot be retrieved again
@@ -152,6 +167,9 @@ export function createManagementRoutes(ctx) {
     const body = await c.req.json().catch(() => ({}));
     const { email, name } = body;
     if (!email) return c.json({ error: "email is required" }, 400);
+    if (!EMAIL_REGEX.test(email) || email.length > 320) {
+      return c.json({ error: "Invalid email format" }, 400);
+    }
 
     const stmts = prepareMetaStatements(getMetaDb());
 
@@ -213,6 +231,11 @@ export function createManagementRoutes(ctx) {
     const requestsToday = stmts.countUsageToday.get(user.userId, "mcp_request");
     const limits = getTierLimits(user.tier);
 
+    const entryCount = ctx.db.prepare("SELECT COUNT(*) as c FROM vault WHERE user_id = ?").get(user.userId).c;
+    const storageBytes = ctx.db.prepare(
+      "SELECT COALESCE(SUM(LENGTH(COALESCE(body,'')) + LENGTH(COALESCE(body_encrypted,'')) + LENGTH(COALESCE(title,'')) + LENGTH(COALESCE(meta,''))), 0) as s FROM vault WHERE user_id = ?"
+    ).get(user.userId).s;
+
     return c.json({
       tier: user.tier,
       limits: {
@@ -223,6 +246,8 @@ export function createManagementRoutes(ctx) {
       },
       usage: {
         requestsToday: requestsToday.c,
+        entriesUsed: entryCount,
+        storageMb: Math.round((storageBytes / (1024 * 1024)) * 100) / 100,
       },
     });
   });
@@ -264,6 +289,10 @@ export function createManagementRoutes(ctx) {
 
     const stmts = prepareMetaStatements(getMetaDb());
 
+    // Idempotency check — prevent double-processing retried webhooks
+    const existing = stmts.getProcessedWebhook.get(event.id);
+    if (existing) return c.json({ received: true, duplicate: true });
+
     switch (event.type) {
       case "checkout.session.completed": {
         const userId = event.data.metadata?.userId;
@@ -282,9 +311,84 @@ export function createManagementRoutes(ctx) {
         }
         break;
       }
+      case "invoice.payment_failed": {
+        // Log warning — Stripe retries for ~3 weeks before canceling
+        const customerId = event.data.customer;
+        if (customerId) {
+          const user = stmts.getUserByStripeCustomerId.get(customerId);
+          if (user) console.warn(JSON.stringify({
+            level: "warn", event: "payment_failed",
+            userId: user.id, ts: new Date().toISOString(),
+          }));
+        }
+        break;
+      }
+      case "customer.subscription.updated": {
+        // Track past_due status (payment issues)
+        const customerId = event.data.customer;
+        const status = event.data.status;
+        if (customerId && (status === "past_due" || status === "unpaid")) {
+          const user = stmts.getUserByStripeCustomerId.get(customerId);
+          if (user) console.warn(JSON.stringify({
+            level: "warn", event: "subscription_" + status,
+            userId: user.id, ts: new Date().toISOString(),
+          }));
+        }
+        break;
+      }
     }
 
+    // Mark processed + periodic cleanup
+    stmts.insertProcessedWebhook.run(event.id, event.type);
+    try { stmts.pruneOldWebhooks.run(); } catch {}
+
     return c.json({ received: true });
+  });
+
+  // ─── Account Deletion (GDPR) ─────────────────────────────────────────────
+
+  api.delete("/api/account", async (c) => {
+    const user = requireAuth(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    // 1. Cancel Stripe subscription if active
+    if (user.stripeCustomerId) {
+      try {
+        const s = await getStripe();
+        if (s) {
+          const subs = await s.subscriptions.list({ customer: user.stripeCustomerId, status: "active" });
+          for (const sub of subs.data) await s.subscriptions.cancel(sub.id);
+        }
+      } catch (err) {
+        console.error(JSON.stringify({
+          level: "error", context: "account_deletion",
+          userId: user.userId, error: err.message,
+          ts: new Date().toISOString(),
+        }));
+      }
+    }
+
+    // 2. Delete vault entries (files + DB + vectors)
+    const entries = ctx.db.prepare("SELECT id, file_path FROM vault WHERE user_id = ?").all(user.userId);
+    for (const entry of entries) {
+      if (entry.file_path) try { unlinkSync(entry.file_path); } catch {}
+      try { ctx.deleteVec(entry.id); } catch {}
+    }
+    ctx.db.prepare("DELETE FROM vault WHERE user_id = ?").run(user.userId);
+
+    // 3. Delete meta records in transaction
+    const stmts = prepareMetaStatements(getMetaDb());
+    const deleteMeta = getMetaDb().transaction(() => {
+      stmts.deleteUserKeys.run(user.userId);
+      stmts.deleteUserUsage.run(user.userId);
+      stmts.deleteUser.run(user.userId);
+    });
+    deleteMeta();
+
+    // 4. Clear DEK cache
+    clearDekCache(user.userId);
+
+    return c.json({ deleted: true });
   });
 
   // ─── Vault Import/Export (for migration) ───────────────────────────────────

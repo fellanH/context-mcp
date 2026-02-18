@@ -264,6 +264,17 @@ export function registerTools(server, ctx) {
         return err(`Entity kind "${kind}" requires identity_key`, "MISSING_IDENTITY_KEY");
       }
 
+      // Hosted tier limit enforcement (skipped in local mode — no checkLimits on ctx)
+      if (ctx.checkLimits) {
+        const usage = ctx.checkLimits();
+        if (usage.entryCount >= usage.maxEntries) {
+          return err(`Entry limit reached (${usage.maxEntries}). Upgrade to Pro for unlimited entries.`, "LIMIT_EXCEEDED");
+        }
+        if (usage.storageMb >= usage.maxStorageMb) {
+          return err(`Storage limit reached (${usage.maxStorageMb} MB). Upgrade to Pro for more storage.`, "LIMIT_EXCEEDED");
+        }
+      }
+
       await ensureIndexed();
 
       const mergedMeta = { ...(meta || {}) };

@@ -6,7 +6,8 @@
   "workspaces": [
     "packages/core",
     "packages/local",
-    "packages/hosted"
+    "packages/hosted",
+    "packages/app"
   ],
   "scripts": {
     "test": "vitest run",
@@ -19,5 +20,8 @@
   },
   "devDependencies": {
     "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@sentry/node": "^10.39.0"
   }
 }

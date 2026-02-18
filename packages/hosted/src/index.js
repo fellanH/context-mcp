@@ -12,14 +12,18 @@
  *   AUTH_REQUIRED=false → MCP endpoint is open (development, default)
  */
 
+import "./instrument.js";
+import * as Sentry from "@sentry/node";
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
+import { bodyLimit } from "hono/body-limit";
 import { serve } from "@hono/node-server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { join } from "node:path";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { writeFileSync, unlinkSync, readFileSync, statfsSync } from "node:fs";
 import { registerTools } from "@context-vault/core/server/tools";
 import { createCtx } from "./server/ctx.js";
 import { initMetaDb, prepareMetaStatements, getMetaDb } from "./auth/meta-db.js";
@@ -28,6 +32,8 @@ import { rateLimit } from "./middleware/rate-limit.js";
 import { requestLogger } from "./middleware/logger.js";
 import { createManagementRoutes } from "./server/management.js";
 import { encryptForStorage, decryptFromStorage } from "./encryption/vault-crypto.js";
+import { getTierLimits } from "./billing/stripe.js";
+import { scheduleBackups, lastBackupTimestamp } from "./backup/r2-backup.js";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -83,9 +89,22 @@ prepareMetaStatements(initMetaDb(metaDbPath));
 console.log(`[hosted] Meta DB: ${metaDbPath}`);
 console.log(`[hosted] Auth: ${AUTH_REQUIRED ? "required" : "open (dev mode)"}`);
 
+// ─── Automated Backups ───────────────────────────────────────────────────────
+
+scheduleBackups(ctx, getMetaDb(), ctx.config);
+
+// ─── Package version ────────────────────────────────────────────────────────
+
+let pkgVersion = "0.1.0";
+try {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+  pkgVersion = pkg.version || pkgVersion;
+} catch {}
+
 // ─── Factory: create MCP server per request ─────────────────────────────────
 
-function createMcpServer(userId) {
+function createMcpServer(user) {
+  const userId = user?.userId || null;
   const server = new McpServer(
     { name: "context-vault-hosted", version: "0.1.0" },
     { capabilities: { tools: {} } }
@@ -100,6 +119,23 @@ function createMcpServer(userId) {
     userCtx.decrypt = (row) => decryptFromStorage(row, userId, VAULT_MASTER_SECRET);
   }
 
+  // Attach tier limits for hosted mode
+  if (userId && user.tier) {
+    const limits = getTierLimits(user.tier);
+    userCtx.checkLimits = () => {
+      const entryCount = ctx.db.prepare("SELECT COUNT(*) as c FROM vault WHERE user_id = ?").get(userId).c;
+      const storageBytes = ctx.db.prepare(
+        "SELECT COALESCE(SUM(LENGTH(COALESCE(body,'')) + LENGTH(COALESCE(body_encrypted,'')) + LENGTH(COALESCE(title,'')) + LENGTH(COALESCE(meta,''))), 0) as s FROM vault WHERE user_id = ?"
+      ).get(userId).s;
+      return {
+        entryCount,
+        storageMb: storageBytes / (1024 * 1024),
+        maxEntries: limits.maxEntries,
+        maxStorageMb: limits.storageMb,
+      };
+    };
+  }
+
   registerTools(server, userCtx);
   return server;
 }
@@ -110,6 +146,7 @@ const app = new Hono();
 
 // Global error handler — catches all unhandled errors, returns generic 500
 app.onError((err, c) => {
+  Sentry.captureException(err);
   console.error(JSON.stringify({
     level: "error",
     requestId: c.get("requestId") || null,
@@ -127,12 +164,25 @@ app.notFound((c) => c.json({ error: "Not found" }, 404));
 // Security headers (X-Content-Type-Options, X-Frame-Options, HSTS, etc.)
 app.use("*", secureHeaders());
 
+// Request body size limit (512KB)
+app.use("*", bodyLimit({ maxSize: 512 * 1024 }));
+
 // Structured JSON request logging
 app.use("*", requestLogger());
 
 // CORS for browser-based MCP clients
+// When AUTH_REQUIRED and no CORS_ORIGIN set → block browser origins (empty array)
+// When !AUTH_REQUIRED (dev) → allow all
+const corsOrigin = AUTH_REQUIRED
+  ? (process.env.CORS_ORIGIN || [])
+  : "*";
+
+if (AUTH_REQUIRED && !process.env.CORS_ORIGIN) {
+  console.warn("[hosted] \u26a0 CORS_ORIGIN not set with AUTH_REQUIRED=true — browser origins blocked");
+}
+
 app.use("*", cors({
-  origin: process.env.CORS_ORIGIN || "*",
+  origin: corsOrigin,
   allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization", "mcp-session-id", "Last-Event-ID", "mcp-protocol-version"],
   exposeHeaders: ["mcp-session-id", "mcp-protocol-version", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
@@ -140,13 +190,37 @@ app.use("*", cors({
 
 // Health check (unauthenticated) — real DB checks for Fly.io
 app.get("/health", (c) => {
-  const checks = { status: "ok", version: "0.1.0", auth: AUTH_REQUIRED };
+  const checks = {
+    status: "ok",
+    version: pkgVersion,
+    auth: AUTH_REQUIRED,
+    region: process.env.FLY_REGION || "local",
+    machine: process.env.FLY_MACHINE_ID || "local",
+  };
+
   try { ctx.db.prepare("SELECT 1").get(); checks.vault_db = "ok"; }
   catch { checks.vault_db = "error"; checks.status = "degraded"; }
   try { getMetaDb().prepare("SELECT 1").get(); checks.meta_db = "ok"; }
   catch { checks.meta_db = "error"; checks.status = "degraded"; }
+
+  // Disk usage (Fly.io volume at /data)
+  try {
+    const stats = statfsSync("/data");
+    const totalBytes = stats.blocks * stats.bsize;
+    const freeBytes = stats.bfree * stats.bsize;
+    const usedPct = Math.round(((totalBytes - freeBytes) / totalBytes) * 100);
+    const freeMb = Math.round(freeBytes / (1024 * 1024));
+    checks.disk = { usedPct, freeMb };
+    if (usedPct > 90) checks.status = "degraded";
+  } catch {
+    checks.disk = null;
+  }
+
+  checks.last_backup = lastBackupTimestamp;
   checks.uptime_s = Math.floor(process.uptime());
-  return c.json(checks, checks.status === "ok" ? 200 : 503);
+
+  const statusCode = checks.status === "ok" ? 200 : 503;
+  return c.json(checks, statusCode);
 });
 
 // Management REST API (always requires auth)
@@ -158,7 +232,7 @@ if (AUTH_REQUIRED) {
     try {
       const user = c.get("user");
       const transport = new WebStandardStreamableHTTPServerTransport();
-      const server = createMcpServer(user.userId);
+      const server = createMcpServer(user);
       await server.connect(transport);
       return transport.handleRequest(c.req.raw);
     } catch (err) {
@@ -210,6 +284,9 @@ function shutdown(signal) {
   shuttingDown = true;
   console.log(`[hosted] ${signal} received, draining...`);
   httpServer.close(() => {
+    // WAL checkpoint before closing to ensure all data is flushed
+    try { ctx.db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
+    try { getMetaDb().pragma("wal_checkpoint(TRUNCATE)"); } catch {}
     try { ctx.db.close(); } catch {}
     try { getMetaDb().close(); } catch {}
     process.exit(0);

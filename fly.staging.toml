@@ -1,0 +1,31 @@
+app = "context-vault-staging"
+primary_region = "fra"
+
+[build]
+  dockerfile = "packages/hosted/Dockerfile"
+
+[env]
+  PORT = "3000"
+  AUTH_REQUIRED = "true"
+  CONTEXT_MCP_DATA_DIR = "/data"
+  CONTEXT_MCP_VAULT_DIR = "/data/vault"
+  NODE_ENV = "staging"
+
+[[mounts]]
+  source = "context_vault_staging_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[http_service.checks]]
+  grace_period = "15s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "5s"

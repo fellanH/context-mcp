@@ -10,24 +10,7 @@
  */
 
 import { prepareMetaStatements, getMetaDb } from "../auth/meta-db.js";
-
-const TIER_LIMITS = {
-  free: {
-    requestsPerDay: 200,
-    maxEntries: 500,
-    storageMb: 10,
-  },
-  pro: {
-    requestsPerDay: Infinity,
-    maxEntries: Infinity,
-    storageMb: 1024,
-  },
-  team: {
-    requestsPerDay: Infinity,
-    maxEntries: Infinity,
-    storageMb: 5120,
-  },
-};
+import { getTierLimits } from "../billing/stripe.js";
 
 /**
  * Hono middleware that enforces tier-based rate limits.
@@ -38,7 +21,7 @@ export function rateLimit() {
     const user = c.get("user");
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-    const limits = TIER_LIMITS[user.tier] || TIER_LIMITS.free;
+    const limits = getTierLimits(user.tier);
     const stmts = prepareMetaStatements(getMetaDb());
 
     // Check daily request limit for free tier
@@ -76,4 +59,3 @@ export function rateLimit() {
   };
 }
 
-export { TIER_LIMITS };

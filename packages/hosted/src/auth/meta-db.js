@@ -44,6 +44,18 @@ const META_SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_usage_user_ts ON usage_log(user_id, timestamp);
+
+  CREATE TABLE IF NOT EXISTS processed_webhooks (
+    event_id     TEXT PRIMARY KEY,
+    event_type   TEXT NOT NULL,
+    processed_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS rate_limits (
+    key          TEXT PRIMARY KEY,
+    count        INTEGER NOT NULL DEFAULT 0,
+    window_start TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;
 
 let metaDb = null;
@@ -128,6 +140,35 @@ export function prepareMetaStatements(db) {
     // DEK (encryption)
     updateUserDek: db.prepare(`UPDATE users SET encrypted_dek = ?, dek_salt = ?, updated_at = datetime('now') WHERE id = ?`),
     getUserDekData: db.prepare(`SELECT encrypted_dek, dek_salt FROM users WHERE id = ?`),
+
+    // Account deletion
+    deleteUserKeys: db.prepare(`DELETE FROM api_keys WHERE user_id = ?`),
+    deleteUserUsage: db.prepare(`DELETE FROM usage_log WHERE user_id = ?`),
+    deleteUser: db.prepare(`DELETE FROM users WHERE id = ?`),
+
+    // Webhook idempotency
+    getProcessedWebhook: db.prepare(`SELECT event_id FROM processed_webhooks WHERE event_id = ?`),
+    insertProcessedWebhook: db.prepare(`INSERT INTO processed_webhooks (event_id, event_type) VALUES (?, ?)`),
+    pruneOldWebhooks: db.prepare(`DELETE FROM processed_webhooks WHERE processed_at < datetime('now', '-7 days')`),
+
+    // Rate limiting (persistent across restarts)
+    checkRateLimit: db.prepare(`SELECT count, window_start FROM rate_limits WHERE key = ?`),
+    upsertRateLimit: db.prepare(`
+      INSERT INTO rate_limits (key, count, window_start)
+      VALUES (?, 1, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET
+        count = CASE
+          WHEN datetime(window_start, '+1 hour') < datetime('now')
+          THEN 1
+          ELSE count + 1
+        END,
+        window_start = CASE
+          WHEN datetime(window_start, '+1 hour') < datetime('now')
+          THEN datetime('now')
+          ELSE window_start
+        END
+    `),
+    pruneRateLimits: db.prepare(`DELETE FROM rate_limits WHERE datetime(window_start, '+1 hour') < datetime('now')`),
   };
   return stmts;
 }
