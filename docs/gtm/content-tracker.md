@@ -6,10 +6,10 @@ All content pieces for the 90-day GTM plan (Weeks 4-11). Updated daily as status
 
 | Type | Target | Done | Remaining |
 |------|--------|------|-----------|
-| Blog posts | 16 | 0 | 16 |
+| Blog posts | 16 | 2 | 14 |
 | Demo videos | 8 | 0 | 8 |
 | Build-in-public | 8 | 0 | 8 |
-| **Total** | **32** | **0** | **32** |
+| **Total** | **32** | **2** | **30** |
 
 Status values: `idea` → `draft` → `review` → `done` (or `skip`)
 
@@ -21,8 +21,8 @@ Status values: `idea` → `draft` → `review` → `done` (or `skip`)
 
 | # | Title | Pillar | Status | Published | Channels | Notes |
 |---|-------|--------|--------|-----------|----------|-------|
-| 4 | Context Vault + Cursor setup and best practices | Integration | idea | — | Blog, X, Reddit | |
-| 5 | Build an AI dev memory system for client work | Playbook | idea | — | Blog, X, HN | |
+| 4 | Context Vault + Cursor setup and best practices | Integration | done | 2026-02-19 | Blog, X, Reddit | |
+| 5 | Build an AI dev memory system for client work | Playbook | done | 2026-02-19 | Blog, X, HN | |
 
 ### Demo Video
 
