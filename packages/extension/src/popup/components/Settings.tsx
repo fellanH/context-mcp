@@ -14,6 +14,10 @@ export function Settings({ onSaved }: Props) {
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: "get_settings" }, (response: MessageType) => {
+      if (chrome.runtime.lastError) {
+        console.warn("[context-vault]", chrome.runtime.lastError.message);
+        return;
+      }
       if (response?.type === "settings") {
         setServerUrl(response.serverUrl);
         setApiKey(response.apiKey);
@@ -25,6 +29,11 @@ export function Settings({ onSaved }: Props) {
     chrome.runtime.sendMessage(
       { type: "save_settings", serverUrl, apiKey },
       (response: MessageType) => {
+        if (chrome.runtime.lastError) {
+          console.warn("[context-vault]", chrome.runtime.lastError.message);
+          setTestResult({ success: false, error: "Could not reach background service." });
+          return;
+        }
         if (response?.type === "error") {
           setTestResult({ success: false, error: response.message });
           return;
@@ -43,12 +52,24 @@ export function Settings({ onSaved }: Props) {
 
     // Save first, then test
     chrome.runtime.sendMessage({ type: "save_settings", serverUrl, apiKey }, (saveResponse: MessageType) => {
+      if (chrome.runtime.lastError) {
+        console.warn("[context-vault]", chrome.runtime.lastError.message);
+        setTesting(false);
+        setTestResult({ success: false, error: "Could not reach background service." });
+        return;
+      }
       if (saveResponse?.type === "error") {
         setTesting(false);
         setTestResult({ success: false, error: saveResponse.message });
         return;
       }
       chrome.runtime.sendMessage({ type: "test_connection" }, (response: MessageType) => {
+        if (chrome.runtime.lastError) {
+          console.warn("[context-vault]", chrome.runtime.lastError.message);
+          setTesting(false);
+          setTestResult({ success: false, error: "Could not reach background service." });
+          return;
+        }
         setTesting(false);
         if (response?.type === "connection_result") {
           setTestResult(response);

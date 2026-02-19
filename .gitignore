@@ -8,3 +8,4 @@ config.json
 .pipeline/
 *.tgz
 .archive/
+packages/extension/dist/

@@ -1,4 +1,4 @@
-import { syntheticPaste } from "./types";
+import { injectContentEditable } from "./types";
 import type { PlatformAdapter } from "./types";
 
 export const genericAdapter: PlatformAdapter = {
@@ -33,24 +33,7 @@ export const genericAdapter: PlatformAdapter = {
       return true;
     }
 
-    // For contenteditable — 3-step injection chain
-    // Step 1: execCommand — works with ProseMirror/Slate
-    if (document.execCommand("insertText", false, text)) {
-      return true;
-    }
-
-    // Step 2: Synthetic paste event — works with paste-aware editors
-    if (syntheticPaste(input, text)) {
-      return true;
-    }
-
-    // Step 3: Direct textContent set + input event — last resort
-    input.textContent = (input.textContent || "") + text;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    return true;
-  },
-
-  getSelectedText() {
-    return window.getSelection()?.toString() || "";
+    // For contenteditable — snapshot-and-verify injection chain
+    return injectContentEditable(input, text);
   },
 };

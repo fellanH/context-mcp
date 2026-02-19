@@ -8,25 +8,36 @@ export interface PlatformAdapter {
   getChatInput(): HTMLElement | null;
   /** Inject text into the chat input */
   injectText(text: string): boolean;
-  /** Get currently selected text on the page */
-  getSelectedText(): string;
+}
+
+function readText(el: HTMLElement): string {
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return el.value;
+  return el.textContent || "";
 }
 
 /**
- * Synthetic paste injection — works with paste-aware editors (Slate, Quill, etc.).
- * Creates a ClipboardEvent with a DataTransfer containing the text.
+ * Reliable contenteditable injection with snapshot-and-verify pattern.
+ * Each step checks whether the DOM actually changed before moving on.
  */
-export function syntheticPaste(el: HTMLElement, text: string): boolean {
+export function injectContentEditable(el: HTMLElement, text: string): boolean {
+  el.focus();
+
+  // Step 1: execCommand
+  const before1 = readText(el);
+  document.execCommand("insertText", false, text);
+  if (readText(el) !== before1) return true;
+
+  // Step 2: Synthetic paste (don't check dispatchEvent return — it's inverted)
+  const before2 = readText(el);
   try {
     const dt = new DataTransfer();
     dt.setData("text/plain", text);
-    const event = new ClipboardEvent("paste", {
-      clipboardData: dt,
-      bubbles: true,
-      cancelable: true,
-    });
-    return el.dispatchEvent(event);
-  } catch {
-    return false;
-  }
+    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  } catch {}
+  if (readText(el) !== before2) return true;
+
+  // Step 3: Direct manipulation (last resort)
+  el.textContent = (el.textContent || "") + text;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  return true;
 }

@@ -8,6 +8,8 @@
  * 4. Content — IIFE content script (single file, dist/content.js)
  *
  * Then copies static assets (manifest.json, icons/, public/).
+ *
+ * Pass --watch to enable file watching for all builds.
  */
 
 import { build } from "vite";
@@ -21,15 +23,17 @@ const root = resolve(__dirname, "..");
 const dist = resolve(root, "dist");
 
 const alias = { "@": resolve(root, "src") };
+const watching = process.argv.includes("--watch");
 
 // Clean dist
 if (existsSync(dist)) rmSync(dist, { recursive: true });
 mkdirSync(dist, { recursive: true });
 
-// ─── 1. Popup (React HTML app) ──────────────────────────────────────────────
+const watchOpts = watching ? { watch: {} } : {};
 
-console.log("\n[build] Step 1/4 — Popup (React HTML app)");
-await build({
+// ─── Build configs ───────────────────────────────────────────────────────────
+
+const popupConfig = {
   root: resolve(root, "src/popup"),
   plugins: [react()],
   build: {
@@ -40,15 +44,13 @@ await build({
     },
     target: "esnext",
     minify: false,
+    ...watchOpts,
   },
   resolve: { alias },
-  logLevel: "warn",
-});
+  logLevel: watching ? "info" : "warn",
+};
 
-// ─── 2. Onboarding (React HTML app) ─────────────────────────────────────────
-
-console.log("[build] Step 2/4 — Onboarding (React HTML app)");
-await build({
+const onboardingConfig = {
   root: resolve(root, "src/onboarding"),
   plugins: [react()],
   build: {
@@ -59,15 +61,13 @@ await build({
     },
     target: "esnext",
     minify: false,
+    ...watchOpts,
   },
   resolve: { alias },
-  logLevel: "warn",
-});
+  logLevel: watching ? "info" : "warn",
+};
 
-// ─── 3. Background (ESM service worker) ─────────────────────────────────────
-
-console.log("[build] Step 3/4 — Background (ESM service worker)");
-await build({
+const backgroundConfig = {
   root,
   build: {
     outDir: dist,
@@ -82,15 +82,13 @@ await build({
     },
     target: "esnext",
     minify: false,
+    ...watchOpts,
   },
   resolve: { alias },
-  logLevel: "warn",
-});
+  logLevel: watching ? "info" : "warn",
+};
 
-// ─── 4. Content script (IIFE) ───────────────────────────────────────────────
-
-console.log("[build] Step 4/4 — Content script (IIFE)");
-await build({
+const contentConfig = {
   root,
   build: {
     outDir: dist,
@@ -106,26 +104,50 @@ await build({
     },
     target: "esnext",
     minify: false,
+    ...watchOpts,
   },
   resolve: { alias },
-  logLevel: "warn",
-});
+  logLevel: watching ? "info" : "warn",
+};
 
-// ─── 5. Copy static assets ──────────────────────────────────────────────────
+// ─── Copy static assets ─────────────────────────────────────────────────────
 
-console.log("[build] Copying static assets...");
-
-// manifest.json
-cpSync(resolve(root, "manifest.json"), resolve(dist, "manifest.json"));
-
-// icons/ (if exists)
-if (existsSync(resolve(root, "icons"))) {
-  cpSync(resolve(root, "icons"), resolve(dist, "icons"), { recursive: true });
+function copyStatic() {
+  console.log("[build] Copying static assets...");
+  cpSync(resolve(root, "manifest.json"), resolve(dist, "manifest.json"));
+  if (existsSync(resolve(root, "icons"))) {
+    cpSync(resolve(root, "icons"), resolve(dist, "icons"), { recursive: true });
+  }
+  if (existsSync(resolve(root, "public"))) {
+    cpSync(resolve(root, "public"), dist, { recursive: true });
+  }
 }
 
-// public/ contents (if exists) — privacy.html, etc.
-if (existsSync(resolve(root, "public"))) {
-  cpSync(resolve(root, "public"), dist, { recursive: true });
-}
+// ─── Execute ─────────────────────────────────────────────────────────────────
 
-console.log("[build] Done! Output in dist/\n");
+if (watching) {
+  console.log("\n[build] Starting watch mode...");
+  copyStatic();
+  await Promise.all([
+    build(popupConfig),
+    build(onboardingConfig),
+    build(backgroundConfig),
+    build(contentConfig),
+  ]);
+  console.log("[build] Watching for changes...\n");
+} else {
+  console.log("\n[build] Step 1/4 — Popup (React HTML app)");
+  await build(popupConfig);
+
+  console.log("[build] Step 2/4 — Onboarding (React HTML app)");
+  await build(onboardingConfig);
+
+  console.log("[build] Step 3/4 — Background (ESM service worker)");
+  await build(backgroundConfig);
+
+  console.log("[build] Step 4/4 — Content script (IIFE)");
+  await build(contentConfig);
+
+  copyStatic();
+  console.log("[build] Done! Output in dist/\n");
+}

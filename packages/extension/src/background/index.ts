@@ -41,7 +41,7 @@ function originPatternFromServerUrl(serverUrl: string): string {
   }
 
   // Permission match patterns ignore URL path and do not require a port.
-  return `${parsed.protocol}//${parsed.hostname}/*`;
+  return `${parsed.protocol}//${parsed.host}/*`;
 }
 
 function containsOriginPermission(origin: string): Promise<boolean> {

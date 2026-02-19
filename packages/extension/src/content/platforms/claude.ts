@@ -1,4 +1,4 @@
-import { syntheticPaste } from "./types";
+import { injectContentEditable } from "./types";
 import type { PlatformAdapter } from "./types";
 
 export const claudeAdapter: PlatformAdapter = {
@@ -20,26 +20,6 @@ export const claudeAdapter: PlatformAdapter = {
   injectText(text: string) {
     const input = this.getChatInput();
     if (!input) return false;
-
-    input.focus();
-
-    // Step 1: execCommand — works with ProseMirror
-    if (document.execCommand("insertText", false, text)) {
-      return true;
-    }
-
-    // Step 2: Synthetic paste event — works with paste-aware editors
-    if (syntheticPaste(input, text)) {
-      return true;
-    }
-
-    // Step 3: Direct textContent set + input event — last resort
-    input.textContent = (input.textContent || "") + text;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    return true;
-  },
-
-  getSelectedText() {
-    return window.getSelection()?.toString() || "";
+    return injectContentEditable(input, text);
   },
 };

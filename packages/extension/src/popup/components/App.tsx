@@ -17,6 +17,10 @@ export function App() {
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: "get_settings" }, (response: MessageType) => {
+      if (chrome.runtime.lastError) {
+        console.warn("[context-vault]", chrome.runtime.lastError.message);
+        return;
+      }
       if (response?.type === "settings") {
         setConnected(response.connected);
         if (!response.apiKey) setView("settings");
@@ -25,7 +29,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    chrome.storage.local.get(["rateLimitRemaining"], (stored) => {
+    chrome.storage.local.get(["rateLimitRemaining", "rateLimitReset"], (stored) => {
+      const reset = Number(stored.rateLimitReset);
+      if (Number.isFinite(reset) && Date.now() > reset * 1000) {
+        chrome.storage.local.remove(["rateLimitRemaining", "rateLimitReset"]);
+        return;
+      }
       const raw = stored.rateLimitRemaining;
       const parsed = raw !== undefined ? Number(raw) : Number.NaN;
       if (Number.isFinite(parsed)) {
@@ -55,6 +64,12 @@ export function App() {
     setError(null);
 
     chrome.runtime.sendMessage({ type: "search", query: q, limit: 10 }, (response: MessageType) => {
+      if (chrome.runtime.lastError) {
+        console.warn("[context-vault]", chrome.runtime.lastError.message);
+        setLoading(false);
+        setError("Could not reach background service. Try reopening the popup.");
+        return;
+      }
       setLoading(false);
       if (response?.type === "search_result") {
         setResults(response.results);
@@ -66,6 +81,10 @@ export function App() {
 
   function handleInject(text: string) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (chrome.runtime.lastError) {
+        console.warn("[context-vault]", chrome.runtime.lastError.message);
+        return;
+      }
       if (tabs[0]?.id) {
         chrome.tabs.sendMessage(tabs[0].id, { type: "inject_text", text });
         window.close();

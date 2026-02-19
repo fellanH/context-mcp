@@ -15,12 +15,24 @@ export function Onboarding() {
     setTesting(true);
     setTestResult(null);
     chrome.runtime.sendMessage({ type: "save_settings", serverUrl, apiKey }, (saveResponse: MessageType) => {
+      if (chrome.runtime.lastError) {
+        console.warn("[context-vault]", chrome.runtime.lastError.message);
+        setTesting(false);
+        setTestResult({ success: false, error: "Could not reach background service." });
+        return;
+      }
       if (saveResponse?.type === "error") {
         setTesting(false);
         setTestResult({ success: false, error: saveResponse.message });
         return;
       }
       chrome.runtime.sendMessage({ type: "test_connection" }, (response: MessageType) => {
+        if (chrome.runtime.lastError) {
+          console.warn("[context-vault]", chrome.runtime.lastError.message);
+          setTesting(false);
+          setTestResult({ success: false, error: "Could not reach background service." });
+          return;
+        }
         setTesting(false);
         if (response?.type === "connection_result") {
           setTestResult(response);
@@ -177,7 +189,7 @@ export function Onboarding() {
         <div style={{ fontWeight: 600, marginBottom: "12px" }}>Quick tips</div>
         <ul style={{ listStyle: "none", fontSize: "13px", color: "#94a3b8" }}>
           <li style={{ marginBottom: "8px" }}>
-            Press <kbd style={{ backgroundColor: "#334155", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", color: "#e2e8f0" }}>Ctrl+Shift+V</kbd> (or <kbd style={{ backgroundColor: "#334155", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", color: "#e2e8f0" }}>⌘+Shift+V</kbd>) to open the popup
+            Press <kbd style={{ backgroundColor: "#334155", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", color: "#e2e8f0" }}>Ctrl+Shift+Space</kbd> (or <kbd style={{ backgroundColor: "#334155", padding: "2px 6px", borderRadius: "4px", fontSize: "12px", color: "#e2e8f0" }}>⌘+Shift+Space</kbd>) to open the popup
           </li>
           <li style={{ marginBottom: "8px" }}>
             Right-click selected text to save it to your vault
