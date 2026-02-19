@@ -7,7 +7,6 @@ import { detectPlatform } from "./platforms/registry";
 import type { MessageType } from "@/shared/types";
 
 const platform = detectPlatform();
-console.log(`[context-vault] Content script loaded on ${platform.name}`);
 
 // ─── Message Handler ────────────────────────────────────────────────────────
 

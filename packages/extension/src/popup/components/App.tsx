@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { SearchBar } from "./SearchBar";
 import { ResultList } from "./ResultList";
 import { Settings } from "./Settings";
-import type { SearchResult, MessageType } from "@/shared/types";
+import type { SearchResult, MessageType, VaultMode } from "@/shared/types";
 
 type View = "search" | "settings";
 
@@ -13,6 +13,8 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [serverOffline, setServerOffline] = useState(false);
+  const [mode, setMode] = useState<VaultMode>("hosted");
   const [rateLimitRemaining, setRateLimitRemaining] = useState<number | null>(null);
 
   useEffect(() => {
@@ -22,8 +24,21 @@ export function App() {
         return;
       }
       if (response?.type === "settings") {
-        setConnected(response.connected);
-        if (!response.connected) setView("settings");
+        setMode(response.mode);
+        if (!response.connected) {
+          setConnected(false);
+          setView("settings");
+          return;
+        }
+        // Settings say "connected" — but verify the server is actually reachable
+        chrome.runtime.sendMessage({ type: "check_health" }, (health: MessageType) => {
+          if (chrome.runtime.lastError) return;
+          if (health?.type === "health_result") {
+            setConnected(health.reachable);
+            setServerOffline(!health.reachable);
+            setMode(health.mode);
+          }
+        });
       }
     });
   }, []);
@@ -73,8 +88,15 @@ export function App() {
       setLoading(false);
       if (response?.type === "search_result") {
         setResults(response.results);
+        setServerOffline(false);
       } else if (response?.type === "error") {
-        setError(response.message);
+        // Detect server-offline errors and show the banner instead of inline error
+        if (response.message.includes("Local server is not running")) {
+          setServerOffline(true);
+          setConnected(false);
+        } else {
+          setError(response.message);
+        }
       }
     });
   }
@@ -127,8 +149,52 @@ export function App() {
             onSaved={(nextConnected) => {
               setView("search");
               setConnected(nextConnected);
+              setServerOffline(!nextConnected);
             }}
           />
+        ) : serverOffline ? (
+          <div className="p-4">
+            <div className="border border-border rounded-xl p-4 bg-card">
+              <div className="text-sm font-semibold mb-2">
+                {mode === "local" ? "Local Server Not Running" : "Server Unreachable"}
+              </div>
+              <div className="text-sm text-muted-foreground mb-3 leading-snug">
+                {mode === "local" ? (
+                  <>
+                    The extension needs the local server to search your vault. Start it by running:
+                    <code className="block mt-2 mb-2 px-3 py-2 bg-secondary rounded-lg text-xs text-foreground font-mono">
+                      context-vault ui
+                    </code>
+                    This starts the server at <span className="text-foreground">localhost:3141</span> and opens the dashboard.
+                  </>
+                ) : (
+                  "Could not reach the vault server. Check your connection and server URL in Settings."
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    chrome.runtime.sendMessage({ type: "check_health" }, (health: MessageType) => {
+                      if (chrome.runtime.lastError) return;
+                      if (health?.type === "health_result" && health.reachable) {
+                        setConnected(true);
+                        setServerOffline(false);
+                      }
+                    });
+                  }}
+                  className="flex-1 py-2 px-3 rounded-lg text-sm font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer"
+                >
+                  Retry Connection
+                </button>
+                <button
+                  onClick={() => setView("settings")}
+                  className="py-2 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground bg-secondary hover:bg-secondary/80 transition-colors cursor-pointer"
+                >
+                  Settings
+                </button>
+              </div>
+            </div>
+          </div>
         ) : !connected ? (
           <div className="p-4">
             <div className="border border-border rounded-xl p-4 bg-card">

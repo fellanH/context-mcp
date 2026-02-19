@@ -155,9 +155,12 @@ export function Settings({ onSaved }: Props) {
               <FolderOpen className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-xs text-muted-foreground mb-4">
+          <p className="text-xs text-muted-foreground mb-2">
             Folder containing your vault markdown files
           </p>
+          <div className="text-xs text-muted-foreground/70 mb-4 leading-relaxed">
+            Requires <code className="bg-secondary px-1 py-0.5 rounded font-mono text-[11px]">context-vault ui</code> running in your terminal.
+          </div>
         </>
       )}
 
@@ -192,7 +195,18 @@ export function Settings({ onSaved }: Props) {
               : "bg-destructive/10 text-destructive"
           }`}
         >
-          {testResult.success ? "Connected successfully" : `Connection failed: ${testResult.error}`}
+          {testResult.success ? (
+            "Connected successfully"
+          ) : testResult.error?.includes("Local server is not running") ? (
+            <div>
+              <div className="font-medium mb-1">Local server not running</div>
+              <div className="text-xs opacity-80">
+                Run <code className="bg-secondary px-1 py-0.5 rounded font-mono">context-vault ui</code> in your terminal to start the server.
+              </div>
+            </div>
+          ) : (
+            `Connection failed: ${testResult.error}`
+          )}
         </div>
       )}
 

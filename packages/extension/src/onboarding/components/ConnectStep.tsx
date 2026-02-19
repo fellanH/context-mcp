@@ -84,7 +84,7 @@ export function ConnectStep({
       {isLocal && (
         <>
           <div className="bg-card border border-border rounded-xl p-4 mb-6 text-sm text-muted-foreground space-y-2">
-            <p className="font-medium text-foreground">First time?</p>
+            <p className="font-medium text-foreground">Setup steps</p>
             <ol className="list-decimal list-inside space-y-1">
               <li>
                 Install: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">npm i -g context-vault</code>
@@ -92,9 +92,13 @@ export function ConnectStep({
               <li>
                 Setup: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">context-vault setup</code>
               </li>
+              <li>
+                Start server: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">context-vault ui</code>
+              </li>
             </ol>
             <p className="text-xs text-muted-foreground/70 pt-1">
-              This creates a vault at <code className="bg-secondary px-1 py-0.5 rounded text-[11px]">~/vault</code>
+              The extension connects to the local server at <code className="bg-secondary px-1 py-0.5 rounded text-[11px]">localhost:3141</code>.
+              Keep it running while using the extension.
             </p>
           </div>
 
@@ -161,7 +165,18 @@ export function ConnectStep({
               : "bg-destructive/10 text-destructive"
           }`}
         >
-          {testResult.success ? "Connected successfully!" : `Connection failed: ${testResult.error}`}
+          {testResult.success ? (
+            "Connected successfully!"
+          ) : testResult.error?.includes("Local server is not running") ? (
+            <div>
+              <div className="font-medium mb-1">Local server not running</div>
+              <div className="text-xs opacity-80">
+                Open a terminal and run <code className="bg-secondary px-1 py-0.5 rounded font-mono">context-vault ui</code> first, then try again.
+              </div>
+            </div>
+          ) : (
+            `Connection failed: ${testResult.error}`
+          )}
         </div>
       )}
 

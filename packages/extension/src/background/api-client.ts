@@ -31,6 +31,48 @@ const RETRY_BACKOFF_MS = [1000, 3000];
 const FETCH_TIMEOUT_MS = 15_000;
 const NO_RETRY_STATUSES = new Set([401, 429]);
 
+/** Detect network-level connection failures and rewrite to actionable messages */
+function friendlyError(err: unknown, mode: string): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+
+  // Browser fetch throws TypeError on network-level failures (refused, DNS, etc.)
+  const isNetworkError =
+    (err instanceof TypeError && /fetch|network/i.test(msg)) ||
+    msg === "Failed to fetch" ||
+    /ECONNREFUSED|ECONNRESET|ENOTFOUND/i.test(msg);
+
+  if (isNetworkError && mode === "local") {
+    const friendly = new Error(
+      "Local server is not running. Start it with: context-vault ui"
+    );
+    (friendly as any).code = "SERVER_NOT_RUNNING";
+    return friendly;
+  }
+
+  if (isNetworkError) {
+    return new Error("Could not reach the server. Check your connection and server URL.");
+  }
+
+  return err instanceof Error ? err : new Error(msg);
+}
+
+/** Quick connectivity probe — resolves true if the server responds within timeout */
+export async function probeServer(timeoutMs = 3000): Promise<boolean> {
+  const { serverUrl } = await getSettings();
+  if (!serverUrl) return false;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${serverUrl.replace(/\/$/, "")}/api/vault/status`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const { serverUrl, apiKey, mode } = await getSettings();
 
@@ -98,6 +140,12 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
       // Non-retryable errors (including 401/429 rethrown above)
       if ((err as any).status && NO_RETRY_STATUSES.has((err as any).status)) throw err;
 
+      // Don't retry connection-refused in local mode — server clearly isn't running
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (mode === "local" && (err instanceof TypeError || errMsg === "Failed to fetch")) {
+        throw friendlyError(err, mode);
+      }
+
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < RETRY_BACKOFF_MS.length) {
         await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS[attempt]));
@@ -106,7 +154,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     }
   }
 
-  throw lastError || new Error("apiFetch failed after retries");
+  throw friendlyError(lastError, mode) || new Error("apiFetch failed after retries");
 }
 
 /** Search the vault with hybrid semantic + full-text search */

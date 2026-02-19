@@ -3,7 +3,7 @@
  * context menus, and message routing between popup and content scripts.
  */
 
-import { searchVault, createEntry, getVaultStatus, clearSettingsCache } from "./api-client";
+import { searchVault, createEntry, getVaultStatus, clearSettingsCache, probeServer } from "./api-client";
 import type { MessageType, VaultMode } from "@/shared/types";
 import { DEFAULT_SETTINGS } from "@/shared/types";
 
@@ -231,8 +231,22 @@ async function handleMessage(message: MessageType): Promise<MessageType> {
         return { type: "connection_result", success: connected };
       } catch (err) {
         updateBadge(false);
-        return { type: "connection_result", success: false, error: err instanceof Error ? err.message : "Connection failed" };
+        const code = (err as any)?.code || undefined;
+        return {
+          type: "connection_result",
+          success: false,
+          error: err instanceof Error ? err.message : "Connection failed",
+          code,
+        };
       }
+    }
+
+    case "check_health": {
+      const stored = await chrome.storage.local.get(["mode", "serverUrl", "apiKey", "vaultPath"]);
+      const mode: VaultMode = stored.mode || DEFAULT_SETTINGS.mode;
+      const reachable = await probeServer(3000);
+      updateBadge(reachable);
+      return { type: "health_result", reachable, mode };
     }
 
     default:

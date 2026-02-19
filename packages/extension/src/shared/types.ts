@@ -32,7 +32,9 @@ export type MessageType =
   | { type: "settings"; serverUrl: string; apiKey: string; connected: boolean; mode: VaultMode; vaultPath: string }
   | { type: "save_settings"; serverUrl: string; apiKey: string; mode: VaultMode; vaultPath: string }
   | { type: "test_connection" }
-  | { type: "connection_result"; success: boolean; error?: string }
+  | { type: "connection_result"; success: boolean; error?: string; code?: string }
+  | { type: "check_health" }
+  | { type: "health_result"; reachable: boolean; mode: VaultMode }
   | { type: "error"; message: string };
 
 /** Extension storage shape */
