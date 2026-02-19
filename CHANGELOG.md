@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.4.2] — 2026-02-19
+
+### Added
+- Automated npm publishing via GitHub Actions (tag push triggers publish with provenance)
+- Version bump script (`npm run bump`) updates all package.json files in one command
+
 ## [2.4.1] — 2026-02-19
 
 ### Changed
