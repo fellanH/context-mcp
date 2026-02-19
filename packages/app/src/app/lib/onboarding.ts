@@ -42,6 +42,14 @@ export function getOnboardingSteps({
         actionLabel: "Add entry",
       },
       {
+        id: "install-extension",
+        label: "Install Chrome extension",
+        completed: false,
+        description: "Search your vault from ChatGPT, Claude, and Gemini",
+        action: "chrome-web-store-link",
+        actionLabel: "Install",
+      },
+      {
         id: "go-hosted",
         label: "Create a cloud account",
         completed: false,
