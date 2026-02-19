@@ -17,6 +17,9 @@ export interface SearchResult extends Entry {
   score: number;
 }
 
+/** Vault connection mode */
+export type VaultMode = "local" | "hosted";
+
 /** Messages between popup/content scripts and background service worker */
 export type MessageType =
   | { type: "search"; query: string; limit?: number }
@@ -26,8 +29,8 @@ export type MessageType =
   | { type: "capture"; kind: string; body: string; title?: string; tags?: string[] }
   | { type: "capture_result"; id: string }
   | { type: "get_settings" }
-  | { type: "settings"; serverUrl: string; apiKey: string; connected: boolean }
-  | { type: "save_settings"; serverUrl: string; apiKey: string }
+  | { type: "settings"; serverUrl: string; apiKey: string; connected: boolean; mode: VaultMode; vaultPath: string }
+  | { type: "save_settings"; serverUrl: string; apiKey: string; mode: VaultMode; vaultPath: string }
   | { type: "test_connection" }
   | { type: "connection_result"; success: boolean; error?: string }
   | { type: "error"; message: string };
@@ -36,10 +39,21 @@ export type MessageType =
 export interface ExtensionSettings {
   serverUrl: string;
   apiKey: string;
+  mode: VaultMode;
+  vaultPath: string;
 }
 
 /** Default settings */
 export const DEFAULT_SETTINGS: ExtensionSettings = {
-  serverUrl: "https://www.context-vault.com",
+  serverUrl: "https://app.context-vault.com",
   apiKey: "",
+  mode: "hosted",
+  vaultPath: "",
 };
+
+/** Defaults when switching to local mode */
+export const LOCAL_DEFAULTS = {
+  serverUrl: "http://localhost:3141",
+  apiKey: "",
+  vaultPath: "~/.context-vault/entries",
+} as const;

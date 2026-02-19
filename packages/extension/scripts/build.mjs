@@ -14,6 +14,7 @@
 
 import { build } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
@@ -36,7 +37,7 @@ const watchOpts = watching ? { watch: {} } : {};
 const popupConfig = {
   root: resolve(root, "src/popup"),
   base: "./",
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   build: {
     outDir: resolve(dist, "popup"),
     emptyOutDir: true,
@@ -54,7 +55,7 @@ const popupConfig = {
 const onboardingConfig = {
   root: resolve(root, "src/onboarding"),
   base: "./",
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   build: {
     outDir: resolve(dist, "onboarding"),
     emptyOutDir: false,

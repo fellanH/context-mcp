@@ -23,7 +23,7 @@ export function App() {
       }
       if (response?.type === "settings") {
         setConnected(response.connected);
-        if (!response.apiKey) setView("settings");
+        if (!response.connected) setView("settings");
       }
     });
   }, []);
@@ -96,44 +96,32 @@ export function App() {
     connected && rateLimitRemaining !== null && Number.isFinite(rateLimitRemaining) && rateLimitRemaining < 10;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "12px 16px", borderBottom: "1px solid #1e293b",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "16px", fontWeight: 600 }}>Context Vault</span>
-          <span style={{
-            width: "8px", height: "8px", borderRadius: "50%",
-            backgroundColor: connected ? "#22c55e" : "#ef4444",
-          }} />
+    <div className="flex flex-col w-[400px] min-h-[500px]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <span className="text-base font-semibold">Context Vault</span>
+          <span
+            className={`w-2 h-2 rounded-full ${connected ? "bg-success" : "bg-destructive"}`}
+          />
         </div>
         <button
           onClick={() => setView(view === "settings" ? "search" : "settings")}
-          style={{
-            background: "none", border: "none", color: "#94a3b8",
-            cursor: "pointer", fontSize: "14px", padding: "4px 8px",
-          }}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 cursor-pointer"
         >
           {view === "settings" ? "Back" : "Settings"}
         </button>
       </div>
 
+      {/* Rate limit warning */}
       {showRateLimitWarning && (
-        <div
-          style={{
-            backgroundColor: "#451a03",
-            color: "#fcd34d",
-            fontSize: "12px",
-            padding: "8px 12px",
-            borderBottom: "1px solid #78350f",
-          }}
-        >
+        <div className="bg-warning/10 text-warning text-xs px-3 py-2 border-b border-warning/20">
           Rate limit almost reached ({rateLimitRemaining} requests left today).
         </div>
       )}
 
-      <div style={{ flex: 1, overflow: "auto" }}>
+      {/* Content */}
+      <div className="flex-1 overflow-auto">
         {view === "settings" ? (
           <Settings
             onSaved={(nextConnected) => {
@@ -142,33 +130,15 @@ export function App() {
             }}
           />
         ) : !connected ? (
-          <div style={{ padding: "16px" }}>
-            <div
-              style={{
-                border: "1px solid #334155",
-                borderRadius: "8px",
-                padding: "16px",
-                backgroundColor: "#0f172a",
-              }}
-            >
-              <div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px" }}>
-                Connect Your Vault
-              </div>
-              <div style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "12px", lineHeight: "1.4" }}>
-                Add your server URL and API key in Settings before searching or injecting context.
+          <div className="p-4">
+            <div className="border border-border rounded-xl p-4 bg-card">
+              <div className="text-sm font-semibold mb-2">Connect Your Vault</div>
+              <div className="text-sm text-muted-foreground mb-3 leading-snug">
+                Configure your vault connection in Settings to start searching and injecting context.
               </div>
               <button
                 onClick={() => setView("settings")}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  border: "none",
-                  backgroundColor: "#3b82f6",
-                  color: "#fff",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                }}
+                className="w-full py-2 px-3 rounded-lg text-sm font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer"
               >
                 Open Settings
               </button>
@@ -178,7 +148,7 @@ export function App() {
           <>
             <SearchBar onSearch={handleSearch} loading={loading} />
             {error && (
-              <div style={{ padding: "12px 16px", color: "#ef4444", fontSize: "13px" }}>{error}</div>
+              <div className="px-4 py-3 text-sm text-destructive">{error}</div>
             )}
             <ResultList results={results} query={query} onInject={handleInject} />
           </>

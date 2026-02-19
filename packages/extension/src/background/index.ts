@@ -4,7 +4,7 @@
  */
 
 import { searchVault, createEntry, getVaultStatus, clearSettingsCache } from "./api-client";
-import type { MessageType } from "@/shared/types";
+import type { MessageType, VaultMode } from "@/shared/types";
 import { DEFAULT_SETTINGS } from "@/shared/types";
 
 const CONTEXT_MENU_PARENT_ID = "save-to-vault";
@@ -22,7 +22,7 @@ function updateBadge(connected: boolean): void {
     chrome.action.setBadgeText({ text: "" });
   } else {
     chrome.action.setBadgeText({ text: "!" });
-    chrome.action.setBadgeBackgroundColor({ color: "#ef4444" });
+    chrome.action.setBadgeBackgroundColor({ color: "#dc2626" });
   }
 }
 
@@ -33,7 +33,7 @@ function originPatternFromServerUrl(serverUrl: string): string {
   try {
     parsed = new URL(serverUrl.trim());
   } catch {
-    throw new Error("Invalid server URL. Use a full URL like https://www.context-vault.com");
+    throw new Error("Invalid server URL. Use a full URL like https://app.context-vault.com");
   }
 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
@@ -69,6 +69,13 @@ async function ensureServerPermission(serverUrl: string): Promise<string> {
   return origin;
 }
 
+// ─── Connection Logic ────────────────────────────────────────────────────────
+
+function isConnected(mode: VaultMode, serverUrl: string, apiKey: string, vaultPath?: string): boolean {
+  if (mode === "local") return Boolean(vaultPath);
+  return Boolean(serverUrl && apiKey);
+}
+
 // ─── Context Menu ───────────────────────────────────────────────────────────
 
 function setupContextMenus(): void {
@@ -93,8 +100,9 @@ function setupContextMenus(): void {
 chrome.runtime.onInstalled.addListener((details) => {
   setupContextMenus();
 
-  chrome.storage.local.get(["apiKey"], (stored) => {
-    updateBadge(Boolean(stored.apiKey));
+  chrome.storage.local.get(["apiKey", "mode", "serverUrl", "vaultPath"], (stored) => {
+    const mode: VaultMode = stored.mode || DEFAULT_SETTINGS.mode;
+    updateBadge(isConnected(mode, stored.serverUrl || "", stored.apiKey || "", stored.vaultPath || ""));
   });
 
   if (details.reason === "install") {
@@ -174,36 +182,45 @@ async function handleMessage(message: MessageType): Promise<MessageType> {
     }
 
     case "get_settings": {
-      const stored = await chrome.storage.local.get(["serverUrl", "apiKey"]);
+      const stored = await chrome.storage.local.get(["serverUrl", "apiKey", "mode", "vaultPath"]);
+      const mode: VaultMode = stored.mode || DEFAULT_SETTINGS.mode;
       const serverUrl = stored.serverUrl || DEFAULT_SETTINGS.serverUrl;
       const apiKey = stored.apiKey || "";
+      const vaultPath = stored.vaultPath || "";
       return {
         type: "settings",
         serverUrl,
         apiKey,
-        connected: Boolean(serverUrl && apiKey),
+        mode,
+        vaultPath,
+        connected: isConnected(mode, serverUrl, apiKey, vaultPath),
       };
     }
 
     case "save_settings": {
       const serverUrl = message.serverUrl.trim().replace(/\/$/, "");
       const apiKey = message.apiKey.trim();
+      const mode: VaultMode = message.mode;
+      const vaultPath = message.vaultPath?.trim() || "";
 
-      if (!serverUrl) {
-        return { type: "error", message: "Server URL is required" };
+      if (mode === "hosted") {
+        if (!serverUrl) {
+          return { type: "error", message: "Server URL is required" };
+        }
+        try {
+          await ensureServerPermission(serverUrl);
+        } catch (err) {
+          return { type: "error", message: err instanceof Error ? err.message : "Permission request failed" };
+        }
       }
 
-      try {
-        await ensureServerPermission(serverUrl);
-      } catch (err) {
-        return { type: "error", message: err instanceof Error ? err.message : "Permission request failed" };
-      }
-
-      await chrome.storage.local.set({ serverUrl, apiKey });
+      await chrome.storage.local.set({ serverUrl, apiKey, mode, vaultPath });
       clearSettingsCache();
-      updateBadge(Boolean(apiKey));
 
-      return { type: "settings", serverUrl, apiKey, connected: Boolean(serverUrl && apiKey) };
+      const connected = isConnected(mode, serverUrl, apiKey, vaultPath);
+      updateBadge(connected);
+
+      return { type: "settings", serverUrl, apiKey, mode, vaultPath, connected };
     }
 
     case "test_connection": {

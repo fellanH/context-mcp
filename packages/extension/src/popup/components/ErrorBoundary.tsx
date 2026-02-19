@@ -12,15 +12,12 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: "24px", textAlign: "center" }}>
-          <div style={{ fontSize: "24px", marginBottom: "12px" }}>Something went wrong</div>
-          <div style={{ fontSize: "13px", color: "#94a3b8", marginBottom: "16px" }}>{this.state.error}</div>
+        <div className="p-6 text-center">
+          <div className="text-2xl mb-3">Something went wrong</div>
+          <div className="text-sm text-muted-foreground mb-4">{this.state.error}</div>
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
-            style={{
-              padding: "8px 16px", fontSize: "14px", backgroundColor: "#3b82f6",
-              color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer",
-            }}
+            className="px-4 py-2 text-sm font-medium bg-foreground text-background rounded-lg hover:bg-foreground/90 transition-colors cursor-pointer"
           >
             Try again
           </button>

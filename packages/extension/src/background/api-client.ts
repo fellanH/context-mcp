@@ -13,10 +13,11 @@ let cachedSettings: ExtensionSettings | null = null;
 
 async function getSettings(): Promise<ExtensionSettings> {
   if (cachedSettings) return cachedSettings;
-  const result = await chrome.storage.local.get(["serverUrl", "apiKey"]);
+  const result = await chrome.storage.local.get(["serverUrl", "apiKey", "mode"]);
   cachedSettings = {
     serverUrl: result.serverUrl || "",
     apiKey: result.apiKey || "",
+    mode: result.mode || "hosted",
   };
   return cachedSettings;
 }
@@ -31,15 +32,21 @@ const FETCH_TIMEOUT_MS = 15_000;
 const NO_RETRY_STATUSES = new Set([401, 429]);
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const { serverUrl, apiKey } = await getSettings();
-  if (!serverUrl || !apiKey) throw new Error("Not configured — set server URL and API key in extension settings");
+  const { serverUrl, apiKey, mode } = await getSettings();
+
+  if (!serverUrl) throw new Error("Not configured — set server URL in extension settings");
+  if (mode === "hosted" && !apiKey) throw new Error("Not configured — set API key in extension settings");
 
   const url = `${serverUrl.replace(/\/$/, "")}${path}`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${apiKey}`,
     ...((options.headers as Record<string, string>) || {}),
   };
+
+  // Only include auth header when apiKey is set
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
 
   let lastError: Error | undefined;
 

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Search } from "lucide-react";
 
 interface Props {
   onSearch: (query: string) => void;
@@ -19,29 +20,23 @@ export function SearchBar({ onSearch, loading }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ padding: "12px 16px" }}>
-      <div style={{ display: "flex", gap: "8px" }}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Search your vault..."
-          style={{
-            flex: 1, padding: "8px 12px", fontSize: "14px",
-            backgroundColor: "#1e293b", border: "1px solid #334155",
-            borderRadius: "6px", color: "#e2e8f0", outline: "none",
-          }}
-        />
+    <form onSubmit={handleSubmit} className="px-4 py-3">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Search your vault..."
+            className="w-full pl-9 pr-3 py-2 text-sm bg-input-background border border-input rounded-lg text-foreground outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+          />
+        </div>
         <button
           type="submit"
           disabled={loading || !value.trim()}
-          style={{
-            padding: "8px 16px", fontSize: "14px", fontWeight: 500,
-            backgroundColor: loading ? "#334155" : "#3b82f6",
-            color: "#fff", border: "none", borderRadius: "6px",
-            cursor: loading ? "wait" : "pointer",
-          }}
+          className="px-4 py-2 text-sm font-medium bg-foreground text-background rounded-lg hover:bg-foreground/90 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? "..." : "Search"}
         </button>

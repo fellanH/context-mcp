@@ -57,11 +57,11 @@ function showNotification(text: string, type: "success" | "error") {
   style.textContent = `
     .toast {
       padding: 12px 20px;
-      border-radius: 8px;
+      border-radius: 6px;
       font-size: 14px;
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
       color: #fff;
-      background-color: ${type === "success" ? "#22c55e" : "#ef4444"};
+      background-color: ${type === "success" ? "#22c55e" : "#dc2626"};
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
       transition: opacity 0.3s ease;
       opacity: 1;
