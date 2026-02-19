@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { getOnboardingSteps } from "../../packages/app/src/app/lib/onboarding.ts";
 
 describe("getOnboardingSteps (hosted mode)", () => {
-  it("marks only account creation when authenticated but no key/activity", () => {
+  it("marks only sign-in when authenticated but no activity", () => {
     const steps = getOnboardingSteps({
       isAuthenticated: true,
       isLocalMode: false,
@@ -12,14 +12,13 @@ describe("getOnboardingSteps (hosted mode)", () => {
     });
 
     expect(steps.map((step) => [step.id, step.completed])).toEqual([
-      ["create-account", true],
-      ["copy-api-key", false],
-      ["connect-claude", false],
+      ["sign-in", true],
+      ["connect-tools", false],
       ["first-entry", false],
     ]);
   });
 
-  it("marks key + activity + first entry when present", () => {
+  it("marks all steps complete when present", () => {
     const steps = getOnboardingSteps({
       isAuthenticated: true,
       isLocalMode: false,
@@ -42,9 +41,11 @@ describe("getOnboardingSteps (local mode)", () => {
       hasMcpActivity: false,
     });
 
-    expect(steps.map((step) => step.id)).toEqual(["connect-local", "first-entry"]);
+    expect(steps.map((step) => step.id)).toEqual(["connect-folder", "connect-tools", "first-entry", "go-hosted"]);
     expect(steps[0].completed).toBe(true);
     expect(steps[1].completed).toBe(false);
+    expect(steps[2].completed).toBe(false);
+    expect(steps[3].completed).toBe(false);
   });
 
   it("marks first-entry complete when entries exist", () => {
@@ -56,6 +57,6 @@ describe("getOnboardingSteps (local mode)", () => {
       hasMcpActivity: false,
     });
 
-    expect(steps[1].completed).toBe(true);
+    expect(steps[2].completed).toBe(true);
   });
 });
