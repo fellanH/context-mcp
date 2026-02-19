@@ -27,7 +27,7 @@ Each demo has a script file in `docs/gtm/demos/`. Scripts cover setup, key momen
 | # | Demo | Status | Target | Script Location | Duration |
 |---|------|--------|--------|-----------------|----------|
 | 1 | CLI local setup | done | W4 | `docs/gtm/demos/cli-local.md` | 2-3 min |
-| 2 | Hosted MCP endpoint | not-started | W5 | `docs/gtm/demos/hosted-mcp.md` | 2-3 min |
+| 2 | Hosted MCP endpoint | done | W5 | `docs/gtm/demos/hosted-mcp.md` | 2-3 min |
 | 3 | Browser extension inject | not-started | W6 | `docs/gtm/demos/extension-inject.md` | 2-3 min |
 
 ---
@@ -40,9 +40,9 @@ Target: developers already using MCP-compatible tools who want persistent contex
 
 | Asset | Status | Notes |
 |-------|--------|-------|
-| X thread (5 tweets) | not-started | Hook: "Your AI forgets everything. Here's how to fix it in 5 min." |
-| Reddit post (r/ClaudeAI, r/cursor) | not-started | Integration guide format |
-| HN Show post | not-started | Technical angle: local-first + hybrid search |
+| X thread (5 tweets) | done | `docs/gtm/assets/campaign-a-x-thread.md` |
+| Reddit post (r/ClaudeAI, r/cursor) | done | `docs/gtm/assets/campaign-a-reddit.md` |
+| HN Show post | done | `docs/gtm/assets/campaign-a-hn.md` |
 | Landing page variant | not-started | UTM-tagged `/` with campaign messaging |
 
 ### Campaign B: "Local to hosted without lock-in" (W7)

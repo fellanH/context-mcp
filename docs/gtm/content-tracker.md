@@ -6,10 +6,10 @@ All content pieces for the 90-day GTM plan (Weeks 4-11). Updated daily as status
 
 | Type | Target | Done | Remaining |
 |------|--------|------|-----------|
-| Blog posts | 16 | 2 | 14 |
+| Blog posts | 16 | 4 | 12 |
 | Demo videos | 8 | 0 | 8 |
 | Build-in-public | 8 | 0 | 8 |
-| **Total** | **32** | **2** | **30** |
+| **Total** | **32** | **4** | **28** |
 
 Status values: `idea` → `draft` → `review` → `done` (or `skip`)
 
@@ -28,13 +28,13 @@ Status values: `idea` → `draft` → `review` → `done` (or `skip`)
 
 | # | Title | Status | Published | Channels | Notes |
 |---|-------|--------|-----------|----------|-------|
-| 1 | CLI local setup walkthrough | idea | — | YouTube, X | |
+| 1 | CLI local setup walkthrough | draft | — | YouTube, X | Script done, video not recorded |
 
 ### Build-in-Public
 
 | # | Title | Status | Published | Channels | Notes |
 |---|-------|--------|-----------|----------|-------|
-| 1 | First metrics after launch week | idea | — | X, Reddit | |
+| 1 | First metrics after launch week | draft | — | X, Reddit | Template created, fill at publish |
 
 ---
 
@@ -44,8 +44,8 @@ Status values: `idea` → `draft` → `review` → `done` (or `skip`)
 
 | # | Title | Pillar | Status | Published | Channels | Notes |
 |---|-------|--------|--------|-----------|----------|-------|
-| 6 | Using MCP memory with GPT Actions | Integration | idea | — | Blog, X, Reddit | |
-| 7 | How solo founders prevent context loss across sessions | Playbook | idea | — | Blog, X, HN | |
+| 6 | Using MCP memory with GPT Actions | Integration | done | 2026-02-20 | Blog, X, Reddit | |
+| 7 | How solo founders prevent context loss across sessions | Playbook | done | 2026-02-21 | Blog, X, HN | |
 
 ### Demo Video
 

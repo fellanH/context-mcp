@@ -17,6 +17,96 @@ export type BlogPost = {
 
 export const posts: BlogPost[] = [
   {
+    slug: "solo-founders-prevent-context-loss-across-sessions",
+    title: "How Solo Founders Prevent Context Loss Across Sessions",
+    description:
+      "Practical strategies for solo founders to eliminate the context tax that kills productivity when working with AI tools across sessions.",
+    category: "Playbook",
+    publishedAt: "2026-02-21",
+    readTimeMinutes: 7,
+    ctaLabel: "Start free",
+    ctaHref: "/register",
+    sections: [
+      {
+        heading: "The solo founder context tax",
+        paragraphs: [
+          "Every time you open a new AI session, the clock resets. The architectural decisions you made yesterday, the debugging insight from this morning, the API quirk you discovered last week — all gone. You spend 15-30 minutes re-explaining before any real work happens.",
+          "For solo founders, this context tax is uniquely painful. There is no teammate who remembers the conversation. No shared Slack thread to reference. You are the single point of failure for all project knowledge, and your AI assistant starts fresh every time.",
+          "Across three or four sessions per day, context rebuilding consumes an hour or more of your most productive time. That is time not spent shipping features, talking to customers, or making decisions that move the business forward.",
+        ],
+      },
+      {
+        heading: "Capture decisions at the moment of clarity",
+        paragraphs: [
+          "The best time to save context is during active problem-solving, not after. When you have just resolved a tricky bug or made an architectural choice, the reasoning is fresh and complete. Waiting until the end of a session means details fade and rationale gets lost.",
+          "Use specific kinds to categorize what you save. Decisions capture the why behind a choice. Patterns capture reusable approaches you want to apply again. Insights capture surprising discoveries or non-obvious behavior. This taxonomy makes retrieval precise instead of noisy.",
+          "Tag entries by domain area, not by session date. Tags like auth, payments, or onboarding-flow are far more useful for future retrieval than session-2026-02-20. Your future self will search by topic, not by when something happened.",
+        ],
+      },
+      {
+        heading: "Retrieve before you re-explain",
+        paragraphs: [
+          "Start each session with a targeted get_context query for the area you plan to work on. This primes your AI with the most relevant prior decisions and patterns before you type a single instruction. The context is already there.",
+          "Build retrieval habits per project. If you are working on the billing system, query for billing and payments context first. If you are debugging an API integration, pull up prior insights tagged with that service name. Consistency compounds — each session gets faster.",
+          "Measure time-to-productive-output. Track how long it takes from opening a session to doing real work. With a well-maintained vault, this drops from 15 minutes to under two. That is the clearest signal that your memory system is working.",
+        ],
+      },
+      {
+        heading: "Scaling the system as you grow",
+        paragraphs: [
+          "When you eventually hire, your vault becomes an onboarding tool. New team members can query the same decisions, patterns, and context that you accumulated over months of solo building. The knowledge transfers without you being in the room.",
+          "Separate personal entries from project entries early. Personal insights about your workflow and preferences belong in a different space than project-specific architectural decisions. This separation keeps both sets clean as the team grows.",
+          "Prune quarterly for quality over quantity. Review entries that never surface in search results or that reference outdated decisions. A smaller vault with high-quality, current entries outperforms a large one full of stale context. Delete aggressively and trust that the important patterns will be re-captured if they are still relevant.",
+        ],
+      },
+    ],
+  },
+  {
+    slug: "using-mcp-memory-with-gpt-actions",
+    title: "Using MCP Memory with GPT Actions",
+    description:
+      "Connect Context Vault to ChatGPT via GPT Actions for persistent memory across AI tools. Same vault serves Claude Code, Cursor, and ChatGPT.",
+    category: "Integration",
+    publishedAt: "2026-02-20",
+    readTimeMinutes: 7,
+    ctaLabel: "Start free",
+    ctaHref: "/register",
+    sections: [
+      {
+        heading: "Why ChatGPT needs external memory",
+        paragraphs: [
+          "ChatGPT conversations are ephemeral by design. Even with conversation history, there is no structured way to retrieve a specific decision you made three weeks ago or a pattern you discovered across multiple sessions. Memory features exist but are limited and opaque.",
+          "GPT Actions bridge this gap by connecting ChatGPT to external APIs. A Custom GPT can call any authenticated endpoint, which means it can interact with the same Context Vault that serves your Claude Code and Cursor sessions.",
+          "The result is a single vault that works across all your AI tools. Save a decision in Claude Code, retrieve it in ChatGPT. Capture a pattern in Cursor, surface it in a Custom GPT. One memory layer, multiple clients, zero duplication.",
+        ],
+      },
+      {
+        heading: "How GPT Actions connect to Context Vault",
+        paragraphs: [
+          "Create a Custom GPT and configure it with a GPT Action pointing at your hosted Context Vault MCP endpoint. The action uses API key authentication — paste your Context Vault API key as the bearer token in the action auth settings.",
+          "Define three core actions that map to Context Vault tools: save_context for writing new entries, get_context for hybrid search and retrieval, and context_status for verifying the connection is healthy. Each action maps directly to the MCP tool schema.",
+          "Once configured, the Custom GPT can save and retrieve context using natural language. Ask it to remember a decision and it calls save_context. Ask it what you decided about authentication last week and it calls get_context with the right query.",
+        ],
+      },
+      {
+        heading: "Building a cross-client memory workflow",
+        paragraphs: [
+          "The power of a shared vault is cross-client retrieval. Save an architectural decision during a Claude Code session, then pull it up in ChatGPT when explaining the system to a colleague. The entry exists once, accessible everywhere.",
+          "Tags and kinds stay consistent across all clients. Whether you save via MCP in Claude Code or via GPT Actions in ChatGPT, the same taxonomy applies. This consistency is what makes cross-client search reliable — the same query returns the same results regardless of which tool you use.",
+          "Latency stays under 200ms for hosted retrieval. GPT Actions add a small overhead for the HTTP round-trip, but the actual search and response time from Context Vault is fast enough that the Custom GPT experience feels native.",
+        ],
+      },
+      {
+        heading: "Limitations and workarounds",
+        paragraphs: [
+          "GPT Actions have rate limits and payload size constraints that vary by plan. Plus, Team, and Enterprise accounts get higher limits. Free-tier ChatGPT does not support Custom GPTs with actions, so this workflow requires a paid OpenAI plan.",
+          "Start with read-only access before enabling writes. Configure your Custom GPT with only the get_context action first. Once you are confident in the retrieval workflow, add save_context. This reduces the risk of accidentally saving low-quality entries from casual ChatGPT conversations.",
+          "Large vault responses may hit payload limits. If your search returns many results, use the limit parameter in get_context to cap the response size. Five to ten results is usually enough context for ChatGPT to work with effectively.",
+        ],
+      },
+    ],
+  },
+  {
     slug: "ai-dev-memory-system-client-work",
     title: "Build an AI Dev Memory System for Client Work",
     description:
