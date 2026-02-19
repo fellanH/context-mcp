@@ -316,6 +316,10 @@ Config file location: `~/.context-mcp/config.json`
 
 ## CI/CD Pipeline
 
+Two GitHub Actions workflows handle different concerns:
+
+### `ci.yml` — Hosted Deploy (push to main)
+
 ```
 Push to main
     │
@@ -344,6 +348,48 @@ Push to main
     scripts/smoke-test.sh against production URL
 ```
 
+### `publish.yml` — npm Publish (tag push)
+
+```
+Push tag v*
+    │
+    ▼
+  checkout + npm ci
+    │
+    ▼
+  verify tag matches package.json version
+    │
+    ▼
+  npm test
+    │
+    ▼
+  npm publish --provenance
+    Uses NPM_TOKEN secret (granular automation token, bypasses OTP)
+    │
+    ▼
+  create GitHub Release
+    Extracts changelog section for this version
+```
+
+**Required secret**: `NPM_TOKEN` — granular access token from npmjs.com scoped to `context-vault` with read+write permission.
+
+### Releasing to npm
+
+```bash
+# 1. Add a ## [x.y.z] section to CHANGELOG.md
+# 2. Run the release script
+npm run release -- patch    # or minor / major / 2.5.0
+```
+
+`npm run release` handles everything: bumps version in all 3 package.json files (root, core, local + core dependency), verifies CHANGELOG has an entry, commits, tags, and pushes. The tag push triggers `publish.yml` which runs tests, publishes to npm with provenance, and creates a GitHub Release.
+
+**Preflight checks** (the script aborts if any fail):
+- Working tree must be clean
+- Must be on the `main` branch
+- CHANGELOG.md must have a `## [x.y.z]` section for the new version
+
+### Docker
+
 The Dockerfile (`packages/hosted/Dockerfile`) is a two-stage build:
 1. **Builder**: Node 20-slim, install deps, build app + marketing
 2. **Production**: Slim image, `tini` init, non-root `vault` user, `curl` health check
@@ -365,8 +411,7 @@ npm run marketing:build           # Marketing production build
 npm run extension:dev             # Extension watch build
 npm run extension:build           # Extension production build
 npm run hosted:dev                # Hosted server with --watch
-npm run bump                      # Bump version across all packages
-npm run release                   # Publish packages/local to npm
+npm run release -- patch          # Bump, commit, tag, push → CI publishes to npm
 npm run deploy                    # Fly.io production deploy
 npm run docker:build              # Build Docker image
 npm run docker:run                # Run Docker container locally
