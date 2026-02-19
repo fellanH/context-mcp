@@ -28,7 +28,11 @@ import { buildLocalManifest, fetchRemoteManifest, computeSyncPlan, executeSync }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCAL_ROOT = resolve(__dirname, "..");
-const APP_DIST = resolve(LOCAL_ROOT, "..", "app", "dist");
+
+// Try bundled path first (npm install), then workspace path (local dev)
+const bundledDist = resolve(LOCAL_ROOT, "app-dist");
+const workspaceDist = resolve(LOCAL_ROOT, "..", "app", "dist");
+const APP_DIST = existsSync(join(bundledDist, "index.html")) ? bundledDist : workspaceDist;
 
 const MIME = {
   ".html": "text/html",

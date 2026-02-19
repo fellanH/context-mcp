@@ -7,7 +7,7 @@
  * Replaces the Unix shell script in package.json "prepack".
  */
 
-import { cpSync, rmSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, rmSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +16,8 @@ const LOCAL_ROOT = join(__dirname, "..");
 const NODE_MODULES = join(LOCAL_ROOT, "node_modules");
 const CORE_SRC = join(LOCAL_ROOT, "..", "core");
 const CORE_DEST = join(NODE_MODULES, "@context-vault", "core");
+const APP_SRC = join(LOCAL_ROOT, "..", "app", "dist");
+const APP_DEST = join(LOCAL_ROOT, "app-dist");
 
 // Clean node_modules to prevent workspace deps from leaking into the tarball.
 // Only @context-vault/core should be bundled.
@@ -42,3 +44,13 @@ delete corePkg.dependencies;
 writeFileSync(corePkgPath, JSON.stringify(corePkg, null, 2) + "\n");
 
 console.log("[prepack] Bundled @context-vault/core into node_modules");
+
+// Copy pre-built web dashboard into app-dist/
+if (!existsSync(join(APP_SRC, "index.html"))) {
+  console.error("[prepack] ERROR: Web dashboard not built. Run: npm run build --workspace=packages/app");
+  process.exit(1);
+}
+
+rmSync(APP_DEST, { recursive: true, force: true });
+cpSync(APP_SRC, APP_DEST, { recursive: true });
+console.log("[prepack] Bundled web dashboard into app-dist/");

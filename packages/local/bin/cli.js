@@ -898,11 +898,21 @@ function configureJsonToolHosted(tool, apiKey, hostedUrl) {
 // ─── UI Command ──────────────────────────────────────────────────────────────
 
 function runUi() {
-  const appDist = resolve(ROOT, "..", "app", "dist");
-  if (!existsSync(appDist) || !existsSync(join(appDist, "index.html"))) {
+  // Try bundled path first (npm install), then workspace path (local dev)
+  const bundledDist = resolve(ROOT, "app-dist");
+  const workspaceDist = resolve(ROOT, "..", "app", "dist");
+  const appDist = existsSync(join(bundledDist, "index.html")) ? bundledDist
+    : existsSync(join(workspaceDist, "index.html")) ? workspaceDist
+    : null;
+
+  if (!appDist) {
     console.error(red("Web dashboard not found."));
-    console.error(dim("  From repo: npm run build --workspace=packages/app"));
-    console.error(dim("  Then run: context-vault ui"));
+    if (isInstalledPackage()) {
+      console.error(dim("  Try reinstalling: npm install -g context-vault@latest"));
+    } else {
+      console.error(dim("  From repo: npm run build --workspace=packages/app"));
+      console.error(dim("  Then run: context-vault ui"));
+    }
     process.exit(1);
   }
 
