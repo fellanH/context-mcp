@@ -145,7 +145,7 @@ export function LandingPage() {
               </CardHeader>
               <CardContent>
                 <pre className="overflow-x-auto rounded-md border border-border/70 bg-background p-3 text-xs">
-                  npm install -g context-vault{"\n"}context-mcp setup
+                  npm install -g context-vault{"\n"}context-vault setup
                 </pre>
               </CardContent>
             </Card>

@@ -73,7 +73,7 @@ export function Login() {
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 404) {
-          toast.error("Local vault requires context-mcp ui. Run: context-mcp ui");
+          toast.error("Local vault requires context-vault ui. Run: context-vault ui");
         } else {
           toast.error(err.message);
         }

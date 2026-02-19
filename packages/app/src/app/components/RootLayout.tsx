@@ -14,6 +14,7 @@ import {
   LogOut,
   ChevronDown,
   Loader2,
+  ExternalLink,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "./ui/button";
@@ -135,6 +136,19 @@ export function RootLayout() {
           <NavSection label="Vault" items={vaultItems} isActive={isActive} />
           <NavSection label="Settings" items={settingsItems} isActive={isActive} />
         </nav>
+
+        {/* Extension link */}
+        <div className="px-3 pb-1">
+          <a
+            href="https://chromewebstore.google.com/detail/context-vault"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <ExternalLink className="size-3.5" />
+            Browser Extension
+          </a>
+        </div>
 
         {/* Usage meter footer */}
         <div className="p-4 border-t border-border space-y-2">

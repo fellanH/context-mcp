@@ -87,14 +87,14 @@ export function ConnectStep({
             <p className="font-medium text-foreground">First time?</p>
             <ol className="list-decimal list-inside space-y-1">
               <li>
-                Install: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">npm i -g context-mcp</code>
+                Install: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">npm i -g context-vault</code>
               </li>
               <li>
-                Initialize: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">context-mcp init</code>
+                Setup: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">context-vault setup</code>
               </li>
             </ol>
             <p className="text-xs text-muted-foreground/70 pt-1">
-              This creates a vault at <code className="bg-secondary px-1 py-0.5 rounded text-[11px]">~/.context-vault</code>
+              This creates a vault at <code className="bg-secondary px-1 py-0.5 rounded text-[11px]">~/vault</code>
             </p>
           </div>
 

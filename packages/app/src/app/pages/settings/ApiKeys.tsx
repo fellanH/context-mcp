@@ -219,7 +219,7 @@ export function ApiKeys() {
                 Local mode runs on your machine and does not require a hosted API key.
               </p>
               <pre className="bg-muted p-4 rounded-lg text-xs font-mono overflow-x-auto">
-{`context-mcp ui`}
+{`context-vault ui`}
               </pre>
             </>
           ) : (

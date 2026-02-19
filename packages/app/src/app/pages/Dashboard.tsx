@@ -92,7 +92,9 @@ export function Dashboard() {
     setShowOnboarding(false);
   };
 
-  const connectCommand = "npx context-vault connect --key YOUR_API_KEY";
+  const connectCommand = isLocalMode
+    ? "npx context-vault connect"
+    : "npx context-vault connect --key YOUR_API_KEY";
 
   const copyConnectCommand = async () => {
     await navigator.clipboard.writeText(connectCommand);

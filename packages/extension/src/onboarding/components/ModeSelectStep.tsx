@@ -15,7 +15,7 @@ const modes = [
     icon: HardDrive,
     title: "Local Vault",
     desc: "Run on your own machine. No account needed.",
-    sub: "Requires context-mcp installed via npm",
+    sub: "Requires context-vault installed via npm",
   },
   {
     value: "hosted" as const,

@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Badge } from "../../components/ui/badge";
 import { UsageMeter } from "../../components/UsageMeter";
 import { TierBadge } from "../../components/TierBadge";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, Cloud } from "lucide-react";
 import { useAuth } from "../../lib/auth";
+import { Link } from "react-router";
 import { useUsage, useCheckout } from "../../lib/hooks";
 import { formatMegabytes } from "../../lib/format";
 import { toast } from "sonner";
@@ -32,10 +33,11 @@ const plans = [
 ];
 
 export function Billing() {
-  const { user } = useAuth();
+  const { user, vaultMode } = useAuth();
   const { data: usage, isLoading: usageLoading } = useUsage();
   const checkoutMutation = useCheckout();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isLocalMode = vaultMode === "local";
 
   useEffect(() => {
     if (searchParams.get("upgraded") === "true") {
@@ -140,48 +142,67 @@ export function Billing() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {plans.map((plan) => {
-          const isCurrent = plan.tier === currentTier;
-          return (
-            <Card key={plan.tier} className={isCurrent ? "border-primary" : ""}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base capitalize">{plan.tier}</CardTitle>
-                  {isCurrent && <Badge variant="outline" className="text-[10px]">Current</Badge>}
-                </div>
-                <div className="mt-2">
-                  <span className="text-2xl font-bold">{plan.price}</span>
-                  {plan.period && <span className="text-sm text-muted-foreground">{plan.period}</span>}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 mb-4">
-                  {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-center gap-2 text-sm">
-                      <Check className="size-3.5 text-primary shrink-0" />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-                {!isCurrent && (
-                  <Button
-                    className="w-full"
-                    variant={plan.tier === "pro" ? "default" : "outline"}
-                    disabled={checkoutMutation.isPending}
-                    onClick={() => handleUpgrade(plan.tier)}
-                  >
-                    {checkoutMutation.isPending ? (
-                      <Loader2 className="size-3.5 animate-spin mr-1.5" />
-                    ) : null}
-                    {plan.tier === "pro" ? "Upgrade to Pro" : "Contact Sales"}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+      {isLocalMode ? (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="py-6 space-y-3">
+            <div className="flex items-center gap-3">
+              <Cloud className="size-5 text-primary shrink-0" />
+              <div>
+                <p className="text-sm font-medium">Billing is available on hosted accounts</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Your local vault has no usage limits. To access cloud features like sync, backup, and team sharing, create a hosted account.
+                </p>
+              </div>
+            </div>
+            <Button variant="default" size="sm" asChild>
+              <Link to="/register">Create cloud account</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {plans.map((plan) => {
+            const isCurrent = plan.tier === currentTier;
+            return (
+              <Card key={plan.tier} className={isCurrent ? "border-primary" : ""}>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base capitalize">{plan.tier}</CardTitle>
+                    {isCurrent && <Badge variant="outline" className="text-[10px]">Current</Badge>}
+                  </div>
+                  <div className="mt-2">
+                    <span className="text-2xl font-bold">{plan.price}</span>
+                    {plan.period && <span className="text-sm text-muted-foreground">{plan.period}</span>}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2 mb-4">
+                    {plan.features.map((feature) => (
+                      <li key={feature} className="flex items-center gap-2 text-sm">
+                        <Check className="size-3.5 text-primary shrink-0" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                  {!isCurrent && (
+                    <Button
+                      className="w-full"
+                      variant={plan.tier === "pro" ? "default" : "outline"}
+                      disabled={checkoutMutation.isPending}
+                      onClick={() => handleUpgrade(plan.tier)}
+                    >
+                      {checkoutMutation.isPending ? (
+                        <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                      ) : null}
+                      {plan.tier === "pro" ? "Upgrade to Pro" : "Contact Sales"}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -8,8 +8,8 @@ type Mode = "local" | "hosted";
 
 const localSteps = [
   { label: "Install", command: "npm install -g context-vault" },
-  { label: "Setup", command: "context-mcp setup" },
-  { label: "Open dashboard (optional)", command: "context-mcp ui" },
+  { label: "Setup", command: "context-vault setup" },
+  { label: "Open dashboard (optional)", command: "context-vault ui" },
 ];
 
 export function GetStartedPage() {

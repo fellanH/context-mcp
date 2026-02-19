@@ -2,16 +2,6 @@
 
 **Last updated:** 2026-02-20
 
-on local host the "Connect AI tools" command generates this command "npx context-vault connect --key YOUR_API_KEY" we should have it autopopulate the api key or show it without api key on local if no api keys are used on local mode. 
-
-We need to have a clearer separation of concerns between local and hosted app behaviour. 
-
-On the app on localhost on /billing when click "upgrade to pro" it throws "Failed to start checkout"
-
-We should include a quick link in the app to guide users to install the browser extension.
-
-Extension UI is a blank dark-blue color, should be a UI that follows the same theme and styles as the app
-
 ---
 
 ## Contents
@@ -100,3 +90,7 @@ _Empty — all items shipped._
 | Hosted UX improvements | Done | CLI `connect --key` command, native folder picker (Browse button), bulk import endpoint, local-to-hosted upload prompt. | 2026-02 |
 | Google OAuth sign-in | Done | Google OAuth backend + frontend; auto API key generation; AuthCallback page; email registration kept as fallback. | 2026-02 |
 | Codex & Antigravity CLI support | Done | Added Codex (OpenAI) and Antigravity (Google) to `context-mcp setup` detection, configuration, and uninstall. | 2026-02 |
+| Connect command shows `--key YOUR_API_KEY` in local mode | Fixed | Local mode now shows `npx context-vault connect` without `--key` flag; hosted mode keeps the placeholder. | 2026-02 |
+| Billing page fails on localhost | Fixed | Local mode billing page shows informational card instead of broken upgrade buttons; links to create cloud account. | 2026-02 |
+| Extension install link missing from local mode | Fixed | Added `install-extension` onboarding step to local mode; added persistent "Browser Extension" link in sidebar. | 2026-02 |
+| Extension UI hardcoded dark theme | Fixed | Extension theme.css now defaults to light mode with `prefers-color-scheme: dark` media query, matching app design tokens. | 2026-02 |
