@@ -62,3 +62,65 @@ All go-to-market strategy and tracking docs live in `docs/gtm/`:
 - No hype, no fabricated metrics, no fake testimonials
 - Show real commands, real output, real workflows
 - Speak as a developer building tools for other developers
+
+## Session Protocol
+
+Every Claude Code working session follows this workflow:
+
+### 1. Orient
+- Read `BACKLOG.md` to understand current priorities
+- Check `Now` section for active work items
+
+### 2. Pick
+- Work on an item from `Now`, or triage if the user requests it
+- If `Now` is empty, pull the highest-ICE item from `Next`
+
+### 3. Branch
+- Create a branch: `feat/<name>`, `fix/<name>`, or `chore/<name>`
+- Direct commits to `main` only for single-line fixes or docs
+
+### 4. Work
+- Implement, test, commit with conventional commit messages
+- Reference the GitHub issue: `Fixes #N` in commit messages
+
+### 5. Ship
+- Create a PR with `Fixes #N` to auto-close the issue on merge
+- Self-merge via squash merge is fine for solo work
+
+### 6. Update
+- Update `BACKLOG.md`: move completed items, add new signals, adjust priorities
+- If new work was discovered during the session, file GitHub issues
+
+### Branch naming
+| Prefix | Use |
+|--------|-----|
+| `feat/` | New features |
+| `fix/` | Bug fixes |
+| `chore/` | Infra, deps, cleanup |
+
+### Issue labels
+| Label | Purpose |
+|-------|---------|
+| `bug` | Something broken |
+| `feature` | New capability |
+| `enhancement` | Improvement to existing feature |
+| `dx` | Developer experience (setup, docs, onboarding) |
+| `infra` | CI/CD, deployment, monitoring |
+| `gtm` | Marketing, sales, content |
+| `user-request` | Directly from a user |
+| `P0-critical` | Must fix before next release |
+| `P1-high` | Next release |
+| `P2-medium` | Soon |
+| `P3-low` | Eventually |
+
+### ICE scoring (for ordering `Next` items)
+- **Impact** (1-5): How many users affected? How much does it move revenue/adoption?
+- **Confidence** (1-5): How sure is this the right thing? (User signal = high, gut = low)
+- **Ease** (1-5): How fast can it ship? (1 session = 5, multi-day = 1)
+- Score = I × C × E. Highest goes to top of `Next`.
+
+### Weekly triage
+- Review vault `feedback` entries and new GitHub issues
+- Add community signals (Reddit, X, HN) to `Signals` section
+- Re-score `Next` items if priorities shifted
+- Pull top items into `Now` (max 3)
