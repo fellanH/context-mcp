@@ -1,14 +1,12 @@
 # Project State
 
-_Last updated: 2026-02-21 by chore/infra-workflow-ops_
+_Last updated: 2026-02-21 by session-wrap_
 
 ---
 
 ## In Flight
 
-| Branch                   | Agent      | What                                                                                      | Started    |
-| ------------------------ | ---------- | ----------------------------------------------------------------------------------------- | ---------- |
-| chore/infra-workflow-ops | Claude CLI | Create operational workflow scaffolding (FEEDBACK.md, protect NORTH-STAR, update BACKLOG) | 2026-02-21 |
+_None._
 
 ---
 
@@ -31,8 +29,8 @@ _None._
 
 ## Recently completed (last 5)
 
+- 2026-02-21 — NORTH-STAR.md content update: broader ICP (Anyone → not just Developers) (#68)
+- 2026-02-21 — Operational workflow scaffolding: PROJECT-STATE.md, FEEDBACK.md, NORTH-STAR protection (#67)
 - 2026-02-20 — Dev playbook + guardian system (CLAUDE.md, DEV-PLAYBOOK.md, INBOX.md) (#65)
 - 2026-02-20 — Hosted dashboard for local vaults (`context-vault ui`) (#61)
 - 2026-02-20 — Path-scope CI/deploy workflows + fix staging `--prod` bug (#62)
-- 2026-02-20 — Branch ownership rules in all agent definitions (#63)
-- 2026-02-20 — Sprint tracking + branch ownership in session protocol (#64)
