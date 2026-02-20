@@ -2,6 +2,21 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.7.0] — 2026-02-20
+
+### Added
+- ESLint flat config and `tsconfig.json` for `packages/app` — strict mode, path aliases, React hooks + refresh plugins (#10)
+- JSDoc `@typedef` definitions for `BaseCtx`, `LocalCtx`, `HostedCtx` in new `packages/core/src/server/types.js` — typed ctx shapes across all tool handlers and shared modules (#12)
+
+### Changed
+- Refactored `tools.js` (693 → ~100 lines) into 7 individual handler modules under `packages/core/src/server/tools/` (#11)
+
+### Fixed
+- `AuthCallback.tsx` and `team/Invite.tsx` — replaced `setState` in `useEffect` with synchronous initial state computation (caught by new ESLint config)
+
+### Test suite
+- **386 tests** across 22 test files (unchanged — refactor only, no behavioral changes)
+
 ## [2.6.1] — 2026-02-20
 
 ### Fixed

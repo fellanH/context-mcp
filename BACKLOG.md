@@ -20,8 +20,9 @@ _Only the latest release. Older items archived — see CHANGELOG.md and git hist
 
 | Item | Issue | Release |
 |------|-------|---------|
-| Fix schema version in CLI status command (v5 → v7) | — | v2.6.1 |
-| Input size limits, schema fix, tests (#2-#7), route/startup cleanup (#8-#9) | #2–#9 | v2.6.0 |
+| Add ESLint config and `tsconfig.json` to `packages/app` | #10 | v2.7.0 |
+| Refactor `tools.js` into individual tool handler modules | #11 | v2.7.0 |
+| Add JSDoc `@typedef` for `ctx` shapes per mode | #12 | v2.7.0 |
 
 ---
 
@@ -31,9 +32,6 @@ Ordered by ICE score (Impact × Confidence × Ease). Pull from top when `Now` ha
 
 | Item | ICE | Source | Issue |
 |------|-----|--------|-------|
-| Add ESLint config and `tsconfig.json` to `packages/app` | 24 | [qa] | #10 |
-| Refactor `tools.js` into individual tool handler modules | 20 | [internal] | #11 |
-| Add JSDoc `@typedef` for `ctx` shapes per mode | 15 | [internal] | #12 |
 | Cache `buildUserCtx` per connection instead of per request | 12 | [internal] | #14 |
 
 ---
