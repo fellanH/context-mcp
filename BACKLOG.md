@@ -20,6 +20,7 @@ _Only the latest release. Older items archived — see CHANGELOG.md and git hist
 
 | Item | Issue | Release |
 |------|-------|---------|
+| Split CI and deploy into separate workflows | #24 | — |
 | Paginated export for large vaults (replace load-all with limit/offset) | #13 | — |
 | Cache `buildUserCtx` per connection instead of per request | #14 | — |
 | Add ESLint config and `tsconfig.json` to `packages/app` | #10 | v2.7.0 |
@@ -74,3 +75,4 @@ Key architectural choices made during development. Reference, not action items.
 | 2026-02-20 | Adopted BACKLOG.md + GitHub Issues workflow | File-based tracking for Claude Code session continuity. Issues for public record. |
 | 2026-02-20 | Always grep whole repo before fixing hardcoded values | v2.6.0 missed CLI schema string (v5) while fixing MCP tool (v6→v7). Required v2.6.1 patch. |
 | 2026-02-20 | Dogfood every release — install globally + verify MCP | Catches issues that tests miss (stale MCP server, registry propagation, etc.) |
+| 2026-02-20 | Separate CI (test-and-build) from deploy pipeline | CI stays lean for PR validation; deploy chains via `workflow_run` + gate job. Manual deploy via `workflow_dispatch`. |
