@@ -1,6 +1,6 @@
 # Project State
 
-_Last updated: 2026-02-21 by session-wrap_
+_Last updated: 2026-02-21 by session-wrap (claude-code-action session)_
 
 ---
 
@@ -29,8 +29,8 @@ _None._
 
 ## Recently completed (last 5)
 
+- 2026-02-21 — Fix claude-code-action workflows: write perms, focused prompt, author_association guard (#70)
 - 2026-02-21 — NORTH-STAR.md content update: broader ICP (Anyone → not just Developers) (#68)
 - 2026-02-21 — Operational workflow scaffolding: PROJECT-STATE.md, FEEDBACK.md, NORTH-STAR protection (#67)
 - 2026-02-20 — Dev playbook + guardian system (CLAUDE.md, DEV-PLAYBOOK.md, INBOX.md) (#65)
 - 2026-02-20 — Hosted dashboard for local vaults (`context-vault ui`) (#61)
-- 2026-02-20 — Path-scope CI/deploy workflows + fix staging `--prod` bug (#62)
