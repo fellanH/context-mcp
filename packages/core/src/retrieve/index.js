@@ -14,7 +14,7 @@ const VEC_WEIGHT = 0.6;
  * Strip FTS5 metacharacters from query words and build an AND query.
  * Returns null if no valid words remain.
  */
-function buildFtsQuery(query) {
+export function buildFtsQuery(query) {
   const words = query
     .split(/\s+/)
     .map((w) => w.replace(/[*"()\-:^~{}]/g, ""))
@@ -28,7 +28,7 @@ function buildFtsQuery(query) {
  *   knowledge + entity: no decay (enduring)
  *   event: steeper decay (~0.5 at 30 days)
  */
-function recencyBoost(createdAt, category, decayDays = 30) {
+export function recencyBoost(createdAt, category, decayDays = 30) {
   if (category !== "event") return 1.0;
   const ageDays = (Date.now() - new Date(createdAt).getTime()) / 86400000;
   return 1 / (1 + ageDays / decayDays);
@@ -38,12 +38,16 @@ function recencyBoost(createdAt, category, decayDays = 30) {
  * Build additional WHERE clauses for category/time filtering.
  * Returns { clauses: string[], params: any[] }
  */
-function buildFilterClauses({ categoryFilter, since, until, userIdFilter }) {
+export function buildFilterClauses({ categoryFilter, since, until, userIdFilter, teamIdFilter }) {
   const clauses = [];
   const params = [];
   if (userIdFilter !== undefined) {
     clauses.push("e.user_id = ?");
     params.push(userIdFilter);
+  }
+  if (teamIdFilter) {
+    clauses.push("e.team_id = ?");
+    params.push(teamIdFilter);
   }
   if (categoryFilter) {
     clauses.push("e.category = ?");
@@ -72,10 +76,10 @@ function buildFilterClauses({ categoryFilter, since, until, userIdFilter }) {
 export async function hybridSearch(
   ctx,
   query,
-  { kindFilter = null, categoryFilter = null, since = null, until = null, limit = 20, offset = 0, decayDays = 30, userIdFilter } = {}
+  { kindFilter = null, categoryFilter = null, since = null, until = null, limit = 20, offset = 0, decayDays = 30, userIdFilter, teamIdFilter = null } = {}
 ) {
   const results = new Map();
-  const extraFilters = buildFilterClauses({ categoryFilter, since, until, userIdFilter });
+  const extraFilters = buildFilterClauses({ categoryFilter, since, until, userIdFilter, teamIdFilter });
 
   // FTS5 search
   const ftsQuery = buildFtsQuery(query);
@@ -121,8 +125,8 @@ export async function hybridSearch(
       const queryVec = await ctx.embed(query);
       if (queryVec) {
         // Increase limits in hosted mode to compensate for post-filtering
-        const hasUserFilter = userIdFilter !== undefined;
-        const vecLimit = hasUserFilter ? (kindFilter ? 60 : 30) : (kindFilter ? 30 : 15);
+        const hasPostFilter = userIdFilter !== undefined || teamIdFilter;
+        const vecLimit = hasPostFilter ? (kindFilter ? 60 : 30) : (kindFilter ? 30 : 15);
         const vecRows = ctx.db
           .prepare(
             `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ${vecLimit}`
@@ -144,6 +148,7 @@ export async function hybridSearch(
             const row = byRowid.get(vr.rowid);
             if (!row) continue;
             if (userIdFilter !== undefined && row.user_id !== userIdFilter) continue;
+            if (teamIdFilter && row.team_id !== teamIdFilter) continue;
             if (kindFilter && row.kind !== kindFilter) continue;
             if (categoryFilter && row.category !== categoryFilter) continue;
             if (since && row.created_at < since) continue;
