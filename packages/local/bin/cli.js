@@ -1425,6 +1425,8 @@ async function runImport() {
 async function runExport() {
   const format = getFlag("--format") || "json";
   const output = getFlag("--output");
+  const rawPageSize = getFlag("--page-size");
+  const pageSize = rawPageSize ? Math.max(1, parseInt(rawPageSize, 10) || 100) : null;
 
   const { resolveConfig } = await import("@context-vault/core/core/config");
   const { initDatabase, prepareStatements } = await import("@context-vault/core/index/db");
@@ -1438,25 +1440,33 @@ async function runExport() {
 
   const db = await initDatabase(config.dbPath);
 
-  const rows = db.prepare(
-    "SELECT * FROM vault WHERE (expires_at IS NULL OR expires_at > datetime('now')) ORDER BY created_at DESC"
-  ).all();
+  const whereClause = "WHERE (expires_at IS NULL OR expires_at > datetime('now'))";
+
+  let entries;
+  if (pageSize) {
+    // Paginated: fetch in chunks to avoid loading everything into memory
+    entries = [];
+    let offset = 0;
+    const stmt = db.prepare(
+      `SELECT * FROM vault ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+    );
+    while (true) {
+      const rows = stmt.all(pageSize, offset);
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        entries.push(mapExportRow(row));
+      }
+      offset += rows.length;
+      if (rows.length < pageSize) break;
+    }
+  } else {
+    const rows = db.prepare(
+      `SELECT * FROM vault ${whereClause} ORDER BY created_at DESC`
+    ).all();
+    entries = rows.map(mapExportRow);
+  }
 
   db.close();
-
-  const entries = rows.map((row) => ({
-    id: row.id,
-    kind: row.kind,
-    category: row.category,
-    title: row.title || null,
-    body: row.body || null,
-    tags: row.tags ? JSON.parse(row.tags) : [],
-    meta: row.meta ? JSON.parse(row.meta) : {},
-    source: row.source || null,
-    identity_key: row.identity_key || null,
-    expires_at: row.expires_at || null,
-    created_at: row.created_at,
-  }));
 
   let content;
 
@@ -1487,6 +1497,22 @@ async function runExport() {
   } else {
     process.stdout.write(content);
   }
+}
+
+function mapExportRow(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    category: row.category,
+    title: row.title || null,
+    body: row.body || null,
+    tags: row.tags ? JSON.parse(row.tags) : [],
+    meta: row.meta ? JSON.parse(row.meta) : {},
+    source: row.source || null,
+    identity_key: row.identity_key || null,
+    expires_at: row.expires_at || null,
+    created_at: row.created_at,
+  };
 }
 
 // ─── Ingest Command ─────────────────────────────────────────────────────────
