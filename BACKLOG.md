@@ -1,6 +1,6 @@
 # Backlog
 
-**Last triaged:** 2026-02-20
+**Last triaged:** 2026-02-20 (Later list ICE-scored)
 
 ---
 
@@ -20,6 +20,8 @@ _Only the latest release. Older items archived — see CHANGELOG.md and git hist
 
 | Item | Issue | Release |
 |------|-------|---------|
+| Paginated export for large vaults (replace load-all with limit/offset) | #13 | — |
+| Cache `buildUserCtx` per connection instead of per request | #14 | — |
 | Add ESLint config and `tsconfig.json` to `packages/app` | #10 | v2.7.0 |
 | Refactor `tools.js` into individual tool handler modules | #11 | v2.7.0 |
 | Add JSDoc `@typedef` for `ctx` shapes per mode | #12 | v2.7.0 |
@@ -32,22 +34,20 @@ Ordered by ICE score (Impact × Confidence × Ease). Pull from top when `Now` ha
 
 | Item | ICE | Source | Issue |
 |------|-----|--------|-------|
-| Cache `buildUserCtx` per connection instead of per request | 12 | [internal] | #14 |
+| Restructure reindex to separate sync DB ops from async embedding | 24 | CODE_REVIEW | — |
+| Remove `captureAndIndex` callback indirection (always `indexEntry`) | 20 | CODE_REVIEW | — |
 
 ---
 
 ## Later
 
-Parking lot. No commitment, no ordering.
+Parking lot. No commitment, no ordering. ICE scores from 2026-02-20 triage.
 
-- Streaming export for large vaults (currently loads all to memory) (#13)
-- React 18 → 19 migration
-- Vite 6 → 7 migration
-- Stripe 17 → 20 migration
-- Multi-source URL ingestion pipelines (video transcripts, PDFs, social posts)
-- Pricing tier refinements
-- Remove `captureAndIndex` callback indirection (always same function)
-- Restructure reindex to separate sync DB ops from async embedding
+- Stripe 17 → 20 migration (ICE 12 — no urgency, revisit if deprecation warnings appear)
+- Vite 6 → 7 migration (ICE 9 — no user-facing benefit)
+- Pricing tier refinements (ICE 6 — no spec or user signal yet)
+- Multi-source URL ingestion pipelines (ICE 3 — video transcripts, PDFs, social posts; no user signal)
+- React 18 → 19 migration (ICE 2 — Radix compat unclear, high effort, zero user impact)
 
 ---
 
