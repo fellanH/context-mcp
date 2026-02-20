@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -12,15 +12,13 @@ export function TeamInvite() {
 
   const token = searchParams.get("token") || "";
   const teamId = searchParams.get("team") || "";
-  const [status, setStatus] = useState<"idle" | "joining" | "success" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState("");
-
-  useEffect(() => {
-    if (!token || !teamId) {
-      setStatus("error");
-      setErrorMsg("Invalid invite link. Missing token or team ID.");
-    }
-  }, [token, teamId]);
+  const isMissingParams = !token || !teamId;
+  const [status, setStatus] = useState<"idle" | "joining" | "success" | "error">(
+    isMissingParams ? "error" : "idle"
+  );
+  const [errorMsg, setErrorMsg] = useState(
+    isMissingParams ? "Invalid invite link. Missing token or team ID." : ""
+  );
 
   const handleJoin = () => {
     if (!token || !teamId) return;

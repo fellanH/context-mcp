@@ -6,16 +6,16 @@ import { Loader2 } from "lucide-react";
 export function AuthCallback() {
   const { loginWithApiKey } = useAuth();
   const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
+  const hash = window.location.hash;
+  const params = new URLSearchParams(hash.slice(1));
+  const token = params.get("token");
+
+  const [error, setError] = useState<string | null>(
+    token ? null : "No authentication token received"
+  );
 
   useEffect(() => {
-    // Extract token from URL fragment: /auth/callback#token=cv_xxx
-    const hash = window.location.hash;
-    const params = new URLSearchParams(hash.slice(1));
-    const token = params.get("token");
-
     if (!token) {
-      setError("No authentication token received");
       setTimeout(() => navigate("/login"), 3000);
       return;
     }
@@ -29,7 +29,7 @@ export function AuthCallback() {
         setError("Authentication failed");
         setTimeout(() => navigate("/login"), 3000);
       });
-  }, [loginWithApiKey, navigate]);
+  }, [token, loginWithApiKey, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
