@@ -26,7 +26,7 @@ import { normalizeKind } from "@context-vault/core/core/files";
 import { categoryFor } from "@context-vault/core/core/categories";
 import { isOverEntryLimit } from "../billing/stripe.js";
 import { validateEntryInput } from "../validation/entry-validation.js";
-import { buildUserCtx } from "../server/user-ctx.js";
+import { getCachedUserCtx } from "../server/user-ctx.js";
 import { bearerAuth } from "../middleware/auth.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { generateOpenApiSpec } from "../api/openapi.js";
@@ -104,7 +104,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
   api.get("/api/vault/entries", async (c) => {
     const user = c.get("user");
     const teamId = c.req.query("team_id") || null;
-    const userCtx = await buildUserCtx(ctx, user, masterSecret, teamId ? { teamId } : null);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret, teamId ? { teamId } : null);
 
     const kind = c.req.query("kind") || null;
     const category = c.req.query("category") || null;
@@ -159,7 +159,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.get("/api/vault/entries/:id", async (c) => {
     const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret);
     const id = c.req.param("id");
 
     const entry = userCtx.stmts.getEntryById.get(id);
@@ -177,7 +177,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.post("/api/vault/entries", async (c) => {
     const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret);
 
     const data = await c.req.json().catch(() => null);
     if (!data) return c.json({ error: "Invalid JSON body", code: "INVALID_INPUT" }, 400);
@@ -229,7 +229,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.put("/api/vault/entries/:id", async (c) => {
     const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret);
     const id = c.req.param("id");
 
     const data = await c.req.json().catch(() => null);
@@ -286,7 +286,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.delete("/api/vault/entries/:id", async (c) => {
     const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret);
     const id = c.req.param("id");
 
     const entry = userCtx.stmts.getEntryById.get(id);
@@ -318,7 +318,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.post("/api/vault/search", async (c) => {
     const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret);
 
     const data = await c.req.json().catch(() => null);
     if (!data) return c.json({ error: "Invalid JSON body", code: "INVALID_INPUT" }, 400);
@@ -358,7 +358,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.post("/api/vault/import/bulk", bearerAuth(), rateLimit(), async (c) => {
     const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret);
 
     const data = await c.req.json().catch(() => null);
     if (!data || !Array.isArray(data.entries)) {
@@ -422,7 +422,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.post("/api/vault/ingest", bearerAuth(), rateLimit(), async (c) => {
     const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret);
 
     const data = await c.req.json().catch(() => null);
     if (!data?.url) return c.json({ error: "url is required", code: "INVALID_INPUT" }, 400);
@@ -445,7 +445,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.get("/api/vault/manifest", bearerAuth(), rateLimit(), async (c) => {
     const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret);
 
     const clauses = ["(expires_at IS NULL OR expires_at > datetime('now'))"];
     const params = [];
@@ -462,7 +462,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.get("/api/vault/status", async (c) => {
     const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
+    const userCtx = await getCachedUserCtx(ctx, user, masterSecret);
 
     const status = gatherVaultStatus(userCtx, { userId: userCtx.userId });
 

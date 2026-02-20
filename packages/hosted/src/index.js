@@ -35,7 +35,7 @@ import { rateLimit } from "./middleware/rate-limit.js";
 import { requestLogger } from "./middleware/logger.js";
 import { createManagementRoutes } from "./server/management.js";
 import { createVaultApiRoutes } from "./routes/vault-api.js";
-import { buildUserCtx } from "./server/user-ctx.js";
+import { getCachedUserCtx } from "./server/user-ctx.js";
 import { pool } from "./server/user-db.js";
 import { scheduleBackups, lastBackupTimestamp } from "./backup/r2-backup.js";
 
@@ -118,7 +118,7 @@ async function createMcpServer(user) {
     { name: "context-vault-hosted", version: pkgVersion },
     { capabilities: { tools: {} } }
   );
-  const userCtx = await buildUserCtx(ctx, user, VAULT_MASTER_SECRET);
+  const userCtx = await getCachedUserCtx(ctx, user, VAULT_MASTER_SECRET);
   registerTools(server, userCtx);
   return server;
 }
