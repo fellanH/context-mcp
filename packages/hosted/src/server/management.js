@@ -21,7 +21,7 @@ import { createCheckoutSession, verifyWebhookEvent, getStripe, getTierLimits } f
 import { generateDek, generateDekSplitAuthority, clearDekCache } from "../encryption/keys.js";
 import { decryptFromStorage } from "../encryption/vault-crypto.js";
 import { unlinkSync } from "node:fs";
-import { buildUserCtx } from "./user-ctx.js";
+import { getCachedUserCtx, clearUserCtxCache } from "./user-ctx.js";
 import { PER_USER_DB } from "./ctx.js";
 import { pool, getUserDir } from "./user-db.js";
 
@@ -402,7 +402,7 @@ export function createManagementRoutes(ctx) {
     const requestsToday = stmts.countUsageToday.get(user.userId, "mcp_request");
     const limits = getTierLimits(user.tier);
 
-    const userCtx = await buildUserCtx(ctx, user, VAULT_MASTER_SECRET);
+    const userCtx = await getCachedUserCtx(ctx, user, VAULT_MASTER_SECRET);
 
     const entryCount = userCtx.db.prepare("SELECT COUNT(*) as c FROM vault WHERE user_id = ? OR user_id IS NULL").get(user.userId).c;
     const storageBytes = userCtx.db.prepare(
@@ -473,6 +473,7 @@ export function createManagementRoutes(ctx) {
         if (userId) {
           stmts.updateUserTier.run("pro", userId);
           if (customerId) stmts.updateUserStripeId.run(customerId, userId);
+          clearUserCtxCache(userId);
         }
         break;
       }
@@ -480,7 +481,10 @@ export function createManagementRoutes(ctx) {
         const customerId = event.data.customer;
         if (customerId) {
           const user = stmts.getUserByStripeCustomerId.get(customerId);
-          if (user) stmts.updateUserTier.run("free", user.id);
+          if (user) {
+            stmts.updateUserTier.run("free", user.id);
+            clearUserCtxCache(user.id);
+          }
         }
         break;
       }
@@ -747,7 +751,7 @@ export function createManagementRoutes(ctx) {
     const memberCount = stmts.countTeamMembers.get(teamId).c;
 
     // Count vault entries scoped to team — use user's own DB in per-user mode
-    const userCtx = await buildUserCtx(ctx, user, VAULT_MASTER_SECRET);
+    const userCtx = await getCachedUserCtx(ctx, user, VAULT_MASTER_SECRET);
     const entryCount = userCtx.db.prepare("SELECT COUNT(*) as c FROM vault WHERE team_id = ?").get(teamId).c;
     const storageBytes = userCtx.db.prepare(
       "SELECT COALESCE(SUM(LENGTH(COALESCE(body,'')) + LENGTH(COALESCE(body_encrypted,'')) + LENGTH(COALESCE(title,'')) + LENGTH(COALESCE(meta,''))), 0) as s FROM vault WHERE team_id = ?"
@@ -816,8 +820,9 @@ export function createManagementRoutes(ctx) {
     });
     deleteMeta();
 
-    // 4. Clear DEK cache
+    // 4. Clear caches
     clearDekCache(user.userId);
+    clearUserCtxCache(user.userId);
 
     return c.json({ deleted: true });
   });
@@ -835,7 +840,7 @@ export function createManagementRoutes(ctx) {
       return c.json({ error: "Export is not available on the free tier. Upgrade to Pro." }, 403);
     }
 
-    const userCtx = await buildUserCtx(ctx, user, VAULT_MASTER_SECRET);
+    const userCtx = await getCachedUserCtx(ctx, user, VAULT_MASTER_SECRET);
 
     const rows = userCtx.db.prepare(
       `SELECT id, kind, title, body, tags, source, created_at, identity_key, expires_at, meta, body_encrypted, title_encrypted, meta_encrypted, iv FROM vault WHERE user_id = ? OR user_id IS NULL ORDER BY created_at ASC`

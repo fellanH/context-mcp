@@ -8,12 +8,66 @@
  *
  * In legacy mode (PER_USER_DB=false):
  *   Same shared-database behavior as before, with WHERE user_id filtering.
+ *
+ * getCachedUserCtx() wraps buildUserCtx() with an in-memory TTL cache keyed by
+ * userId + teamId. This avoids re-allocating closure objects and re-running
+ * pool.get() / getTierLimits() on every HTTP request from the same user.
  */
 
 import { encryptForStorage, decryptFromStorage } from "../encryption/vault-crypto.js";
 import { getTierLimits } from "../billing/stripe.js";
 import { pool, getUserVaultDir, getUserDbPath } from "./user-db.js";
 import { PER_USER_DB } from "./ctx.js";
+
+// ─── Per-user context cache ──────────────────────────────────────────────────
+
+const userCtxCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get a cached user context, building a new one on cache miss or expiry.
+ * Drop-in replacement for buildUserCtx — same signature, same return value.
+ *
+ * @param {object} ctx — Shared server context
+ * @param {{ userId?: string, tier?: string, clientKeyShare?: string } | null} user
+ * @param {string | null} masterSecret
+ * @param {{ teamId?: string } | null} [teamScope]
+ * @returns {Promise<object>}
+ */
+export async function getCachedUserCtx(ctx, user, masterSecret, teamScope) {
+  const userId = user?.userId || null;
+  if (!userId) {
+    // No user (dev mode) — can't cache, build fresh
+    return buildUserCtx(ctx, user, masterSecret, teamScope);
+  }
+
+  const cacheKey = `${userId}:${teamScope?.teamId || ""}`;
+  const cached = userCtxCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.userCtx;
+  }
+
+  const userCtx = await buildUserCtx(ctx, user, masterSecret, teamScope);
+  userCtxCache.set(cacheKey, { userCtx, expiresAt: Date.now() + CACHE_TTL_MS });
+  return userCtx;
+}
+
+/**
+ * Clear cached user contexts. Call on tier changes, account deletion, etc.
+ *
+ * @param {string} [userId] — Clear for this user only. Omit to clear all.
+ */
+export function clearUserCtxCache(userId) {
+  if (userId) {
+    for (const key of userCtxCache.keys()) {
+      if (key.startsWith(`${userId}:`)) {
+        userCtxCache.delete(key);
+      }
+    }
+  } else {
+    userCtxCache.clear();
+  }
+}
 
 /**
  * Build a per-user context from the shared server context.
