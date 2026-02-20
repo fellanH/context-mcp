@@ -115,7 +115,7 @@ const MCP_REQUEST_TIMEOUT_MS = 60_000;
 
 async function createMcpServer(user) {
   const server = new McpServer(
-    { name: "context-vault-hosted", version: "0.1.0" },
+    { name: "context-vault-hosted", version: pkgVersion },
     { capabilities: { tools: {} } }
   );
   const userCtx = await buildUserCtx(ctx, user, VAULT_MASTER_SECRET);

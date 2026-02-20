@@ -67,10 +67,8 @@ export function decrypt(encrypted, iv, key) {
  * @returns {{ body_encrypted: Buffer, title_encrypted: Buffer|null, meta_encrypted: Buffer|null, iv: Buffer }}
  */
 export function encryptEntry(entry, key) {
+  // Body IV — stored in the `iv` column for decryption
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
-
-  // Encrypt body (always)
   const bodyCipher = createCipheriv(ALGORITHM, key, iv);
   const bodyEncrypted = Buffer.concat([
     bodyCipher.update(entry.body, "utf8"),

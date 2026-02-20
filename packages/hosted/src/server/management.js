@@ -802,10 +802,10 @@ export function createManagementRoutes(ctx) {
       }
     } else {
       // Legacy mode: delete entries row by row
-      const entries = ctx.db.prepare("SELECT id, file_path FROM vault WHERE user_id = ?").all(user.userId);
+      const entries = ctx.db.prepare("SELECT id, file_path, rowid FROM vault WHERE user_id = ?").all(user.userId);
       for (const entry of entries) {
         if (entry.file_path) try { unlinkSync(entry.file_path); } catch {}
-        try { ctx.deleteVec(entry.id); } catch {}
+        if (entry.rowid) try { ctx.deleteVec(Number(entry.rowid)); } catch {}
       }
       ctx.db.prepare("DELETE FROM vault WHERE user_id = ?").run(user.userId);
     }

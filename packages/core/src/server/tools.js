@@ -142,6 +142,10 @@ export function registerTools(server, ctx) {
         autoWindowed = true;
       }
 
+      const effectiveLimit = limit || 10;
+      // When tag-filtering, over-fetch to compensate for post-filter reduction
+      const fetchLimit = tags?.length ? effectiveLimit * 10 : effectiveLimit;
+
       let filtered;
       if (hasQuery) {
         // Hybrid search mode
@@ -150,17 +154,17 @@ export function registerTools(server, ctx) {
           categoryFilter: category || null,
           since: effectiveSince,
           until: effectiveUntil,
-          limit: limit || 10,
+          limit: fetchLimit,
           decayDays: config.eventDecayDays || 30,
           userIdFilter: userId,
         });
 
-        // Post-filter by tags if provided
+        // Post-filter by tags if provided, then apply requested limit
         filtered = tags?.length
           ? sorted.filter((r) => {
               const entryTags = r.tags ? JSON.parse(r.tags) : [];
               return tags.some((t) => entryTags.includes(t));
-            })
+            }).slice(0, effectiveLimit)
           : sorted;
       } else {
         // Filter-only mode (no query, use SQL directly)
@@ -173,15 +177,15 @@ export function registerTools(server, ctx) {
         if (effectiveUntil) { clauses.push("created_at <= ?"); params.push(effectiveUntil); }
         clauses.push("(expires_at IS NULL OR expires_at > datetime('now'))");
         const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-        const effectiveLimit = limit || 10;
-        params.push(effectiveLimit);
+        params.push(fetchLimit);
         const rows = ctx.db.prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT ?`).all(...params);
 
+        // Post-filter by tags if provided, then apply requested limit
         filtered = tags?.length
           ? rows.filter((r) => {
               const entryTags = r.tags ? JSON.parse(r.tags) : [];
               return tags.some((t) => entryTags.includes(t));
-            })
+            }).slice(0, effectiveLimit)
           : rows;
 
         // Add score field for consistent output
@@ -289,8 +293,11 @@ export function registerTools(server, ctx) {
       if (kindErr) return kindErr;
       if (!body?.trim()) return err("Required: body (for new entries)", "INVALID_INPUT");
 
-      if (categoryFor(kind) === "entity" && !identity_key) {
-        return err(`Entity kind "${kind}" requires identity_key`, "MISSING_IDENTITY_KEY");
+      // Normalize kind to canonical singular form (e.g. "insights" → "insight")
+      const normalizedKind = normalizeKind(kind);
+
+      if (categoryFor(normalizedKind) === "entity" && !identity_key) {
+        return err(`Entity kind "${normalizedKind}" requires identity_key`, "MISSING_IDENTITY_KEY");
       }
 
       // Hosted tier limit enforcement (skipped in local mode — no checkLimits on ctx)
@@ -310,9 +317,9 @@ export function registerTools(server, ctx) {
       if (folder) mergedMeta.folder = folder;
       const finalMeta = Object.keys(mergedMeta).length ? mergedMeta : undefined;
 
-      const entry = await captureAndIndex(ctx, { kind, title, body, meta: finalMeta, tags, source, folder, identity_key, expires_at, userId }, indexEntry);
+      const entry = await captureAndIndex(ctx, { kind: normalizedKind, title, body, meta: finalMeta, tags, source, folder, identity_key, expires_at, userId }, indexEntry);
       const relPath = entry.filePath ? entry.filePath.replace(config.vaultDir + "/", "") : entry.filePath;
-      const parts = [`✓ Saved ${kind} → ${relPath}`, `  id: ${entry.id}`];
+      const parts = [`✓ Saved ${normalizedKind} → ${relPath}`, `  id: ${entry.id}`];
       if (title) parts.push(`  title: ${title}`);
       if (tags?.length) parts.push(`  tags: ${tags.join(", ")}`);
       parts.push("", "_Use this id to update or delete later._");
@@ -365,19 +372,21 @@ export function registerTools(server, ctx) {
       const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       const effectiveLimit = Math.min(limit || 20, 100);
       const effectiveOffset = offset || 0;
+      // When tag-filtering, over-fetch to compensate for post-filter reduction
+      const fetchLimit = tags?.length ? effectiveLimit * 10 : effectiveLimit;
 
       const countParams = [...params];
       const total = ctx.db.prepare(`SELECT COUNT(*) as c FROM vault ${where}`).get(...countParams).c;
 
-      params.push(effectiveLimit, effectiveOffset);
+      params.push(fetchLimit, effectiveOffset);
       const rows = ctx.db.prepare(`SELECT id, title, kind, category, tags, created_at, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params);
 
-      // Post-filter by tags if provided
+      // Post-filter by tags if provided, then apply requested limit
       const filtered = tags?.length
         ? rows.filter((r) => {
             const entryTags = r.tags ? JSON.parse(r.tags) : [];
             return tags.some((t) => entryTags.includes(t));
-          })
+          }).slice(0, effectiveLimit)
         : rows;
 
       if (!filtered.length) return ok("No entries found matching the given filters.");
