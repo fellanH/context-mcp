@@ -1,4 +1,4 @@
-# Context Vault — Shared Project Context
+# Context Vault — Project Context
 
 ## Product
 
@@ -9,28 +9,6 @@
 - **Marketing site:** contextvault.dev (SPA in `packages/marketing/`)
 - **App:** context-vault.com (SPA in `packages/app/`)
 
-## ICP (Ideal Customer Profile)
-
-- Solo AI developers
-- Technical founders shipping AI-powered products
-- Small product teams using Claude Code, Cursor, Codex, or GPT Actions
-
-## Core Pitch
-
-> AI sessions are stateless. Context Vault gives persistent memory through MCP in minutes.
-
-## CTAs
-
-- **Primary:** "Start free" → `appHref("/register")` (cross-origin to app)
-- **Secondary:** "See 2-minute setup" → `/get-started`
-
-## Content Pillars
-
-1. **Integration** — Setup guides for specific AI clients (Claude Code, Cursor, GPT Actions, Windsurf)
-2. **Playbook** — Practical workflows and use-case guides
-3. **Education** — Deep dives on architecture, retrieval, taxonomy design
-4. **Comparison** — Honest comparisons against alternatives (notes apps, static files, hosted-only tools)
-
 ## Key URLs
 
 | Resource | URL |
@@ -39,22 +17,6 @@
 | Marketing site | `https://contextvault.dev` |
 | App | `https://context-vault.com` |
 | Docs quickstart | `https://github.com/fellanH/context-vault/blob/main/docs/distribution/connect-in-2-minutes.md` |
-
-## GTM Docs Location
-
-All go-to-market strategy and tracking docs live in `docs/gtm/`:
-
-| File | Purpose |
-|------|---------|
-| `marketing-plan.md` | Landing page architecture, SEO, events, CRO backlog |
-| `content-tracker.md` | Status of all 32 content pieces (blog, video, BIP) |
-| `weekly-log.md` | Execution journal and weekly scorecard |
-| `pipeline.md` | Founder-led sales CRM |
-| `sales-playbook.md` | Core pitch, pipeline targets, objection handling |
-| `sales-assets.md` | Campaign materials, demo scripts, collateral status |
-| `funnel-metrics.md` | Funnel stages and 90-day numeric targets |
-| `assets/` | Campaign drafts (X threads, Reddit posts, HN posts, BIP posts) |
-| `demos/` | Demo video scripts |
 
 ## Tone
 
@@ -70,6 +32,7 @@ Every Claude Code working session follows this workflow:
 ### 1. Orient
 - Read `BACKLOG.md` to understand current priorities
 - Check `Now` section for active work items
+- Query context vault for recent sessions and decisions: `get_context` with tags `context-vault`
 
 ### 2. Pick
 - Work on an item from `Now`, or triage if the user requests it
@@ -90,6 +53,7 @@ Every Claude Code working session follows this workflow:
 ### 6. Update
 - Update `BACKLOG.md`: move completed items, add new signals, adjust priorities
 - If new work was discovered during the session, file GitHub issues
+- Save session outcomes to context vault for future reference
 
 ### Branch naming
 | Prefix | Use |
@@ -124,3 +88,10 @@ Every Claude Code working session follows this workflow:
 - Add community signals (Reddit, X, HN) to `Signals` section
 - Re-score `Next` items if priorities shifted
 - Pull top items into `Now` (max 3)
+
+## GTM Context
+
+For marketing, sales, and content work, read `docs/gtm/GTM-CONTEXT.md` which contains ICP, CTAs, content pillars, and the GTM docs index.
+
+# currentDate
+Today's date is 2026-02-20.

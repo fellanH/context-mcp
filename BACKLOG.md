@@ -14,20 +14,14 @@ Active work. Hard cap: 3 items. Finish or demote before adding.
 
 ---
 
-## Done (v2.6.0 / v2.6.1)
+## Done
 
-| Item | Source | Issue | Release |
-|------|--------|-------|---------|
-| ~~Add unit tests for `hybridSearch`~~ | [qa] | #1 — PR #15, 46 tests | v2.5.1 |
-| ~~Add input size limits to local MCP tools~~ | [qa] | #2 | v2.6.0 |
-| ~~Fix schema version string in `context_status` output~~ | [qa] | #3 | v2.6.0 |
-| ~~Add unit tests for `safeJoin` / `safeFolderPath` path traversal guards~~ | [qa] | #4 | v2.6.0 |
-| ~~Add unit tests for config resolution chain~~ | [qa] | #5 | v2.6.0 |
-| ~~Document encryption trade-offs~~ | [internal] | #6 | v2.6.0 |
-| ~~Add unit tests for `entry-validation.js` field validators~~ | [qa] | #7 | v2.6.0 |
-| ~~Consolidate duplicate import routes in hosted package~~ | [internal] | #8 | v2.6.0 |
-| ~~Clean up startup: remove double `initMetaDb`, fix stale singleton~~ | [internal] | #9 | v2.6.0 |
-| ~~Fix schema version in CLI status command (v5 → v7)~~ | [internal] | — | v2.6.1 |
+_Only the latest release. Older items archived — see CHANGELOG.md and git history for full record._
+
+| Item | Issue | Release |
+|------|-------|---------|
+| Fix schema version in CLI status command (v5 → v7) | — | v2.6.1 |
+| Input size limits, schema fix, tests (#2-#7), route/startup cleanup (#8-#9) | #2–#9 | v2.6.0 |
 
 ---
 
