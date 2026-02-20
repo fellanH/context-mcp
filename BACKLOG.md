@@ -1,6 +1,6 @@
 # Backlog
 
-**Last triaged:** 2026-02-20 (AI dev workflow items added)
+**Last triaged:** 2026-02-20 (workflow overhaul session)
 
 ---
 
@@ -20,6 +20,11 @@ _Only the latest release. Older items archived — see CHANGELOG.md and git hist
 
 | Item                                                                          | Issue | Release |
 | ----------------------------------------------------------------------------- | ----- | ------- |
+| Dev playbook + guardian system (CLAUDE.md, DEV-PLAYBOOK.md, INBOX.md)         | #65   | —       |
+| Hosted dashboard for local vaults (`context-vault ui` → hosted UI)            | #61   | —       |
+| Path-scope CI/deploy workflows + fix staging `--prod` bug                     | #62   | —       |
+| Branch ownership rules in all agent definitions                               | #63   | —       |
+| Sprint tracking + branch ownership in session protocol (CLAUDE.md)            | #64   | —       |
 | Restructure reindex to separate sync DB ops from async embedding              | #29   | v2.8.0  |
 | Remove `captureAndIndex` callback indirection (always `indexEntry`)           | —     | v2.8.0  |
 | Add reindex unit test coverage (12 tests)                                     | —     | v2.8.0  |
