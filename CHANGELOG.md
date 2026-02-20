@@ -2,6 +2,16 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.7.1] — 2026-02-20
+
+### Added
+- **Paginated export for large vaults** — hosted `GET /api/vault/export` accepts optional `?limit=N&offset=N` query params, returns `{entries, total, limit, offset, hasMore}` (#13)
+- CLI `context-vault export` gains `--page-size N` flag for chunked memory-safe export
+- 6 new integration tests for paginated export queries
+
+### Test suite
+- **392 tests** across 23 test files
+
 ## [2.7.0] — 2026-02-20
 
 ### Added
