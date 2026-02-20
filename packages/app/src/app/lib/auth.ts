@@ -7,6 +7,7 @@ export interface AuthState {
   vaultMode: VaultMode;
   isAuthenticated: boolean;
   isLoading: boolean;
+  localServerDown: boolean;
   loginWithApiKey: (key: string) => Promise<void>;
   loginWithLocalVault: (vaultDir: string) => Promise<void>;
   register: (email: string, name?: string) => Promise<{ apiKey: string }>;

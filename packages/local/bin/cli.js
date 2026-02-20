@@ -1116,10 +1116,21 @@ function launchServer(port, localServer) {
   const child = fork(localServer, [`--port=${port}`], { stdio: "inherit" });
   child.on("exit", (code) => process.exit(code ?? 0));
 
-  // Open browser after a short delay
-  setTimeout(() => {
+  // Open browser after a short delay — prefer hosted UI if reachable
+  setTimeout(async () => {
     try {
-      const url = `http://localhost:${port}`;
+      let url = `http://localhost:${port}`;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        await fetch("https://context-vault.com", {
+          method: "HEAD",
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        url = `https://context-vault.com?local=${port}`;
+      } catch {}
+      console.log(`Opening ${url}`);
       const open =
         PLATFORM === "darwin"
           ? "open"

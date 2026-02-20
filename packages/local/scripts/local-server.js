@@ -103,6 +103,19 @@ function validateEntry(data, { requireKind = true, requireBody = true } = {}) {
   return null;
 }
 
+function getAllowedOrigin(req) {
+  const origin = req.headers["origin"];
+  if (!origin) return null;
+  const lower = origin.toLowerCase();
+  if (
+    lower === "https://context-vault.com" ||
+    lower === "https://www.context-vault.com"
+  )
+    return origin;
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(lower)) return origin;
+  return null;
+}
+
 async function main() {
   const portArg = process.argv.find((a) => a.startsWith("--port="));
   const portVal = portArg
@@ -136,13 +149,19 @@ async function main() {
   const server = createServer(async (req, res) => {
     const url = req.url?.replace(/\?.*$/, "") || "/";
 
-    // ─── CORS Preflight ───────────────────────────────────────────────────────
+    // ─── CORS ──────────────────────────────────────────────────────────────────
+    const allowedOrigin = getAllowedOrigin(req);
+    const corsHeaders = allowedOrigin
+      ? {
+          "Access-Control-Allow-Origin": allowedOrigin,
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          Vary: "Origin",
+        }
+      : { Vary: "Origin" };
+
     if (req.method === "OPTIONS") {
-      res.writeHead(204, {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      });
+      res.writeHead(204, corsHeaders);
       res.end();
       return;
     }
@@ -150,9 +169,7 @@ async function main() {
     const json = (data, status = 200) => {
       res.writeHead(status, {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        ...corsHeaders,
       });
       res.end(JSON.stringify(data));
     };
@@ -252,6 +269,11 @@ async function main() {
           500,
         );
       }
+    }
+
+    // ─── API: GET /api/health — lightweight liveness check ────────────────────
+    if (url === "/api/health" && req.method === "GET") {
+      return json({ ok: true, mode: "local" });
     }
 
     // ─── API: /api/me (local mode — no auth) ─────────────────────────────────
@@ -582,7 +604,7 @@ async function main() {
         }
         res.writeHead(200, {
           "Content-Type": "text/csv",
-          "Access-Control-Allow-Origin": "*",
+          ...corsHeaders,
         });
         res.end(csvLines.join("\n"));
         return;

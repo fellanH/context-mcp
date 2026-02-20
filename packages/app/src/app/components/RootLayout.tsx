@@ -16,6 +16,7 @@ import {
   Loader2,
   ExternalLink,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "./ui/button";
@@ -48,6 +49,7 @@ const settingsItems: NavItem[] = [
   { path: "/settings/billing", label: "Billing", icon: CreditCard },
   { path: "/settings/data", label: "Data", icon: Database },
   { path: "/settings/account", label: "Account", icon: User },
+  { path: "/settings/sync", label: "Sync", icon: RefreshCw },
 ];
 
 function getPageTitle(pathname: string): string {
@@ -56,7 +58,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.startsWith("/team/")) return "Team";
   const all = [...mainItems, ...vaultItems, ...settingsItems];
   const match = all.find((item) =>
-    item.path === "/" ? pathname === "/" : pathname.startsWith(item.path)
+    item.path === "/" ? pathname === "/" : pathname.startsWith(item.path),
   );
   return match?.label || "Context Vault";
 }
@@ -65,9 +67,19 @@ export function RootLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
-  const { user, isAuthenticated, isLoading: authLoading, logout, vaultMode } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
+    localServerDown,
+    logout,
+    vaultMode,
+  } = useAuth();
   const { data: usage, isLoading: usageLoading } = useUsage();
-  const vaultStatus = useVaultStatus({ enabled: isAuthenticated, refetchInterval: 15000 });
+  const vaultStatus = useVaultStatus({
+    enabled: isAuthenticated,
+    refetchInterval: 15000,
+  });
   const { data: teams } = useTeams();
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
@@ -91,6 +103,31 @@ export function RootLayout() {
     );
   }
 
+  // Local server not running — show helpful message
+  if (localServerDown) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4 max-w-sm">
+          <Database className="size-10 mx-auto text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Local server not running</h2>
+          <p className="text-sm text-muted-foreground">
+            Start the local vault server to connect:
+          </p>
+          <code className="block bg-muted rounded-md px-4 py-2 text-sm font-mono">
+            context-vault ui
+          </code>
+          <div className="pt-2">
+            <Link to="/login">
+              <Button variant="outline" size="sm">
+                Use hosted mode instead
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Not authenticated — redirect to login
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -107,20 +144,31 @@ export function RootLayout() {
   };
 
   const initials = user?.name
-    ? user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
     : user?.email?.[0]?.toUpperCase() || "?";
   const isLocalMode = vaultMode === "local";
+  const filteredSettingsItems = isLocalMode
+    ? settingsItems.filter((item) =>
+        ["Data", "Account", "Sync"].includes(item.label),
+      )
+    : settingsItems;
   const modeLabel = isLocalMode ? "Local" : "Hosted";
   const connectionState = vaultStatus.isError
     ? "Disconnected"
     : vaultStatus.data?.health === "degraded"
       ? "Degraded"
       : "Connected";
-  const connectionBadgeClass = connectionState === "Connected"
-    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-    : connectionState === "Degraded"
-      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-      : "border-border bg-muted text-muted-foreground";
+  const connectionBadgeClass =
+    connectionState === "Connected"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+      : connectionState === "Degraded"
+        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+        : "border-border bg-muted text-muted-foreground";
 
   const isUnlimited = (limit: number) => !isFinite(limit);
 
@@ -140,32 +188,42 @@ export function RootLayout() {
           <NavSection label="Main" items={mainItems} isActive={isActive} />
           <NavSection label="Vault" items={vaultItems} isActive={isActive} />
           {/* Teams */}
-          <div className="space-y-0.5">
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Teams</div>
-            {teams?.map((team) => (
-              <Link key={team.id} to={`/team/${team.id}`}>
+          {!isLocalMode && (
+            <div className="space-y-0.5">
+              <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                Teams
+              </div>
+              {teams?.map((team) => (
+                <Link key={team.id} to={`/team/${team.id}`}>
+                  <Button
+                    variant={
+                      isActive(`/team/${team.id}`) ? "secondary" : "ghost"
+                    }
+                    className="w-full justify-start text-sm"
+                    size="sm"
+                  >
+                    <Users className="size-4 mr-2" />
+                    {team.name}
+                  </Button>
+                </Link>
+              ))}
+              <Link to="/team/new">
                 <Button
-                  variant={isActive(`/team/${team.id}`) ? "secondary" : "ghost"}
-                  className="w-full justify-start text-sm"
+                  variant={isActive("/team/new") ? "secondary" : "ghost"}
+                  className="w-full justify-start text-sm text-muted-foreground"
                   size="sm"
                 >
-                  <Users className="size-4 mr-2" />
-                  {team.name}
+                  <Plus className="size-4 mr-2" />
+                  New Team
                 </Button>
               </Link>
-            ))}
-            <Link to="/team/new">
-              <Button
-                variant={isActive("/team/new") ? "secondary" : "ghost"}
-                className="w-full justify-start text-sm text-muted-foreground"
-                size="sm"
-              >
-                <Plus className="size-4 mr-2" />
-                New Team
-              </Button>
-            </Link>
-          </div>
-          <NavSection label="Settings" items={settingsItems} isActive={isActive} />
+            </div>
+          )}
+          <NavSection
+            label="Settings"
+            items={filteredSettingsItems}
+            isActive={isActive}
+          />
         </nav>
 
         {/* Extension link */}
@@ -207,9 +265,13 @@ export function RootLayout() {
               )}
               <div className="flex items-center justify-between mt-1">
                 {user?.tier && <TierBadge tier={user.tier} />}
-                <Link to="/settings/billing">
-                  <Button variant="ghost" size="sm" className="text-xs h-6 px-2">
-                    Upgrade
+                <Link to={isLocalMode ? "/register" : "/settings/billing"}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-6 px-2"
+                  >
+                    {isLocalMode ? "Go Hosted" : "Upgrade"}
                   </Button>
                 </Link>
               </div>
@@ -223,8 +285,12 @@ export function RootLayout() {
         {/* Top Bar */}
         <header className="h-14 border-b border-border bg-card px-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-medium">{getPageTitle(location.pathname)}</h2>
-            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${connectionBadgeClass}`}>
+            <h2 className="text-sm font-medium">
+              {getPageTitle(location.pathname)}
+            </h2>
+            <span
+              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${connectionBadgeClass}`}
+            >
               {modeLabel} • {connectionState}
             </span>
           </div>
@@ -249,7 +315,11 @@ export function RootLayout() {
               className="size-8"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             >
-              {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+              {theme === "dark" ? (
+                <Sun className="size-4" />
+              ) : (
+                <Moon className="size-4" />
+              )}
             </Button>
 
             {/* Avatar dropdown */}
@@ -268,8 +338,12 @@ export function RootLayout() {
               {avatarOpen && (
                 <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-card shadow-lg py-1 z-50">
                   <div className="px-3 py-2 border-b border-border">
-                    <p className="text-sm font-medium truncate">{user?.name || user?.email}</p>
-                    <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                    <p className="text-sm font-medium truncate">
+                      {user?.name || user?.email}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {user?.email}
+                    </p>
                   </div>
                   <Link
                     to="/settings/account"
@@ -279,14 +353,16 @@ export function RootLayout() {
                     <User className="size-3.5" />
                     Account
                   </Link>
-                  <Link
-                    to="/settings/api-keys"
-                    className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors"
-                    onClick={() => setAvatarOpen(false)}
-                  >
-                    <Key className="size-3.5" />
-                    API Keys
-                  </Link>
+                  {!isLocalMode && (
+                    <Link
+                      to="/settings/api-keys"
+                      className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors"
+                      onClick={() => setAvatarOpen(false)}
+                    >
+                      <Key className="size-3.5" />
+                      API Keys
+                    </Link>
+                  )}
                   <button
                     type="button"
                     onClick={handleLogout}
@@ -324,7 +400,9 @@ function NavSection({
 }) {
   return (
     <div className="space-y-0.5">
-      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+        {label}
+      </div>
       {items.map((item) => {
         const Icon = item.icon;
         return (
