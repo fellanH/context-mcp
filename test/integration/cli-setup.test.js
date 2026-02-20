@@ -173,14 +173,10 @@ describe("setup --skip-embeddings", () => {
     const { stdout } = runCli("setup --yes --skip-embeddings", {
       timeout: 60000,
     });
-    // If no AI tools are detected, setup exits early before reaching the
-    // embeddings step, so the --skip-embeddings flag is never evaluated.
-    if (stdout.includes("No supported tools detected")) {
-      expect(stdout).toContain("No supported tools detected");
-    } else {
-      expect(stdout).toContain("skipped");
-      expect(stdout).toContain("FTS-only mode");
-    }
+    // --yes mode now always continues through the full setup flow,
+    // even when no tools are detected (sets selected = []).
+    expect(stdout).toContain("skipped");
+    expect(stdout).toContain("FTS-only mode");
   });
 });
 
@@ -249,5 +245,87 @@ describe("platform helpers", () => {
     }
     expect(typeof expected).toBe("string");
     expect(expected.length).toBeGreaterThan(0);
+  });
+});
+
+describe("full setup flow E2E", () => {
+  let tmpHome;
+
+  beforeAll(() => {
+    tmpHome = mkdtempSync(join(tmpdir(), "cv-e2e-setup-"));
+  });
+
+  afterAll(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it("completes setup --yes --skip-embeddings in an isolated HOME", () => {
+    const { stdout, stderr, exitCode } = runCli(
+      "setup --yes --skip-embeddings",
+      { env: { HOME: tmpHome }, timeout: 60000 }
+    );
+
+    expect(exitCode).toBe(0);
+
+    // Vault directory created
+    const vaultDir = join(tmpHome, "vault");
+    expect(existsSync(vaultDir)).toBe(true);
+
+    // Config written
+    const configPath = join(tmpHome, ".context-mcp", "config.json");
+    expect(existsSync(configPath)).toBe(true);
+    const config = JSON.parse(readFileSync(configPath, "utf-8"));
+    expect(config.vaultDir).toBe(vaultDir);
+    expect(config.dbPath).toBeDefined();
+
+    // Seed entries created
+    const seedPath = join(vaultDir, "knowledge", "insights", "getting-started.md");
+    expect(existsSync(seedPath)).toBe(true);
+    const seedContent = readFileSync(seedPath, "utf-8");
+    expect(seedContent).toContain("getting-started");
+
+    // Health check ran and shows timing
+    expect(stdout).toContain("Health check");
+    expect(stdout).toContain("Setup complete");
+    // Timing should be present (e.g. "1.2s")
+    expect(stdout).toMatch(/\d+\.\d+s/);
+  });
+});
+
+describe("seed entry searchability", () => {
+  let testCtx;
+  let cleanup;
+
+  beforeAll(async () => {
+    const { createTestCtx } = await import("../helpers/ctx.js");
+    const result = await createTestCtx();
+    testCtx = result.ctx;
+    cleanup = result.cleanup;
+  });
+
+  afterAll(() => {
+    if (cleanup) cleanup();
+  });
+
+  it("seed entry is findable via hybridSearch", async () => {
+    const { captureAndIndex } = await import("@context-vault/core/capture");
+    const { indexEntry } = await import("@context-vault/core/index");
+    const { hybridSearch } = await import("@context-vault/core/retrieve");
+
+    // Write a seed-format entry
+    const entry = {
+      kind: "insight",
+      title: "Getting Started with Context Vault",
+      body: "Welcome to your context vault! This is a seed entry created during setup.\n\nYour vault stores knowledge as plain markdown files with YAML frontmatter.",
+      tags: ["getting-started", "vault"],
+      source: "context-vault-setup",
+    };
+
+    await captureAndIndex(testCtx, entry, indexEntry);
+
+    // Search for it
+    const results = await hybridSearch(testCtx, "getting started");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].title).toContain("Getting Started");
   });
 });
