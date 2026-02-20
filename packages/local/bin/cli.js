@@ -1093,7 +1093,7 @@ async function runStatus() {
   console.log(`  Data dir:  ${config.dataDir}`);
   console.log(`  Config:    ${config.configPath} ${dim(`(${existsSync(config.configPath) ? "exists" : "missing"})`)}`);
   console.log(`  Resolved:  ${status.resolvedFrom}`);
-  console.log(`  Schema:    v5 (categories)`);
+  console.log(`  Schema:    v7 (teams)`);
 
   if (status.kindCounts.length) {
     const BAR_WIDTH = 20;
