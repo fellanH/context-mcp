@@ -20,6 +20,7 @@ _Only the latest release. Older items archived — see CHANGELOG.md and git hist
 
 | Item | Issue | Release |
 |------|-------|---------|
+| Code-as-documentation overhaul (DEVELOPER.md, CLAUDE.md, archive CODE_REVIEW) | #26 | — |
 | Split CI and deploy into separate workflows | #24 | — |
 | Paginated export for large vaults (replace load-all with limit/offset) | #13 | — |
 | Cache `buildUserCtx` per connection instead of per request | #14 | — |
@@ -35,8 +36,8 @@ Ordered by ICE score (Impact × Confidence × Ease). Pull from top when `Now` ha
 
 | Item | ICE | Source | Issue |
 |------|-----|--------|-------|
-| Restructure reindex to separate sync DB ops from async embedding | 24 | CODE_REVIEW | — |
-| Remove `captureAndIndex` callback indirection (always `indexEntry`) | 20 | CODE_REVIEW | — |
+| Restructure reindex to separate sync DB ops from async embedding | 24 | code review (archived) | — |
+| Remove `captureAndIndex` callback indirection (always `indexEntry`) | 20 | code review (archived) | — |
 
 ---
 
@@ -76,3 +77,4 @@ Key architectural choices made during development. Reference, not action items.
 | 2026-02-20 | Always grep whole repo before fixing hardcoded values | v2.6.0 missed CLI schema string (v5) while fixing MCP tool (v6→v7). Required v2.6.1 patch. |
 | 2026-02-20 | Dogfood every release — install globally + verify MCP | Catches issues that tests miss (stale MCP server, registry propagation, etc.) |
 | 2026-02-20 | Separate CI (test-and-build) from deploy pipeline | CI stays lean for PR validation; deploy chains via `workflow_run` + gate job. Manual deploy via `workflow_dispatch`. |
+| 2026-02-20 | Code-as-documentation: docs cover only why/where, never what/how | Code tells what/how, tests tell behavior, docs tell why/where. Pointers over prose. Cuts agent context waste and prevents stale docs. |
