@@ -1,6 +1,6 @@
 # Backlog
 
-**Last triaged:** 2026-02-20 (workflow overhaul session)
+**Last triaged:** 2026-02-21 (workflow ops session)
 
 ---
 
@@ -8,9 +8,9 @@
 
 Active work. Hard cap: 3 items. Finish or demote before adding.
 
-| Item                     | Source | Issue |
-| ------------------------ | ------ | ----- |
-| _Empty — pull from Next_ |        |       |
+| Item                                                       | Source               | Issue |
+| ---------------------------------------------------------- | -------------------- | ----- |
+| Operational workflow scaffolding (PROJECT-STATE, FEEDBACK) | workflow ops session | —     |
 
 ---
 
@@ -18,23 +18,25 @@ Active work. Hard cap: 3 items. Finish or demote before adding.
 
 _Only the latest release. Older items archived — see CHANGELOG.md and git history for full record._
 
-| Item                                                                          | Issue | Release |
-| ----------------------------------------------------------------------------- | ----- | ------- |
-| Dev playbook + guardian system (CLAUDE.md, DEV-PLAYBOOK.md, INBOX.md)         | #65   | —       |
-| Hosted dashboard for local vaults (`context-vault ui` → hosted UI)            | #61   | —       |
-| Path-scope CI/deploy workflows + fix staging `--prod` bug                     | #62   | —       |
-| Branch ownership rules in all agent definitions                               | #63   | —       |
-| Sprint tracking + branch ownership in session protocol (CLAUDE.md)            | #64   | —       |
-| Restructure reindex to separate sync DB ops from async embedding              | #29   | v2.8.0  |
-| Remove `captureAndIndex` callback indirection (always `indexEntry`)           | —     | v2.8.0  |
-| Add reindex unit test coverage (12 tests)                                     | —     | v2.8.0  |
-| Code-as-documentation overhaul (DEVELOPER.md, CLAUDE.md, archive CODE_REVIEW) | #26   | —       |
-| Split CI and deploy into separate workflows                                   | #24   | —       |
-| Paginated export for large vaults (replace load-all with limit/offset)        | #13   | —       |
-| Cache `buildUserCtx` per connection instead of per request                    | #14   | —       |
-| Add ESLint config and `tsconfig.json` to `packages/app`                       | #10   | v2.7.0  |
-| Refactor `tools.js` into individual tool handler modules                      | #11   | v2.7.0  |
-| Add JSDoc `@typedef` for `ctx` shapes per mode                                | #12   | v2.7.0  |
+| Item                                                                                    | Issue | Release |
+| --------------------------------------------------------------------------------------- | ----- | ------- |
+| Operational workflow scaffolding (PROJECT-STATE.md, FEEDBACK.md, NORTH-STAR protection) | —     | —       |
+| Configure Claude Code hooks (file protection, auto-test, stop-verify)                   | #42   | —       |
+| Dev playbook + guardian system (CLAUDE.md, DEV-PLAYBOOK.md, INBOX.md)                   | #65   | —       |
+| Hosted dashboard for local vaults (`context-vault ui` → hosted UI)                      | #61   | —       |
+| Path-scope CI/deploy workflows + fix staging `--prod` bug                               | #62   | —       |
+| Branch ownership rules in all agent definitions                                         | #63   | —       |
+| Sprint tracking + branch ownership in session protocol (CLAUDE.md)                      | #64   | —       |
+| Restructure reindex to separate sync DB ops from async embedding                        | #29   | v2.8.0  |
+| Remove `captureAndIndex` callback indirection (always `indexEntry`)                     | —     | v2.8.0  |
+| Add reindex unit test coverage (12 tests)                                               | —     | v2.8.0  |
+| Code-as-documentation overhaul (DEVELOPER.md, CLAUDE.md, archive CODE_REVIEW)           | #26   | —       |
+| Split CI and deploy into separate workflows                                             | #24   | —       |
+| Paginated export for large vaults (replace load-all with limit/offset)                  | #13   | —       |
+| Cache `buildUserCtx` per connection instead of per request                              | #14   | —       |
+| Add ESLint config and `tsconfig.json` to `packages/app`                                 | #10   | v2.7.0  |
+| Refactor `tools.js` into individual tool handler modules                                | #11   | v2.7.0  |
+| Add JSDoc `@typedef` for `ctx` shapes per mode                                          | #12   | v2.7.0  |
 
 ---
 
@@ -44,9 +46,8 @@ Ordered by ICE score (Impact × Confidence × Ease). Pull from top when `Now` ha
 
 | Item                                                                                | ICE | Source               | Issue |
 | ----------------------------------------------------------------------------------- | --- | -------------------- | ----- |
-| Configure Claude Code hooks (file protection, auto-test, orient, self-verify Stop)  | 100 | AI workflow research | —     |
-| Add `claude-code-action` workflow (PR review, issue triage, @claude mentions)       | 64  | AI workflow research | —     |
-| Add headless CI checks (duplicate constant detector, cross-package impact analysis) | 36  | AI workflow research | —     |
+| Add `claude-code-action` workflow (PR review, issue triage, @claude mentions)       | 64  | AI workflow research | #43   |
+| Add headless CI checks (duplicate constant detector, cross-package impact analysis) | 36  | AI workflow research | #51   |
 
 ---
 
