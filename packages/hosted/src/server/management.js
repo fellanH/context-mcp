@@ -830,7 +830,7 @@ export function createManagementRoutes(ctx) {
   // ─── Vault Export (for migration) ───────────────────────────────────────────
   // NOTE: Import routes (single + bulk) are in vault-api.js with standard auth middleware
 
-  /** Export all vault entries */
+  /** Export vault entries (supports pagination via ?limit=N&offset=N) */
   api.get("/api/vault/export", async (c) => {
     const user = requireAuth(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -842,9 +842,27 @@ export function createManagementRoutes(ctx) {
 
     const userCtx = await getCachedUserCtx(ctx, user, VAULT_MASTER_SECRET);
 
-    const rows = userCtx.db.prepare(
-      `SELECT id, kind, title, body, tags, source, created_at, identity_key, expires_at, meta, body_encrypted, title_encrypted, meta_encrypted, iv FROM vault WHERE user_id = ? OR user_id IS NULL ORDER BY created_at ASC`
-    ).all(user.userId);
+    // Pagination params (optional — omit for full export, backward compat)
+    const rawLimit = c.req.query("limit");
+    const rawOffset = c.req.query("offset");
+    const paginated = rawLimit != null || rawOffset != null;
+    const limit = Math.max(1, Math.min(parseInt(rawLimit, 10) || 100, 1000));
+    const offset = Math.max(0, parseInt(rawOffset, 10) || 0);
+
+    const whereClause = `WHERE user_id = ? OR user_id IS NULL`;
+    const selectCols = `id, kind, title, body, tags, source, created_at, identity_key, expires_at, meta, body_encrypted, title_encrypted, meta_encrypted, iv`;
+
+    const total = userCtx.db.prepare(
+      `SELECT COUNT(*) as c FROM vault ${whereClause}`
+    ).get(user.userId).c;
+
+    const rows = paginated
+      ? userCtx.db.prepare(
+          `SELECT ${selectCols} FROM vault ${whereClause} ORDER BY created_at ASC LIMIT ? OFFSET ?`
+        ).all(user.userId, limit, offset)
+      : userCtx.db.prepare(
+          `SELECT ${selectCols} FROM vault ${whereClause} ORDER BY created_at ASC`
+        ).all(user.userId);
 
     const masterSecret = process.env.VAULT_MASTER_SECRET;
     const clientKeyShare = user.clientKeyShare || null;
@@ -873,7 +891,14 @@ export function createManagementRoutes(ctx) {
       };
     });
 
-    return c.json({ entries });
+    const response = { entries, total };
+    if (paginated) {
+      response.limit = limit;
+      response.offset = offset;
+      response.hasMore = offset + entries.length < total;
+    }
+
+    return c.json(response);
   });
 
   return api;
