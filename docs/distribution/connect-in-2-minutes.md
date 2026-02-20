@@ -1,15 +1,35 @@
-# Connect in 2 Minutes
+# Connect in 2 Minutes (Hosted)
 
-Canonical hosted base URL used in this repo:
+Use Context Vault in the cloud — no local install, no Node.js. Works across devices. Sign up at [context-vault.com](https://www.context-vault.com/), get an API key, then add the MCP endpoint to your AI tool.
 
-- App: `https://www.context-vault.com/`
-- MCP: `https://www.context-vault.com/mcp`
-- OpenAPI: `https://www.context-vault.com/api/vault/openapi.json`
-- Privacy: `https://www.context-vault.com/privacy`
+**Endpoints:**
 
-## 1. Claude Code
+| Service | URL |
+|---------|-----|
+| App | `https://www.context-vault.com/` |
+| MCP | `https://www.context-vault.com/mcp` |
+| OpenAPI | `https://www.context-vault.com/api/vault/openapi.json` |
+| Privacy | `https://www.context-vault.com/privacy` |
 
-Add this to your Claude Code MCP config:
+---
+
+## 1. Get an API key
+
+1. Go to [context-vault.com](https://www.context-vault.com/)
+2. Sign up (Google OAuth or email)
+3. Copy your `cv_...` API key from the dashboard
+
+**Or** use the CLI connect command — it auto-detects tools and configures MCP:
+
+```bash
+npx context-vault connect --key cv_YOUR_API_KEY
+```
+
+---
+
+## 2. Claude Code
+
+Add to your Claude Code MCP config:
 
 ```json
 {
@@ -17,34 +37,38 @@ Add this to your Claude Code MCP config:
     "context-vault": {
       "url": "https://www.context-vault.com/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_API_KEY"
+        "Authorization": "Bearer cv_YOUR_API_KEY"
       }
     }
   }
 }
 ```
 
-## 2. Cursor
+---
 
-Configure an MCP server in Cursor with the same endpoint and bearer token:
+## 3. Cursor
 
-- URL: `https://www.context-vault.com/mcp`
-- Header: `Authorization: Bearer YOUR_API_KEY`
+Add an MCP server in Cursor settings:
 
-## 3. GPT Actions
+- **URL:** `https://www.context-vault.com/mcp`
+- **Header:** `Authorization: Bearer cv_YOUR_API_KEY`
 
-In GPT Actions:
+---
+
+## 4. GPT Actions
 
 1. Import OpenAPI from `https://www.context-vault.com/api/vault/openapi.json`
 2. Configure Bearer auth with your `cv_...` key
 3. Set privacy URL to `https://www.context-vault.com/privacy`
 
-## 4. Validate
+---
 
-After setup, run this sequence in your client:
+## 5. Validate
 
-1. `context_status`
+In your AI client, run:
+
+1. `context_status` — should show vault info
 2. `save_context` with a short insight
 3. `get_context` with a matching query
 
-If all three succeed, the integration is production-ready.
+All three succeed → you're ready.
