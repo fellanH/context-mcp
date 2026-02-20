@@ -10,7 +10,7 @@ import { formatFrontmatter } from "../core/frontmatter.js";
 import { slugify, kindToPath } from "../core/files.js";
 import { formatBody } from "./formatters.js";
 
-function safeFolderPath(vaultDir, kind, folder) {
+export function safeFolderPath(vaultDir, kind, folder) {
   const base = resolve(vaultDir, kindToPath(kind));
   if (!folder) return base;
   const resolved = resolve(base, folder);
