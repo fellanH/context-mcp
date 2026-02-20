@@ -14,6 +14,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -122,6 +123,7 @@ export function LandingPage() {
                 <CardTitle className="text-base">{pillar.title}</CardTitle>
                 <CardDescription>{pillar.body}</CardDescription>
               </CardHeader>
+              <CardFooter />
             </Card>
           ))}
         </div>
@@ -196,6 +198,7 @@ export function LandingPage() {
                 <CardTitle className="text-base">{item.title}</CardTitle>
                 <CardDescription>{item.body}</CardDescription>
               </CardHeader>
+              <CardFooter />
             </Card>
           ))}
         </div>
@@ -226,6 +229,13 @@ export function LandingPage() {
                   </CardTitle>
                   <CardDescription>{post.description}</CardDescription>
                 </CardHeader>
+                <CardFooter>
+                  <Button asChild variant="outline" size="sm" className="w-fit">
+                    <Link to={`/blog/${post.slug}`}>
+                      Read post <ArrowRight className="size-4" />
+                    </Link>
+                  </Button>
+                </CardFooter>
               </Card>
             ))}
           </div>

@@ -14,6 +14,9 @@ import { Billing } from "./pages/settings/Billing";
 import { DataManagement } from "./pages/settings/DataManagement";
 import { Account } from "./pages/settings/Account";
 import { Sync } from "./pages/settings/Sync";
+import { TeamCreate } from "./pages/team/Create";
+import { TeamDashboard } from "./pages/team/Dashboard";
+import { TeamInvite } from "./pages/team/Invite";
 
 export const router = createBrowserRouter([
   { path: "/login", Component: Login },
@@ -29,6 +32,9 @@ export const router = createBrowserRouter([
       { path: "vault/knowledge", Component: Knowledge },
       { path: "vault/entities", Component: Entities },
       { path: "vault/events", Component: Events },
+      { path: "team/new", Component: TeamCreate },
+      { path: "team/:id", Component: TeamDashboard },
+      { path: "team/invite", Component: TeamInvite },
       { path: "settings/api-keys", Component: ApiKeys },
       { path: "settings/billing", Component: Billing },
       { path: "settings/data", Component: DataManagement },

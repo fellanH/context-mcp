@@ -183,7 +183,7 @@ export function Sync() {
                   id="hostedUrl"
                   value={hostedUrl}
                   onChange={(e) => setHostedUrl(e.target.value)}
-                  placeholder="https://www.context-vault.com"
+                  placeholder="https://api.context-vault.com"
                 />
               </div>
               <Button size="sm" onClick={handleLink} disabled={linking || !apiKey.trim()}>

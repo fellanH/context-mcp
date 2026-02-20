@@ -17,6 +17,78 @@ export type BlogPost = {
 
 export const posts: BlogPost[] = [
   {
+    slug: "designing-kinds-tags-folders-for-long-term-memory-quality",
+    title: "Designing Kinds, Tags, and Folders for Long-Term Memory Quality",
+    description:
+      "How to structure your vault taxonomy so retrieval stays precise as your knowledge base grows from dozens to thousands of entries.",
+    category: "Education",
+    publishedAt: "2026-02-24",
+    readTimeMinutes: 8,
+    ctaLabel: "Start free",
+    ctaHref: "/register",
+    sections: [
+      {
+        heading: "Why taxonomy decides retrieval quality",
+        paragraphs: [
+          "A memory system is only as useful as its ability to return the right entry at the right time. When your vault has 50 entries, almost any search works. When it has 500 or 5,000, the difference between a well-structured taxonomy and a flat dump of notes becomes the difference between an agent that finds what it needs on the first query and one that drowns in irrelevant results.",
+          "Context Vault organizes entries along three axes: kind, tags, and folders. Each serves a distinct purpose in the retrieval pipeline. Kind determines the structural category of an entry. Tags enable cross-cutting queries that span multiple kinds. Folders provide physical grouping within a kind for project or domain isolation.",
+          "Getting this taxonomy right early saves significant rework later. Renaming kinds or restructuring folders after hundreds of entries exist is tedious. The goal of this guide is to help you design a taxonomy that scales cleanly from your first entry to your ten-thousandth.",
+        ],
+      },
+      {
+        heading: "Kinds: the primary organizing axis",
+        paragraphs: [
+          "Every entry in Context Vault has a kind that determines its directory on disk and its behavior during retrieval. The system ships with built-in kinds organized into three categories. Knowledge kinds like insight, decision, pattern, prompt, note, document, and reference are append-only and endure indefinitely. Entity kinds like contact, project, tool, and source are updated in place using an identity key. Event kinds like conversation, message, session, and log have decaying relevance and are automatically time-windowed during search.",
+          "The most common mistake is overloading a single kind. Saving everything as a note creates a flat namespace where retrieval cannot distinguish an architectural decision from a debugging observation from a meeting summary. Instead, use the most specific kind that fits. If you made a choice between two approaches and want to remember why, that is a decision. If you discovered a reusable code pattern, that is a pattern. If you learned something surprising about an API, that is an insight.",
+          "Custom kinds are supported and default to the knowledge category. If your workflow produces a type of entry that does not fit the built-in kinds, create a new one. A vault focused on content marketing might add kinds like draft or campaign. A vault for research work might add experiment or hypothesis. The system creates the directory automatically on first use.",
+          "To verify your kind assignments are working, run a get_context query filtered by kind and check whether the results are coherent. If querying for kind decision returns a mix of decisions and general notes, your kind boundaries need tightening.",
+        ],
+      },
+      {
+        heading: "Tags: cross-cutting retrieval filters",
+        paragraphs: [
+          "Tags are free-form strings attached to any entry regardless of kind. They enable queries that cut across the kind hierarchy. A tag like auth might appear on decisions about authentication architecture, patterns for token refresh logic, and references to OAuth documentation. Searching by that tag returns all three, which is exactly what you want when starting a session focused on the auth system.",
+          "Design tags around domains and features, not around time or process stages. Tags like billing, onboarding, api-v2, or postgres are durable and useful for retrieval months later. Tags like sprint-12, tuesday-standup, or wip are ephemeral and quickly become noise. If you need temporal filtering, use the since and until parameters on get_context instead of encoding dates into tags.",
+          "Keep your tag vocabulary small and consistent. A vault with 200 unique tags across 500 entries is harder to query than one with 30 well-chosen tags. Before creating a new tag, check whether an existing one covers the same ground. Use list_context with a tags filter to see what is already in use. Singular forms are easier to keep consistent than plurals — use api rather than apis, test rather than tests.",
+          "Tags also serve as the primary filter for the list_context tool, which browses entries without a search query. When an agent calls list_context with tags set to [\"payments\"], it gets every entry tagged with payments regardless of kind. This makes tags the most flexible retrieval dimension in the system.",
+        ],
+      },
+      {
+        heading: "Folders: physical grouping within kinds",
+        paragraphs: [
+          "The folder parameter on save_context creates subdirectories within a kind's directory. An insight saved with folder set to react/hooks lands at ~/vault/knowledge/insights/react/hooks/ on disk. This provides physical separation without affecting search behavior — all insights are still indexed together and searchable as a single kind.",
+          "Folders are most useful for project isolation and domain namespacing. If you maintain a vault that spans multiple projects, folders prevent file collisions and make it easy to browse entries by project in a file manager or git diff. A pattern saved with folder set to client-a/api stays physically separate from one in client-b/api, even though both are patterns and both appear in search results.",
+          "Do not over-nest folders. One or two levels of depth covers most use cases. A structure like react/hooks or project-name/backend is clear and navigable. A structure like work/2026/q1/client-a/backend/auth/tokens is fragile, hard to remember, and provides no retrieval benefit since search does not use folder paths. If you need that level of granularity, use tags instead.",
+          "For a practical walkthrough of folder isolation across client projects, see our guide on building an AI dev memory system for client work (/blog/ai-dev-memory-system-client-work). The one-vault-per-client pattern described there maps directly to the folder parameter.",
+        ],
+      },
+      {
+        heading: "Categories: the behavioral layer you rarely touch directly",
+        paragraphs: [
+          "Behind kinds sits a category layer that controls write semantics and retrieval behavior. The three categories are knowledge (append-only, enduring), entity (upsert by identity key, enduring), and event (append-only, decaying relevance). You almost never need to set category manually — it is inferred from the kind. Saving a decision automatically assigns the knowledge category. Saving a contact assigns entity. Saving a session assigns event.",
+          "The category distinction matters most for events. When you search without specifying a time range, event-category entries are automatically windowed to the last 30 days by default. This prevents old session logs and conversation snippets from crowding out current results. Knowledge and entity entries have no such decay — a decision made six months ago surfaces with the same priority as one made yesterday, ranked by relevance to the query.",
+          "If you create a custom kind and want it to behave like an event with time-windowed retrieval, the system defaults custom kinds to knowledge. For event-like behavior, you would need to add the kind to the category mapping in the source. In practice, most custom kinds are knowledge-type entries, so the default is correct for the majority of cases.",
+        ],
+      },
+      {
+        heading: "Related guides",
+        paragraphs: [
+          "For a deeper look at how the retrieval pipeline ranks results using hybrid full-text and semantic search, see our post on hybrid search for agent memory quality (/blog/hybrid-search-for-agent-memory-quality). Good taxonomy and good retrieval are two sides of the same coin — well-structured entries make the ranking algorithm's job easier, and strong ranking compensates for minor inconsistencies in tagging.",
+          "For a practical walkthrough of applying this taxonomy to real multi-project work, see building an AI dev memory system for client work (/blog/ai-dev-memory-system-client-work). That guide shows how kinds, tags, and folders come together in a daily workflow across multiple client projects.",
+        ],
+      },
+      {
+        heading: "Building a taxonomy that lasts",
+        paragraphs: [
+          "Start with the built-in kinds and resist the urge to create custom kinds in your first week. The default set — insight, decision, pattern, and reference — covers the majority of developer knowledge. Add custom kinds only when you find yourself consistently miscategorizing entries or when a new kind would make a frequent retrieval query more precise.",
+          "Audit your taxonomy monthly. Run list_context without filters and scan the results. Look for kinds with only one or two entries — they may be better merged into a broader kind. Look for tags that appear on more than half your entries — they are too generic to be useful as filters. Look for folders that contain a single file — the nesting is not earning its keep.",
+          "The strongest signal that your taxonomy is working is retrieval precision. When you run get_context with a natural language query and the first result is the entry you were looking for, the taxonomy is serving its purpose. When the first result is noise, trace backward: was the kind too broad, the tags too generic, or the entry title too vague? Fix the taxonomy at the source and the retrieval quality follows.",
+          "A well-designed taxonomy turns your vault from a pile of saved text into a structured knowledge base that compounds in value over time. Each new entry strengthens the system rather than diluting it. That is the foundation for an agent memory layer that stays useful as it scales — and the foundation for workflows that get faster, not slower, as your vault grows.",
+        ],
+      },
+    ],
+  },
+  {
     slug: "solo-founders-prevent-context-loss-across-sessions",
     title: "How Solo Founders Prevent Context Loss Across Sessions",
     description:

@@ -6,7 +6,7 @@
  */
 
 import { Hono } from "hono";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
 import {
   generateApiKey,
   hashApiKey,
@@ -173,7 +173,11 @@ export function createManagementRoutes(ctx) {
     if (!isGoogleOAuthConfigured()) {
       return c.json({ error: "Google OAuth not configured" }, 503);
     }
-    const url = getAuthUrl(c.req.raw);
+    // Generate CSRF state token to prevent login CSRF attacks
+    const state = randomUUID();
+    // Store state in a short-lived cookie (5 min expiry)
+    c.header("Set-Cookie", `oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=300`);
+    const url = getAuthUrl(c.req.raw, state);
     return c.redirect(url);
   });
 
@@ -185,16 +189,27 @@ export function createManagementRoutes(ctx) {
 
     const code = c.req.query("code");
     const error = c.req.query("error");
+    const appUrl = process.env.PUBLIC_URL || "";
 
     if (error) {
       // User denied consent or an error occurred — redirect to login with error
-      const appUrl = process.env.PUBLIC_URL || "";
       return c.redirect(`${appUrl}/login?error=oauth_denied`);
     }
 
     if (!code) {
       return c.json({ error: "Missing authorization code" }, 400);
     }
+
+    // Verify CSRF state parameter
+    const state = c.req.query("state");
+    const cookieHeader = c.req.header("cookie") || "";
+    const stateCookie = cookieHeader.split(";").map((s) => s.trim()).find((s) => s.startsWith("oauth_state="));
+    const expectedState = stateCookie?.split("=")[1];
+    if (!state || !expectedState || state !== expectedState) {
+      return c.redirect(`${appUrl}/login?error=oauth_invalid_state`);
+    }
+    // Clear the state cookie
+    c.header("Set-Cookie", "oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
 
     const redirectUri = getRedirectUri(c.req.raw);
     let profile;
@@ -207,7 +222,6 @@ export function createManagementRoutes(ctx) {
         error: err.message,
         ts: new Date().toISOString(),
       }));
-      const appUrl = process.env.PUBLIC_URL || "";
       return c.redirect(`${appUrl}/login?error=oauth_failed`);
     }
 
@@ -216,29 +230,37 @@ export function createManagementRoutes(ctx) {
 
     // Check if user already exists by google_id or email
     let existingUser = stmts.getUserByGoogleId.get(profile.googleId);
+    let matchedByEmail = false;
     if (!existingUser) {
       existingUser = stmts.getUserByEmail.get(profile.email);
+      if (existingUser) matchedByEmail = true;
     }
 
     let apiKeyRaw;
 
     if (existingUser) {
-      // Existing user — find their most recent API key or generate a new one
-      const keys = stmts.listUserKeys.all(existingUser.id);
-      if (keys.length > 0) {
-        // Can't retrieve raw key — generate a new one for this session
-        apiKeyRaw = generateApiKey();
-        const hash = hashApiKey(apiKeyRaw);
-        const prefix = keyPrefix(apiKeyRaw);
-        const keyId = randomUUID();
-        stmts.createApiKey.run(keyId, existingUser.id, hash, prefix, "google-oauth");
-      } else {
-        apiKeyRaw = generateApiKey();
-        const hash = hashApiKey(apiKeyRaw);
-        const prefix = keyPrefix(apiKeyRaw);
-        const keyId = randomUUID();
-        stmts.createApiKey.run(keyId, existingUser.id, hash, prefix, "default");
+      // Link google_id if user was matched by email (first Google sign-in for email-registered user)
+      if (matchedByEmail && !existingUser.google_id) {
+        getMetaDb().prepare("UPDATE users SET google_id = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(profile.googleId, existingUser.id);
       }
+
+      // Existing user — check key limit before creating a new key
+      const keys = stmts.listUserKeys.all(existingUser.id);
+      const limits = getTierLimits(existingUser.tier);
+      if (limits.apiKeys !== Infinity && keys.length >= limits.apiKeys) {
+        // At key limit — delete the oldest OAuth-generated key to make room
+        const oauthKey = keys.find((k) => k.name === "google-oauth");
+        if (oauthKey) {
+          stmts.deleteApiKey.run(oauthKey.id, existingUser.id);
+        }
+      }
+
+      apiKeyRaw = generateApiKey();
+      const hash = hashApiKey(apiKeyRaw);
+      const prefix = keyPrefix(apiKeyRaw);
+      const keyId = randomUUID();
+      stmts.createApiKey.run(keyId, existingUser.id, hash, prefix, keys.length > 0 ? "google-oauth" : "default");
     } else {
       // New user — create account with google_id
       const userId = randomUUID();
@@ -266,13 +288,11 @@ export function createManagementRoutes(ctx) {
           error: err.message,
           ts: new Date().toISOString(),
         }));
-        const appUrl = process.env.PUBLIC_URL || "";
         return c.redirect(`${appUrl}/login?error=registration_failed`);
       }
     }
 
     // Redirect to app with the API key as a token (one-time, via URL fragment)
-    const appUrl = process.env.PUBLIC_URL || "";
     return c.redirect(`${appUrl}/auth/callback#token=${apiKeyRaw}`);
   });
 
@@ -464,6 +484,252 @@ export function createManagementRoutes(ctx) {
     try { stmts.pruneOldWebhooks.run(); } catch {}
 
     return c.json({ received: true });
+  });
+
+  // ─── Teams ────────────────────────────────────────────────────────────────
+
+  /** Create a new team — caller becomes owner */
+  api.post("/api/teams", async (c) => {
+    const user = requireAuth(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const body = await c.req.json().catch(() => ({}));
+    if (!body.name?.trim()) return c.json({ error: "name is required" }, 400);
+    if (body.name.length > 100) return c.json({ error: "name must be 100 characters or fewer" }, 400);
+
+    const stmts = prepareMetaStatements(getMetaDb());
+    const teamId = randomUUID();
+
+    const createTeam = getMetaDb().transaction(() => {
+      stmts.createTeam.run(teamId, body.name.trim(), user.userId, "team", null);
+      stmts.addTeamMember.run(teamId, user.userId, "owner");
+    });
+
+    try {
+      createTeam();
+    } catch (err) {
+      console.error(JSON.stringify({ level: "error", context: "team_create", userId: user.userId, error: err.message, ts: new Date().toISOString() }));
+      return c.json({ error: "Failed to create team" }, 500);
+    }
+
+    return c.json({ id: teamId, name: body.name.trim(), role: "owner" }, 201);
+  });
+
+  /** Get user's teams */
+  api.get("/api/teams", (c) => {
+    const user = requireAuth(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const stmts = prepareMetaStatements(getMetaDb());
+    const teams = stmts.getTeamsByUserId.all(user.userId);
+
+    return c.json({
+      teams: teams.map((t) => ({
+        id: t.id,
+        name: t.name,
+        role: t.role,
+        tier: t.tier,
+        createdAt: t.created_at,
+      })),
+    });
+  });
+
+  /** Get team details + members */
+  api.get("/api/teams/:id", (c) => {
+    const user = requireAuth(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const teamId = c.req.param("id");
+    const stmts = prepareMetaStatements(getMetaDb());
+
+    // Check membership
+    const membership = stmts.getTeamMember.get(teamId, user.userId);
+    if (!membership) return c.json({ error: "Team not found" }, 404);
+
+    const team = stmts.getTeamById.get(teamId);
+    if (!team) return c.json({ error: "Team not found" }, 404);
+
+    const members = stmts.getTeamMembers.all(teamId);
+    const invites = membership.role === "owner" || membership.role === "admin"
+      ? stmts.getInvitesByTeam.all(teamId)
+      : [];
+
+    return c.json({
+      id: team.id,
+      name: team.name,
+      tier: team.tier,
+      role: membership.role,
+      createdAt: team.created_at,
+      members: members.map((m) => ({
+        userId: m.user_id,
+        email: m.email,
+        name: m.name || null,
+        role: m.role,
+        joinedAt: m.joined_at,
+      })),
+      invites: invites.map((inv) => ({
+        id: inv.id,
+        email: inv.email,
+        status: inv.status,
+        expiresAt: inv.expires_at,
+        createdAt: inv.created_at,
+      })),
+    });
+  });
+
+  /** Invite a user to a team (owner/admin only) */
+  api.post("/api/teams/:id/invite", async (c) => {
+    const user = requireAuth(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const teamId = c.req.param("id");
+    const stmts = prepareMetaStatements(getMetaDb());
+
+    // Check caller is owner or admin
+    const membership = stmts.getTeamMember.get(teamId, user.userId);
+    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+      return c.json({ error: "Only owners and admins can invite members" }, 403);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    if (!body.email || !EMAIL_REGEX.test(body.email)) {
+      return c.json({ error: "Valid email is required" }, 400);
+    }
+
+    // Check for existing pending invite
+    const existing = stmts.getPendingInviteByEmail.get(teamId, body.email);
+    if (existing) return c.json({ error: "A pending invite already exists for this email" }, 409);
+
+    // Check if already a member
+    const existingUser = stmts.getUserByEmail.get(body.email);
+    if (existingUser) {
+      const existingMember = stmts.getTeamMember.get(teamId, existingUser.id);
+      if (existingMember) return c.json({ error: "User is already a team member" }, 409);
+    }
+
+    const inviteId = randomUUID();
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    stmts.createTeamInvite.run(inviteId, teamId, body.email, user.userId, token, expiresAt);
+
+    return c.json({
+      id: inviteId,
+      token,
+      email: body.email,
+      expiresAt,
+    }, 201);
+  });
+
+  /** Accept a team invite */
+  api.post("/api/teams/:id/join", async (c) => {
+    const user = requireAuth(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const teamId = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    if (!body.token) return c.json({ error: "token is required" }, 400);
+
+    const stmts = prepareMetaStatements(getMetaDb());
+
+    // Expire stale invites first
+    stmts.expireOldInvites.run();
+
+    const invite = stmts.getInviteByToken.get(body.token);
+    if (!invite || invite.team_id !== teamId) {
+      return c.json({ error: "Invalid or expired invite" }, 400);
+    }
+
+    // Verify the invite is for this user's email
+    const userRow = stmts.getUserById.get(user.userId);
+    if (!userRow || userRow.email !== invite.email) {
+      return c.json({ error: "This invite is for a different email address" }, 403);
+    }
+
+    // Check not already a member
+    const existing = stmts.getTeamMember.get(teamId, user.userId);
+    if (existing) return c.json({ error: "Already a member of this team" }, 409);
+
+    const acceptInvite = getMetaDb().transaction(() => {
+      stmts.addTeamMember.run(teamId, user.userId, "member");
+      stmts.updateInviteStatus.run("accepted", invite.id);
+    });
+
+    try {
+      acceptInvite();
+    } catch (err) {
+      console.error(JSON.stringify({ level: "error", context: "team_join", userId: user.userId, error: err.message, ts: new Date().toISOString() }));
+      return c.json({ error: "Failed to join team" }, 500);
+    }
+
+    return c.json({ joined: true, teamId, role: "member" });
+  });
+
+  /** Remove a member from a team (owner/admin only, or self-remove) */
+  api.delete("/api/teams/:id/members/:userId", (c) => {
+    const user = requireAuth(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const teamId = c.req.param("id");
+    const targetUserId = c.req.param("userId");
+    const stmts = prepareMetaStatements(getMetaDb());
+
+    const callerMembership = stmts.getTeamMember.get(teamId, user.userId);
+    if (!callerMembership) return c.json({ error: "Team not found" }, 404);
+
+    // Self-remove is always allowed (except owner can't leave)
+    const isSelfRemove = user.userId === targetUserId;
+    if (isSelfRemove && callerMembership.role === "owner") {
+      return c.json({ error: "Team owner cannot leave. Transfer ownership or delete the team." }, 403);
+    }
+
+    if (!isSelfRemove && callerMembership.role !== "owner" && callerMembership.role !== "admin") {
+      return c.json({ error: "Only owners and admins can remove members" }, 403);
+    }
+
+    // Can't remove owner
+    const targetMembership = stmts.getTeamMember.get(teamId, targetUserId);
+    if (!targetMembership) return c.json({ error: "Member not found" }, 404);
+    if (targetMembership.role === "owner" && !isSelfRemove) {
+      return c.json({ error: "Cannot remove the team owner" }, 403);
+    }
+
+    stmts.removeTeamMember.run(teamId, targetUserId);
+    return c.json({ removed: true, userId: targetUserId });
+  });
+
+  /** Get team usage stats */
+  api.get("/api/teams/:id/usage", (c) => {
+    const user = requireAuth(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const teamId = c.req.param("id");
+    const stmts = prepareMetaStatements(getMetaDb());
+
+    const membership = stmts.getTeamMember.get(teamId, user.userId);
+    if (!membership) return c.json({ error: "Team not found" }, 404);
+
+    const team = stmts.getTeamById.get(teamId);
+    if (!team) return c.json({ error: "Team not found" }, 404);
+
+    const memberCount = stmts.countTeamMembers.get(teamId).c;
+
+    // Count vault entries scoped to team
+    const entryCount = ctx.db.prepare("SELECT COUNT(*) as c FROM vault WHERE team_id = ?").get(teamId).c;
+    const storageBytes = ctx.db.prepare(
+      "SELECT COALESCE(SUM(LENGTH(COALESCE(body,'')) + LENGTH(COALESCE(body_encrypted,'')) + LENGTH(COALESCE(title,'')) + LENGTH(COALESCE(meta,''))), 0) as s FROM vault WHERE team_id = ?"
+    ).get(teamId).s;
+
+    return c.json({
+      teamId,
+      name: team.name,
+      tier: team.tier,
+      members: memberCount,
+      usage: {
+        entries: entryCount,
+        storageMb: Math.round((storageBytes / (1024 * 1024)) * 100) / 100,
+      },
+    });
   });
 
   // ─── Account Deletion (GDPR) ─────────────────────────────────────────────

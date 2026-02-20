@@ -74,6 +74,9 @@ export function MarketingLayout() {
             <Button asChild variant="link" size="sm" className="px-0">
               <Link to="/privacy">Privacy</Link>
             </Button>
+            <Button asChild variant="link" size="sm" className="px-0">
+              <Link to="/support">Support</Link>
+            </Button>
           </div>
         </div>
       </footer>

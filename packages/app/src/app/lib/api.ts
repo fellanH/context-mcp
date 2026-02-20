@@ -102,7 +102,7 @@ export async function uploadLocalVault(hostedToken: string): Promise<{ imported:
   }
 
   // Post to hosted bulk import
-  const hostedUrl = import.meta.env.VITE_HOSTED_URL || "https://www.context-vault.com";
+  const hostedUrl = import.meta.env.VITE_HOSTED_URL || "https://api.context-vault.com";
   const res = await fetch(`${hostedUrl}/api/vault/import/bulk`, {
     method: "POST",
     headers: {

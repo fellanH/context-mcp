@@ -56,6 +56,38 @@ const META_SCHEMA = `
     count        INTEGER NOT NULL DEFAULT 0,
     window_start TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS teams (
+    id                 TEXT PRIMARY KEY,
+    name               TEXT NOT NULL,
+    owner_id           TEXT NOT NULL REFERENCES users(id),
+    tier               TEXT DEFAULT 'team',
+    stripe_customer_id TEXT,
+    created_at         TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS team_members (
+    team_id   TEXT NOT NULL REFERENCES teams(id),
+    user_id   TEXT NOT NULL REFERENCES users(id),
+    role      TEXT NOT NULL CHECK(role IN ('owner','admin','member')) DEFAULT 'member',
+    joined_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (team_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS team_invites (
+    id         TEXT PRIMARY KEY,
+    team_id    TEXT NOT NULL REFERENCES teams(id),
+    email      TEXT NOT NULL,
+    invited_by TEXT NOT NULL REFERENCES users(id),
+    token      TEXT UNIQUE NOT NULL,
+    status     TEXT NOT NULL CHECK(status IN ('pending','accepted','expired')) DEFAULT 'pending',
+    expires_at TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);
+  CREATE INDEX IF NOT EXISTS idx_team_invites_token ON team_invites(token);
+  CREATE INDEX IF NOT EXISTS idx_team_invites_email ON team_invites(email);
 `;
 
 let metaDb = null;
@@ -176,6 +208,40 @@ export function prepareMetaStatements(db) {
         END
     `),
     pruneRateLimits: db.prepare(`DELETE FROM rate_limits WHERE datetime(window_start, '+1 hour') < datetime('now')`),
+
+    // Teams
+    createTeam: db.prepare(`INSERT INTO teams (id, name, owner_id, tier, stripe_customer_id) VALUES (?, ?, ?, ?, ?)`),
+    getTeamById: db.prepare(`SELECT * FROM teams WHERE id = ?`),
+    getTeamsByUserId: db.prepare(`
+      SELECT t.*, tm.role FROM teams t
+      JOIN team_members tm ON t.id = tm.team_id
+      WHERE tm.user_id = ?
+      ORDER BY t.created_at DESC
+    `),
+    updateTeam: db.prepare(`UPDATE teams SET name = ? WHERE id = ?`),
+    deleteTeam: db.prepare(`DELETE FROM teams WHERE id = ?`),
+    updateTeamStripeId: db.prepare(`UPDATE teams SET stripe_customer_id = ? WHERE id = ?`),
+
+    // Team Members
+    addTeamMember: db.prepare(`INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, ?)`),
+    getTeamMember: db.prepare(`SELECT * FROM team_members WHERE team_id = ? AND user_id = ?`),
+    getTeamMembers: db.prepare(`
+      SELECT tm.*, u.email, u.name FROM team_members tm
+      JOIN users u ON tm.user_id = u.id
+      WHERE tm.team_id = ?
+      ORDER BY tm.joined_at ASC
+    `),
+    updateMemberRole: db.prepare(`UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ?`),
+    removeTeamMember: db.prepare(`DELETE FROM team_members WHERE team_id = ? AND user_id = ?`),
+    countTeamMembers: db.prepare(`SELECT COUNT(*) as c FROM team_members WHERE team_id = ?`),
+
+    // Team Invites
+    createTeamInvite: db.prepare(`INSERT INTO team_invites (id, team_id, email, invited_by, token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`),
+    getInviteByToken: db.prepare(`SELECT * FROM team_invites WHERE token = ? AND status = 'pending'`),
+    getInvitesByTeam: db.prepare(`SELECT * FROM team_invites WHERE team_id = ? ORDER BY created_at DESC`),
+    getPendingInviteByEmail: db.prepare(`SELECT * FROM team_invites WHERE team_id = ? AND email = ? AND status = 'pending'`),
+    updateInviteStatus: db.prepare(`UPDATE team_invites SET status = ? WHERE id = ?`),
+    expireOldInvites: db.prepare(`UPDATE team_invites SET status = 'expired' WHERE status = 'pending' AND expires_at < datetime('now')`),
   };
   return stmts;
 }

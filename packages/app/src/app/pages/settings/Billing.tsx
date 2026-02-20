@@ -22,7 +22,7 @@ const plans = [
     tier: "pro" as const,
     price: "$9",
     period: "/mo",
-    features: ["10,000 entries", "1 GB storage", "Unlimited requests", "5 API keys", "Export/Import", "Priority support"],
+    features: ["Unlimited entries", "1 GB storage", "Unlimited requests", "Unlimited API keys", "Export/Import", "Priority support"],
   },
   {
     tier: "team" as const,

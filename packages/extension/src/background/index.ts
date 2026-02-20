@@ -177,6 +177,7 @@ async function handleMessage(message: MessageType): Promise<MessageType> {
         body: message.body,
         title: message.title,
         tags: message.tags,
+        source: message.source,
       });
       return { type: "capture_result", id: entry.id };
     }

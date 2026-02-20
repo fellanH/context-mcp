@@ -15,13 +15,14 @@ import {
   ChevronDown,
   Loader2,
   ExternalLink,
+  Plus,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "./ui/button";
 import { UsageMeter } from "./UsageMeter";
 import { TierBadge } from "./TierBadge";
 import { useAuth } from "../lib/auth";
-import { useUsage, useVaultStatus } from "../lib/hooks";
+import { useUsage, useVaultStatus, useTeams } from "../lib/hooks";
 import { useState, useEffect, useRef } from "react";
 import { QuickSearch } from "./QuickSearch";
 
@@ -50,6 +51,9 @@ const settingsItems: NavItem[] = [
 ];
 
 function getPageTitle(pathname: string): string {
+  if (pathname === "/team/new") return "Create Team";
+  if (pathname.startsWith("/team/invite")) return "Team Invite";
+  if (pathname.startsWith("/team/")) return "Team";
   const all = [...mainItems, ...vaultItems, ...settingsItems];
   const match = all.find((item) =>
     item.path === "/" ? pathname === "/" : pathname.startsWith(item.path)
@@ -64,6 +68,7 @@ export function RootLayout() {
   const { user, isAuthenticated, isLoading: authLoading, logout, vaultMode } = useAuth();
   const { data: usage, isLoading: usageLoading } = useUsage();
   const vaultStatus = useVaultStatus({ enabled: isAuthenticated, refetchInterval: 15000 });
+  const { data: teams } = useTeams();
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
 
@@ -134,6 +139,32 @@ export function RootLayout() {
         <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
           <NavSection label="Main" items={mainItems} isActive={isActive} />
           <NavSection label="Vault" items={vaultItems} isActive={isActive} />
+          {/* Teams */}
+          <div className="space-y-0.5">
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Teams</div>
+            {teams?.map((team) => (
+              <Link key={team.id} to={`/team/${team.id}`}>
+                <Button
+                  variant={isActive(`/team/${team.id}`) ? "secondary" : "ghost"}
+                  className="w-full justify-start text-sm"
+                  size="sm"
+                >
+                  <Users className="size-4 mr-2" />
+                  {team.name}
+                </Button>
+              </Link>
+            ))}
+            <Link to="/team/new">
+              <Button
+                variant={isActive("/team/new") ? "secondary" : "ghost"}
+                className="w-full justify-start text-sm text-muted-foreground"
+                size="sm"
+              >
+                <Plus className="size-4 mr-2" />
+                New Team
+              </Button>
+            </Link>
+          </div>
           <NavSection label="Settings" items={settingsItems} isActive={isActive} />
         </nav>
 

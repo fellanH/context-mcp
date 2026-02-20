@@ -66,7 +66,7 @@ export function ApiKeys() {
       JSON.stringify({
         mcpServers: {
           "context-vault": {
-            url: "https://www.context-vault.com/mcp",
+            url: "https://api.context-vault.com/mcp",
             headers: {
               Authorization: "Bearer YOUR_API_KEY",
             },
@@ -232,7 +232,7 @@ export function ApiKeys() {
 {`{
   "mcpServers": {
     "context-vault": {
-      "url": "https://www.context-vault.com/mcp",
+      "url": "https://api.context-vault.com/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_API_KEY"
       }

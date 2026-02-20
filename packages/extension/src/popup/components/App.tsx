@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from "react";
+import { Search, MessageSquare, Settings as SettingsIcon } from "lucide-react";
 import { SearchBar } from "./SearchBar";
 import { ResultList } from "./ResultList";
 import { Settings } from "./Settings";
+import { CaptureView } from "./CaptureView";
+import { ErrorBoundary } from "./ErrorBoundary";
 import type { SearchResult, MessageType, VaultMode } from "@/shared/types";
 
-type View = "search" | "settings";
+type View = "search" | "capture" | "settings";
+
+const TABS: { id: View; label: string; icon: React.ReactNode }[] = [
+  { id: "search", label: "Search", icon: <Search className="w-3.5 h-3.5" /> },
+  { id: "capture", label: "Capture", icon: <MessageSquare className="w-3.5 h-3.5" /> },
+  { id: "settings", label: "Settings", icon: <SettingsIcon className="w-3.5 h-3.5" /> },
+];
 
 export function App() {
   const [view, setView] = useState<View>("search");
@@ -120,19 +129,33 @@ export function App() {
   return (
     <div className="flex flex-col w-[400px] min-h-[500px]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-2">
-          <span className="text-base font-semibold">Context Vault</span>
-          <span
-            className={`w-2 h-2 rounded-full ${connected ? "bg-success" : "bg-destructive"}`}
-          />
+      <div className="px-4 pt-3 pb-0 border-b border-border">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-base font-semibold">Context Vault</span>
+            <span
+              className={`w-2 h-2 rounded-full ${connected ? "bg-success" : "bg-destructive"}`}
+            />
+          </div>
         </div>
-        <button
-          onClick={() => setView(view === "settings" ? "search" : "settings")}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 cursor-pointer"
-        >
-          {view === "settings" ? "Back" : "Settings"}
-        </button>
+
+        {/* Tab bar */}
+        <div className="flex gap-1 bg-secondary/50 rounded-lg p-0.5">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setView(tab.id)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                view === tab.id
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Rate limit warning */}
@@ -145,13 +168,19 @@ export function App() {
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {view === "settings" ? (
-          <Settings
-            onSaved={(nextConnected) => {
-              setView("search");
-              setConnected(nextConnected);
-              setServerOffline(!nextConnected);
-            }}
-          />
+          <ErrorBoundary label="Settings">
+            <Settings
+              onSaved={(nextConnected) => {
+                setView("search");
+                setConnected(nextConnected);
+                setServerOffline(!nextConnected);
+              }}
+            />
+          </ErrorBoundary>
+        ) : view === "capture" ? (
+          <ErrorBoundary label="Capture">
+            <CaptureView connected={connected} serverOffline={serverOffline} mode={mode} />
+          </ErrorBoundary>
         ) : serverOffline ? (
           <div className="p-4">
             <div className="border border-border rounded-xl p-4 bg-card">
@@ -211,13 +240,13 @@ export function App() {
             </div>
           </div>
         ) : (
-          <>
+          <ErrorBoundary label="Search">
             <SearchBar onSearch={handleSearch} loading={loading} />
             {error && (
               <div className="px-4 py-3 text-sm text-destructive">{error}</div>
             )}
             <ResultList results={results} query={query} onInject={handleInject} />
-          </>
+          </ErrorBoundary>
         )}
       </div>
     </div>

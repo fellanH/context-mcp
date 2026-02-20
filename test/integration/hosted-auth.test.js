@@ -39,6 +39,10 @@ describe("hosted auth + management API", () => {
         VAULT_MASTER_SECRET: "test-secret-for-integration-tests",
         CONTEXT_MCP_DATA_DIR: tmpDir,
         CONTEXT_MCP_VAULT_DIR: join(tmpDir, "vault"),
+        // Dummy Google OAuth config so OAuth endpoints don't return 503
+        GOOGLE_CLIENT_ID: "test-client-id.apps.googleusercontent.com",
+        GOOGLE_CLIENT_SECRET: "test-client-secret",
+        GOOGLE_REDIRECT_URI: `http://localhost:${PORT}/api/auth/google/callback`,
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -128,7 +132,7 @@ describe("hosted auth + management API", () => {
 
     // List tools
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(6);
+    expect(tools.length).toBeGreaterThanOrEqual(6);
 
     // Call context_status
     const result = await client.callTool({ name: "context_status", arguments: {} });
@@ -261,6 +265,57 @@ describe("hosted auth + management API", () => {
     const data = await res.json();
     expect(data.tier).toBe("free");
     expect(data.usage.requestsToday).toBeDefined();
+  });
+
+  // ─── Google OAuth Endpoints ──────────────────────────────────────────────────
+
+  it("GET /api/auth/google redirects to Google with state param", async () => {
+    const res = await fetch(`${BASE}/api/auth/google`, { redirect: "manual" });
+    // Should redirect (302) to Google consent screen
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location");
+    expect(location).toContain("accounts.google.com");
+    expect(location).toContain("state=");
+    // Should set oauth_state cookie
+    const setCookie = res.headers.get("set-cookie");
+    expect(setCookie).toContain("oauth_state=");
+    expect(setCookie).toContain("HttpOnly");
+  });
+
+  it("OAuth callback: no params returns 400 for missing code", async () => {
+    const res = await fetch(`${BASE}/api/auth/google/callback`);
+    // No error, no code → returns 400 (missing code check before state validation)
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("Missing authorization code");
+  });
+
+  it("OAuth callback: error param redirects to login with oauth_denied", async () => {
+    const res = await fetch(`${BASE}/api/auth/google/callback?error=access_denied`, { redirect: "manual" });
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location");
+    expect(location).toContain("error=oauth_denied");
+  });
+
+  it("OAuth callback: missing state redirects with oauth_invalid_state", async () => {
+    // Provide a code but no state cookie — should reject
+    const res = await fetch(`${BASE}/api/auth/google/callback?code=fake_code&state=fake_state`, {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location");
+    expect(location).toContain("error=oauth_invalid_state");
+  });
+
+  it("OAuth callback: mismatched state redirects with oauth_invalid_state", async () => {
+    // Provide state in URL but different state in cookie
+    const res = await fetch(`${BASE}/api/auth/google/callback?code=fake_code&state=abc123`, {
+      redirect: "manual",
+      headers: { Cookie: "oauth_state=different_state" },
+    });
+    expect(res.status).toBe(302);
+    const location = res.headers.get("location");
+    expect(location).toContain("error=oauth_invalid_state");
   });
 
   // ─── Phase 2: Input Validation ─────────────────────────────────────────────
@@ -556,6 +611,43 @@ describe("hosted auth + management API", () => {
     expect(data.usage.entriesUsed).toBeGreaterThanOrEqual(1);
     expect(data.usage.storageMb).toBeDefined();
     expect(typeof data.usage.storageMb).toBe("number");
+  });
+
+  // ─── Billing Endpoint Coverage ──────────────────────────────────────────────
+
+  it("POST /api/billing/checkout rejects unauthenticated", async () => {
+    const res = await fetch(`${BASE}/api/billing/checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /api/billing/webhook rejects missing signature", async () => {
+    const res = await fetch(`${BASE}/api/billing/webhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("stripe-signature");
+  });
+
+  it("POST /api/billing/webhook rejects invalid signature", async () => {
+    const res = await fetch(`${BASE}/api/billing/webhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "stripe-signature": "t=1,v1=invalid" },
+      body: JSON.stringify({}),
+    });
+    // Without STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET, Stripe SDK returns null
+    expect(res.status).toBe(400);
+  });
+
+  it("GET /api/billing/usage rejects unauthenticated", async () => {
+    const res = await fetch(`${BASE}/api/billing/usage`);
+    expect(res.status).toBe(401);
   });
 
   // ─── Phase 6: Email Validation ─────────────────────────────────────────────

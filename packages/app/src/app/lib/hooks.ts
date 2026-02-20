@@ -5,6 +5,9 @@ import {
   transformSearchResult,
   transformApiKey,
   transformUsage,
+  transformTeam,
+  transformTeamMember,
+  transformTeamInvite,
 } from "./types";
 import type {
   Entry,
@@ -16,6 +19,9 @@ import type {
   ApiKeyListItem,
   ApiUsageResponse,
   ApiVaultStatusResponse,
+  ApiTeamListResponse,
+  ApiTeamDetailResponse,
+  ApiTeamUsageResponse,
   Category,
 } from "./types";
 
@@ -214,5 +220,95 @@ export function useVaultStatus(opts: VaultStatusOpts = {}) {
     queryKey: ["vaultStatus"],
     queryFn: () => api.get<ApiVaultStatusResponse>("/vault/status"),
     ...opts,
+  });
+}
+
+// ─── Teams ──────────────────────────────────────────────────────────────────
+
+export function useTeams() {
+  return useQuery({
+    queryKey: ["teams"],
+    queryFn: async () => {
+      const raw = await api.get<ApiTeamListResponse>("/teams");
+      return raw.teams.map(transformTeam);
+    },
+  });
+}
+
+export function useTeam(id: string | null) {
+  return useQuery({
+    queryKey: ["team", id],
+    queryFn: async () => {
+      const raw = await api.get<ApiTeamDetailResponse>(`/teams/${id}`);
+      return {
+        id: raw.id,
+        name: raw.name,
+        tier: raw.tier,
+        role: raw.role,
+        createdAt: new Date(raw.createdAt),
+        members: raw.members.map(transformTeamMember),
+        invites: raw.invites.map(transformTeamInvite),
+      };
+    },
+    enabled: !!id,
+  });
+}
+
+export function useTeamUsage(id: string | null) {
+  return useQuery({
+    queryKey: ["teamUsage", id],
+    queryFn: () => api.get<ApiTeamUsageResponse>(`/teams/${id}/usage`),
+    enabled: !!id,
+  });
+}
+
+export function useCreateTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      api.post<{ id: string; name: string; role: string }>("/teams", { name }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teams"] });
+    },
+  });
+}
+
+export function useInviteMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ teamId, email }: { teamId: string; email: string }) =>
+      api.post<{ id: string; token: string; email: string; expiresAt: string }>(
+        `/teams/${teamId}/invite`,
+        { email }
+      ),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["team", vars.teamId] });
+    },
+  });
+}
+
+export function useJoinTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ teamId, token }: { teamId: string; token: string }) =>
+      api.post<{ joined: boolean; teamId: string; role: string }>(
+        `/teams/${teamId}/join`,
+        { token }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teams"] });
+    },
+  });
+}
+
+export function useRemoveMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ teamId, userId }: { teamId: string; userId: string }) =>
+      api.del<{ removed: boolean; userId: string }>(`/teams/${teamId}/members/${userId}`),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["team", vars.teamId] });
+      qc.invalidateQueries({ queryKey: ["teamUsage", vars.teamId] });
+    },
   });
 }

@@ -14,11 +14,17 @@ import { getTierLimits } from "../billing/stripe.js";
  * @param {object} ctx — Shared server context (db, config, stmts, embed, insertVec, deleteVec)
  * @param {{ userId?: string, tier?: string } | null} user — Authenticated user info (null for dev mode)
  * @param {string | null} masterSecret — VAULT_MASTER_SECRET env var
+ * @param {{ teamId?: string } | null} teamScope — Optional team scoping context
  * @returns {object} User-scoped context with encrypt/decrypt/checkLimits
  */
-export function buildUserCtx(ctx, user, masterSecret) {
+export function buildUserCtx(ctx, user, masterSecret, teamScope) {
   const userId = user?.userId || null;
   const userCtx = userId ? { ...ctx, userId } : ctx;
+
+  // Attach team context when operating in team scope
+  if (teamScope?.teamId) {
+    userCtx.teamId = teamScope.teamId;
+  }
 
   // Add encryption/decryption when master secret is configured and user is authenticated
   if (masterSecret && userId) {

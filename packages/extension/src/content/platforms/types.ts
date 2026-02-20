@@ -1,3 +1,5 @@
+import type { ChatMessage } from "@/shared/types";
+
 /** Interface that each platform adapter must implement */
 export interface PlatformAdapter {
   /** Human-readable platform name */
@@ -8,6 +10,8 @@ export interface PlatformAdapter {
   getChatInput(): HTMLElement | null;
   /** Inject text into the chat input */
   injectText(text: string): boolean;
+  /** Extract visible chat messages from the page */
+  getMessages(): ChatMessage[];
 }
 
 function readText(el: HTMLElement): string {
@@ -40,4 +44,13 @@ export function injectContentEditable(el: HTMLElement, text: string): boolean {
   el.textContent = (el.textContent || "") + text;
   el.dispatchEvent(new Event("input", { bubbles: true }));
   return true;
+}
+
+/** Extract clean text from an element, stripping UI chrome (buttons, icons, copy widgets) */
+export function extractTextContent(el: HTMLElement): string {
+  const clone = el.cloneNode(true) as HTMLElement;
+  clone
+    .querySelectorAll('button, [role="button"], svg, .copy-btn, [data-copy]')
+    .forEach((n) => n.remove());
+  return (clone.textContent || "").trim().replace(/\n{3,}/g, "\n\n");
 }

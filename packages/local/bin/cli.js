@@ -109,11 +109,16 @@ function vscodeDataDir() {
 function commandExists(bin) {
   try {
     const cmd = PLATFORM === "win32" ? `where ${bin}` : `which ${bin}`;
-    execSync(cmd, { stdio: "pipe" });
+    execSync(cmd, { stdio: "pipe", timeout: 5000 });
     return true;
   } catch {
     return false;
   }
+}
+
+/** Check if a directory exists at any of the given paths */
+function anyDirExists(...paths) {
+  return paths.some((p) => existsSync(p));
 }
 
 const TOOLS = [
@@ -140,7 +145,7 @@ const TOOLS = [
   {
     id: "cursor",
     name: "Cursor",
-    detect: () => existsSync(join(HOME, ".cursor")),
+    detect: () => anyDirExists(join(HOME, ".cursor"), join(appDataDir(), "Cursor")),
     configType: "json",
     configPath: join(HOME, ".cursor", "mcp.json"),
     configKey: "mcpServers",
@@ -148,15 +153,21 @@ const TOOLS = [
   {
     id: "windsurf",
     name: "Windsurf",
-    detect: () => existsSync(join(HOME, ".codeium", "windsurf")),
+    detect: () => anyDirExists(
+      join(HOME, ".codeium", "windsurf"),
+      join(HOME, ".windsurf"),
+    ),
     configType: "json",
     configPath: join(HOME, ".codeium", "windsurf", "mcp_config.json"),
     configKey: "mcpServers",
   },
   {
     id: "antigravity",
-    name: "Antigravity",
-    detect: () => existsSync(join(HOME, ".gemini", "antigravity")),
+    name: "Antigravity (Gemini CLI)",
+    detect: () => anyDirExists(
+      join(HOME, ".gemini", "antigravity"),
+      join(HOME, ".gemini"),
+    ),
     configType: "json",
     configPath: join(HOME, ".gemini", "antigravity", "mcp_config.json"),
     configKey: "mcpServers",
@@ -170,6 +181,20 @@ const TOOLS = [
     configPath: join(
       vscodeDataDir(),
       "saoudrizwan.claude-dev",
+      "settings",
+      "cline_mcp_settings.json"
+    ),
+    configKey: "mcpServers",
+  },
+  {
+    id: "roo-code",
+    name: "Roo Code (VS Code)",
+    detect: () =>
+      existsSync(join(vscodeDataDir(), "rooveterinaryinc.roo-cline", "settings")),
+    configType: "json",
+    configPath: join(
+      vscodeDataDir(),
+      "rooveterinaryinc.roo-cline",
       "settings",
       "cline_mcp_settings.json"
     ),
@@ -207,6 +232,7 @@ ${bold("Options:")}
   --help                Show this help
   --version             Show version
   --yes                 Non-interactive mode (accept all defaults)
+  --skip-embeddings     Skip embedding model download (FTS-only mode)
 `);
 }
 
@@ -430,29 +456,36 @@ async function runSetup() {
   writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + "\n");
   console.log(`\n  ${green("+")} Wrote ${configPath}`);
 
-  // Pre-download embedding model with spinner
-  console.log(`\n  ${dim("[3/5]")}${bold(" Downloading embedding model...")}`);
-  console.log(dim("  all-MiniLM-L6-v2 (~22MB, one-time download)\n"));
-  {
-    const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-    let frame = 0;
-    const start = Date.now();
-    const spinner = setInterval(() => {
-      const elapsed = ((Date.now() - start) / 1000).toFixed(0);
-      process.stdout.write(`\r  ${spinnerFrames[frame++ % spinnerFrames.length]} Downloading... ${dim(`${elapsed}s`)}`);
-    }, 100);
+  // Pre-download embedding model with spinner (skip with --skip-embeddings)
+  const skipEmbeddings = flags.has("--skip-embeddings");
+  if (skipEmbeddings) {
+    console.log(`\n  ${dim("[3/5]")}${bold(" Embedding model")} ${dim("(skipped)")}`);
+    console.log(dim("  FTS-only mode — full-text search works, semantic search disabled."));
+    console.log(dim("  To enable later: context-vault setup (without --skip-embeddings)"));
+  } else {
+    console.log(`\n  ${dim("[3/5]")}${bold(" Downloading embedding model...")}`);
+    console.log(dim("  all-MiniLM-L6-v2 (~22MB, one-time download)\n"));
+    {
+      const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+      let frame = 0;
+      const start = Date.now();
+      const spinner = setInterval(() => {
+        const elapsed = ((Date.now() - start) / 1000).toFixed(0);
+        process.stdout.write(`\r  ${spinnerFrames[frame++ % spinnerFrames.length]} Downloading... ${dim(`${elapsed}s`)}`);
+      }, 100);
 
-    try {
-      const { embed } = await import("@context-vault/core/index/embed");
-      await embed("warmup");
+      try {
+        const { embed } = await import("@context-vault/core/index/embed");
+        await embed("warmup");
 
-      clearInterval(spinner);
-      process.stdout.write(`\r  ${green("+")} Embedding model ready              \n`);
-    } catch (e) {
-      clearInterval(spinner);
-      process.stdout.write(`\r  ${yellow("!")} Model download failed: ${e.message}              \n`);
-      console.log(dim(`    Retry: context-vault setup`));
-      console.log(dim(`    Semantic search disabled — full-text search still works.`));
+        clearInterval(spinner);
+        process.stdout.write(`\r  ${green("+")} Embedding model ready              \n`);
+      } catch (e) {
+        clearInterval(spinner);
+        process.stdout.write(`\r  ${yellow("!")} Model download failed: ${e.message}              \n`);
+        console.log(dim(`    Retry: context-vault setup`));
+        console.log(dim(`    Semantic search disabled — full-text search still works.`));
+      }
     }
   }
 
@@ -732,7 +765,7 @@ This is an example entry showing the decision format. Feel free to delete it.
 
 async function runConnect() {
   const apiKey = getFlag("--key");
-  const hostedUrl = getFlag("--url") || "https://www.context-vault.com";
+  const hostedUrl = getFlag("--url") || "https://api.context-vault.com";
 
   if (!apiKey) {
     console.log(`\n  ${bold("context-vault connect")}\n`);
@@ -741,14 +774,55 @@ async function runConnect() {
     console.log(`    context-vault connect --key cv_...\n`);
     console.log(`  Options:`);
     console.log(`    --key <key>   API key (required)`);
-    console.log(`    --url <url>   Hosted server URL (default: https://www.context-vault.com)`);
+    console.log(`    --url <url>   Hosted server URL (default: https://api.context-vault.com)`);
     console.log();
     return;
+  }
+
+  // Validate key format
+  if (!apiKey.startsWith("cv_") || apiKey.length < 10) {
+    console.error(`\n  ${red("Invalid API key format.")}`);
+    console.error(dim(`  Keys start with "cv_" and are 43 characters long.`));
+    console.error(dim(`  Get yours at ${hostedUrl}/register\n`));
+    process.exit(1);
   }
 
   console.log();
   console.log(`  ${bold("◇ context-vault")} ${dim("connect")}`);
   console.log();
+
+  // Validate key against server before configuring tools
+  console.log(dim("  Verifying API key..."));
+  let user;
+  try {
+    const response = await fetch(`${hostedUrl}/api/me`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (response.status === 401) {
+      console.error(`\n  ${red("Invalid or expired API key.")}`);
+      console.error(dim(`  Check your key and try again.`));
+      console.error(dim(`  Get a new key at ${hostedUrl}/register\n`));
+      process.exit(1);
+    }
+    if (!response.ok) {
+      throw new Error(`Server returned HTTP ${response.status}`);
+    }
+    user = await response.json();
+    console.log(`  ${green("+")} Verified — ${user.email} (${user.tier})\n`);
+  } catch (e) {
+    if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.cause?.code === "ECONNREFUSED" || e.cause?.code === "ENOTFOUND") {
+      console.error(`\n  ${red("Cannot reach server.")}`);
+      console.error(dim(`  URL: ${hostedUrl}`));
+      console.error(dim(`  Check your internet connection or try --url <url>\n`));
+    } else if (e.message?.includes("Invalid or expired")) {
+      // Already handled above
+    } else {
+      console.error(`\n  ${red(`Verification failed: ${e.message}`)}`);
+      console.error(dim(`  Server: ${hostedUrl}`));
+      console.error(dim(`  Check your API key and internet connection.\n`));
+    }
+    process.exit(1);
+  }
 
   // Detect tools
   console.log(dim(`  [1/2]`) + bold(" Detecting tools...\n"));
@@ -1188,13 +1262,13 @@ async function runMigrate() {
     console.log(`    context-vault migrate --to-hosted  Upload local vault to hosted service`);
     console.log(`    context-vault migrate --to-local   Download hosted vault to local files`);
     console.log(`\n  Options:`);
-    console.log(`    --url <url>      Hosted server URL (default: https://www.context-vault.com)`);
+    console.log(`    --url <url>      Hosted server URL (default: https://api.context-vault.com)`);
     console.log(`    --key <key>      API key (cv_...)`);
     console.log();
     return;
   }
 
-  const hostedUrl = getFlag("--url") || "https://www.context-vault.com";
+  const hostedUrl = getFlag("--url") || "https://api.context-vault.com";
   const apiKey = getFlag("--key");
 
   if (!apiKey) {
@@ -1490,14 +1564,14 @@ async function runIngest() {
 
 async function runLink() {
   const apiKey = getFlag("--key");
-  const hostedUrl = getFlag("--url") || "https://www.context-vault.com";
+  const hostedUrl = getFlag("--url") || "https://api.context-vault.com";
 
   if (!apiKey) {
     console.log(`\n  ${bold("context-vault link")} --key cv_...\n`);
     console.log(`  Link your local vault to a hosted Context Vault account.\n`);
     console.log(`  Options:`);
     console.log(`    --key <key>   API key (required)`);
-    console.log(`    --url <url>   Hosted server URL (default: https://www.context-vault.com)`);
+    console.log(`    --url <url>   Hosted server URL (default: https://api.context-vault.com)`);
     console.log();
     return;
   }
@@ -1558,7 +1632,7 @@ async function runSync() {
   }
 
   const apiKey = getFlag("--key") || storedConfig.apiKey;
-  const hostedUrl = getFlag("--url") || storedConfig.hostedUrl || "https://www.context-vault.com";
+  const hostedUrl = getFlag("--url") || storedConfig.hostedUrl || "https://api.context-vault.com";
 
   if (!apiKey) {
     console.error(red("  Not linked. Run `context-vault link --key cv_...` first."));

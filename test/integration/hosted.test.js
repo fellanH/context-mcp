@@ -69,13 +69,14 @@ describe("hosted MCP server", () => {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("lists all 6 tools", async () => {
+  it("lists all 7 tools", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
       "context_status",
       "delete_context",
       "get_context",
+      "ingest_url",
       "list_context",
       "save_context",
       "submit_feedback",

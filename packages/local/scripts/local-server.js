@@ -490,7 +490,7 @@ async function main() {
         return json({ linked: false });
       }
 
-      const hostedUrl = data.hostedUrl || "https://www.context-vault.com";
+      const hostedUrl = data.hostedUrl || "https://api.context-vault.com";
       try {
         const response = await fetch(`${hostedUrl}/api/me`, {
           headers: { Authorization: `Bearer ${data.apiKey}` },

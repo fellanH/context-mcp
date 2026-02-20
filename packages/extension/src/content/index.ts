@@ -12,22 +12,33 @@ const platform = detectPlatform();
 
 chrome.runtime.onMessage.addListener(
   (message: MessageType, _sender, sendResponse) => {
-    switch (message.type) {
-      case "inject_text": {
-        const success = platform.injectText(message.text);
-        sendResponse({ type: "inject_result", success } satisfies MessageType);
-        break;
-      }
+    try {
+      switch (message.type) {
+        case "inject_text": {
+          const success = platform.injectText(message.text);
+          sendResponse({ type: "inject_result", success } satisfies MessageType);
+          break;
+        }
 
-      case "capture_result": {
-        showNotification(`Saved to vault (${message.id.slice(0, 8)}...)`, "success");
-        break;
-      }
+        case "get_messages": {
+          const msgs = platform.getMessages();
+          sendResponse({ type: "messages_result", messages: msgs, platform: platform.name } satisfies MessageType);
+          break;
+        }
 
-      case "error": {
-        showNotification(message.message, "error");
-        break;
+        case "capture_result": {
+          showNotification(`Saved to vault (${message.id.slice(0, 8)}...)`, "success");
+          break;
+        }
+
+        case "error": {
+          showNotification(message.message, "error");
+          break;
+        }
       }
+    } catch (err) {
+      console.error("[context-vault:content]", err);
+      sendResponse({ type: "error", message: err instanceof Error ? err.message : "Content script error" } satisfies MessageType);
     }
     return false; // Synchronous response
   }

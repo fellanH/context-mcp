@@ -39,70 +39,6 @@ import { scheduleBackups, lastBackupTimestamp } from "./backup/r2-backup.js";
 // ─── Config ─────────────────────────────────────────────────────────────────
 
 const AUTH_REQUIRED = process.env.AUTH_REQUIRED === "true";
-const APP_STATIC_ROOT = "./packages/app/dist";
-const APP_INDEX_PATH = `${APP_STATIC_ROOT}/index.html`;
-const MARKETING_STATIC_ROOT = "./packages/marketing/dist";
-const MARKETING_INDEX_PATH = `${MARKETING_STATIC_ROOT}/index.html`;
-const DEFAULT_FRONTEND = process.env.DEFAULT_FRONTEND === "app" ? "app" : "marketing";
-const LOCALHOST_FRONTEND = process.env.LOCALHOST_FRONTEND === "marketing" ? "marketing" : "app";
-const APP_HOSTS = parseHosts(process.env.APP_HOSTS || "app.context-vault.com");
-const MARKETING_HOSTS = parseHosts(process.env.MARKETING_HOSTS || "www.context-vault.com,context-vault.com");
-const APP_ROUTE_PREFIXES = ["/login", "/register", "/auth", "/search", "/vault", "/settings"];
-
-function parseHosts(rawHosts) {
-  return new Set(
-    String(rawHosts)
-      .split(",")
-      .map((host) => host.trim().toLowerCase())
-      .filter(Boolean)
-  );
-}
-
-function normalizeHost(hostHeader) {
-  return (hostHeader || "")
-    .split(",")[0]
-    .trim()
-    .toLowerCase()
-    .replace(/:\d+$/, "");
-}
-
-function isLocalHost(host) {
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
-}
-
-function resolveFrontend(hostHeader) {
-  const host = normalizeHost(hostHeader);
-  if (APP_HOSTS.has(host)) return "app";
-  if (MARKETING_HOSTS.has(host)) return "marketing";
-  if (isLocalHost(host)) return LOCALHOST_FRONTEND;
-  return DEFAULT_FRONTEND;
-}
-
-function getFrontendAssetPaths(c) {
-  const host = c.req.header("x-forwarded-host") || c.req.header("host") || "";
-  const frontend = resolveFrontend(host);
-  if (frontend === "app") {
-    return { frontend, root: APP_STATIC_ROOT, indexPath: APP_INDEX_PATH };
-  }
-  return { frontend, root: MARKETING_STATIC_ROOT, indexPath: MARKETING_INDEX_PATH };
-}
-
-function isAppRoute(pathname) {
-  return APP_ROUTE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-}
-
-function maybeRedirectToAppHost(c, frontend) {
-  if (frontend !== "marketing" || !isAppRoute(c.req.path) || APP_HOSTS.size === 0) {
-    return null;
-  }
-
-  const url = new URL(c.req.url);
-  const appHost = Array.from(APP_HOSTS)[0];
-  const proto = (c.req.header("x-forwarded-proto") || url.protocol.replace(":", "") || "https")
-    .split(",")[0]
-    .trim();
-  return c.redirect(`${proto}://${appHost}${url.pathname}${url.search}`, 302);
-}
 
 // ─── Startup Validation ─────────────────────────────────────────────────────
 
@@ -138,12 +74,6 @@ function validateEnv(config) {
     console.error(`[hosted] \u26a0 Vault dir not writable: ${config.vaultDir} — ${err.message}`);
   }
 
-  if (!existsSync(APP_INDEX_PATH)) {
-    console.warn(`[hosted] \u26a0 App dist not found: ${APP_INDEX_PATH}`);
-  }
-  if (!existsSync(MARKETING_INDEX_PATH)) {
-    console.warn(`[hosted] \u26a0 Marketing dist not found: ${MARKETING_INDEX_PATH}`);
-  }
 }
 
 // ─── Shared Context (initialized once at startup) ───────────────────────────
@@ -160,9 +90,6 @@ initMetaDb(metaDbPath);
 prepareMetaStatements(initMetaDb(metaDbPath));
 console.log(`[hosted] Meta DB: ${metaDbPath}`);
 console.log(`[hosted] Auth: ${AUTH_REQUIRED ? "required" : "open (dev mode)"}`);
-console.log(`[hosted] Frontend app hosts: ${Array.from(APP_HOSTS).join(", ") || "(none)"}`);
-console.log(`[hosted] Frontend marketing hosts: ${Array.from(MARKETING_HOSTS).join(", ") || "(none)"}`);
-console.log(`[hosted] Frontend defaults: unknown=${DEFAULT_FRONTEND}, localhost=${LOCALHOST_FRONTEND}`);
 
 // ─── Automated Backups ───────────────────────────────────────────────────────
 
@@ -224,7 +151,9 @@ app.use("*", requestLogger());
 // When AUTH_REQUIRED and no CORS_ORIGIN set → block browser origins (empty array)
 // When !AUTH_REQUIRED (dev) → allow all
 const corsOrigin = AUTH_REQUIRED
-  ? (process.env.CORS_ORIGIN || [])
+  ? (process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(",").map(s => s.trim())
+      : [])
   : "*";
 
 if (AUTH_REQUIRED && !process.env.CORS_ORIGIN) {

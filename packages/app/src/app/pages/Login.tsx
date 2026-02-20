@@ -30,6 +30,8 @@ export function Login() {
       toast.error("Sign-in was cancelled");
     } else if (error === "oauth_failed") {
       toast.error("Google sign-in failed. Please try again.");
+    } else if (error === "oauth_invalid_state") {
+      toast.error("Sign-in session expired. Please try again.");
     } else if (error === "registration_failed") {
       toast.error("Account creation failed. Please try again.");
     }

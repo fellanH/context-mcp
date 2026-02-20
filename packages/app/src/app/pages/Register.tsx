@@ -132,7 +132,7 @@ export function Register() {
 {`{
   "mcpServers": {
     "context-vault": {
-      "url": "https://www.context-vault.com/mcp",
+      "url": "https://api.context-vault.com/mcp",
       "headers": {
         "Authorization": "Bearer ${generatedKey}"
       }

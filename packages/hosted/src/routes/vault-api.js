@@ -54,6 +54,7 @@ function formatEntry(row, decryptFn) {
     source: row.source || null,
     identity_key: row.identity_key || null,
     expires_at: row.expires_at || null,
+    team_id: row.team_id || null,
     created_at: row.created_at,
   };
 }
@@ -99,7 +100,8 @@ export function createVaultApiRoutes(ctx, masterSecret) {
 
   api.get("/api/vault/entries", (c) => {
     const user = c.get("user");
-    const userCtx = buildUserCtx(ctx, user, masterSecret);
+    const teamId = c.req.query("team_id") || null;
+    const userCtx = buildUserCtx(ctx, user, masterSecret, teamId ? { teamId } : null);
 
     const kind = c.req.query("kind") || null;
     const category = c.req.query("category") || null;
@@ -111,7 +113,11 @@ export function createVaultApiRoutes(ctx, masterSecret) {
     const clauses = [];
     const params = [];
 
-    if (userCtx.userId) {
+    if (userCtx.teamId) {
+      // Team-scoped: show entries belonging to this team
+      clauses.push("team_id = ?");
+      params.push(userCtx.teamId);
+    } else if (userCtx.userId) {
       clauses.push("user_id = ?");
       params.push(userCtx.userId);
     }
@@ -203,6 +209,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
           identity_key: data.identity_key,
           expires_at: data.expires_at,
           userId: userCtx.userId,
+          teamId: data.team_id || null,
         },
         indexEntry
       );
@@ -325,7 +332,8 @@ export function createVaultApiRoutes(ctx, masterSecret) {
         limit,
         offset,
         decayDays: ctx.config.eventDecayDays || 30,
-        userIdFilter: userCtx.userId,
+        userIdFilter: data.team_id ? null : userCtx.userId,
+        teamIdFilter: data.team_id || null,
       });
 
       // Decrypt and format results

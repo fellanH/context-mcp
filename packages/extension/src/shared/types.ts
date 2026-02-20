@@ -17,6 +17,14 @@ export interface SearchResult extends Entry {
   score: number;
 }
 
+/** A single chat message extracted from an AI conversation */
+export interface ChatMessage {
+  index: number;
+  role: "user" | "assistant";
+  content: string;
+  platform: string;
+}
+
 /** Vault connection mode */
 export type VaultMode = "local" | "hosted";
 
@@ -26,7 +34,9 @@ export type MessageType =
   | { type: "search_result"; results: SearchResult[]; query: string }
   | { type: "inject_text"; text: string }
   | { type: "inject_result"; success: boolean }
-  | { type: "capture"; kind: string; body: string; title?: string; tags?: string[] }
+  | { type: "get_messages" }
+  | { type: "messages_result"; messages: ChatMessage[]; platform: string }
+  | { type: "capture"; kind: string; body: string; title?: string; tags?: string[]; source?: string }
   | { type: "capture_result"; id: string }
   | { type: "get_settings" }
   | { type: "settings"; serverUrl: string; apiKey: string; connected: boolean; mode: VaultMode; vaultPath: string }

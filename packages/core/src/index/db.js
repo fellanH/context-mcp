@@ -69,7 +69,7 @@ async function loadNativeModules() {
   return { Database: _Database, sqliteVec: _sqliteVec };
 }
 
-// ─── Schema DDL (v6 — multi-tenancy + encryption) ──────────────────────────
+// ─── Schema DDL (v7 — teams) ────────────────────────────────────────────────
 
 export const SCHEMA_DDL = `
   CREATE TABLE IF NOT EXISTS vault (
@@ -86,6 +86,7 @@ export const SCHEMA_DDL = `
     expires_at      TEXT,
     created_at      TEXT DEFAULT (datetime('now')),
     user_id         TEXT,
+    team_id         TEXT,
     body_encrypted  BLOB,
     title_encrypted BLOB,
     meta_encrypted  BLOB,
@@ -96,6 +97,7 @@ export const SCHEMA_DDL = `
   CREATE INDEX IF NOT EXISTS idx_vault_category ON vault(category);
   CREATE INDEX IF NOT EXISTS idx_vault_category_created ON vault(category, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_vault_user ON vault(user_id);
+  CREATE INDEX IF NOT EXISTS idx_vault_team ON vault(team_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_identity ON vault(user_id, kind, identity_key) WHERE identity_key IS NOT NULL;
 
   -- Single FTS5 table
@@ -166,13 +168,13 @@ export async function initDatabase(dbPath) {
 
     const freshDb = createDb(dbPath);
     freshDb.exec(SCHEMA_DDL);
-    freshDb.pragma("user_version = 6");
+    freshDb.pragma("user_version = 7");
     return freshDb;
   }
 
   if (version < 5) {
     db.exec(SCHEMA_DDL);
-    db.pragma("user_version = 6");
+    db.pragma("user_version = 7");
   } else if (version === 5) {
     // v5 -> v6 migration: add multi-tenancy + encryption columns
     // Wrapped in transaction with duplicate-column guards for idempotent retry
@@ -187,10 +189,22 @@ export async function initDatabase(dbPath) {
       addColumnSafe(`ALTER TABLE vault ADD COLUMN title_encrypted BLOB`);
       addColumnSafe(`ALTER TABLE vault ADD COLUMN meta_encrypted BLOB`);
       addColumnSafe(`ALTER TABLE vault ADD COLUMN iv BLOB`);
+      addColumnSafe(`ALTER TABLE vault ADD COLUMN team_id TEXT`);
       db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_user ON vault(user_id)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_team ON vault(team_id)`);
       db.exec(`DROP INDEX IF EXISTS idx_vault_identity`);
       db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_identity ON vault(user_id, kind, identity_key) WHERE identity_key IS NOT NULL`);
-      db.pragma("user_version = 6");
+      db.pragma("user_version = 7");
+    });
+    migrate();
+  } else if (version === 6) {
+    // v6 -> v7 migration: add team_id column
+    const migrate = db.transaction(() => {
+      try { db.exec(`ALTER TABLE vault ADD COLUMN team_id TEXT`); } catch (e) {
+        if (!e.message.includes("duplicate column")) throw e;
+      }
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_team ON vault(team_id)`);
+      db.pragma("user_version = 7");
     });
     migrate();
   }
