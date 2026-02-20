@@ -111,6 +111,12 @@ context-vault setup
 context-vault reindex
 ```
 
+## Feedback & Community
+
+- **Questions or ideas?** Start a thread in [Discussions](https://github.com/fellanH/context-vault/discussions)
+- **Found a bug?** [Open an issue](https://github.com/fellanH/context-vault/issues/new/choose)
+- **Using context-vault?** I'd love to hear how — drop a note in [Show & Tell](https://github.com/fellanH/context-vault/discussions/categories/show-and-tell)
+
 ## Development
 
 ```bash
