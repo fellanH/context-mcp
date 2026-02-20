@@ -1,8 +1,8 @@
 name: Publish Extension to Chrome Web Store
 
 on:
-  push:
-    tags: ['v*']
+  # Disabled auto-trigger until CWS secrets are configured in repo settings.
+  # Re-enable: push: { tags: ['v*'] }
   workflow_dispatch:
 
 permissions:
