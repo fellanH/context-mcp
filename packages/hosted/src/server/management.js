@@ -86,7 +86,14 @@ export function createManagementRoutes(ctx) {
   function requireAuth(c) {
     const header = c.req.header("Authorization");
     if (!header?.startsWith("Bearer ")) return null;
-    return validateApiKey(header.slice(7));
+    const user = validateApiKey(header.slice(7));
+    if (!user) return null;
+    // Attach client key share from X-Vault-Secret header (split-authority encryption)
+    const vaultSecret = c.req.header("X-Vault-Secret");
+    if (vaultSecret && vaultSecret.startsWith("cvs_")) {
+      user.clientKeyShare = vaultSecret;
+    }
+    return user;
   }
 
   // ─── Current User ─────────────────────────────────────────────────────────

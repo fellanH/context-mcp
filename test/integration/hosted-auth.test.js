@@ -182,8 +182,12 @@ describe("hosted auth + management API", () => {
       headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
       body: JSON.stringify({ email: `import-${RUN_ID}@test.com` }),
     });
-    const { apiKey } = await regRes.json();
-    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+    const regData = await regRes.json();
+    const authHeaders = {
+      Authorization: `Bearer ${regData.apiKey.key}`,
+      "Content-Type": "application/json",
+      ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+    };
 
     const res = await fetch(`${BASE}/api/vault/import`, {
       method: "POST",
@@ -411,7 +415,7 @@ describe("hosted auth + management API", () => {
       headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
       body: JSON.stringify({ email: `iso-a-${RUN_ID}@test.com` }),
     });
-    const { apiKey: keyA } = await regA.json();
+    const regDataA = await regA.json();
 
     // Register User B
     const regB = await fetch(`${BASE}/api/register`, {
@@ -419,12 +423,16 @@ describe("hosted auth + management API", () => {
       headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
       body: JSON.stringify({ email: `iso-b-${RUN_ID}@test.com` }),
     });
-    const { apiKey: keyB } = await regB.json();
+    const regDataB = await regB.json();
 
     // User A imports an entry with unique content
     const importRes = await fetch(`${BASE}/api/vault/import`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${keyA.key}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${regDataA.apiKey.key}`,
+        "Content-Type": "application/json",
+        ...(regDataA.encryptionSecret ? { "X-Vault-Secret": regDataA.encryptionSecret } : {}),
+      },
       body: JSON.stringify({ kind: "insight", body: "secret-alpha-unicorn-data", tags: ["isolation-test"] }),
     });
     expect(importRes.status).toBe(200);
@@ -432,7 +440,10 @@ describe("hosted auth + management API", () => {
     // User B searches via MCP — should NOT find User A's entry
     const transportB = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: { Authorization: `Bearer ${keyB.key}` } } }
+      { requestInit: { headers: {
+        Authorization: `Bearer ${regDataB.apiKey.key}`,
+        ...(regDataB.encryptionSecret ? { "X-Vault-Secret": regDataB.encryptionSecret } : {}),
+      } } }
     );
     const clientB = new Client({ name: "test-client-b", version: "1.0.0" });
     await clientB.connect(transportB);
@@ -447,7 +458,10 @@ describe("hosted auth + management API", () => {
     // User A searches via MCP — SHOULD find their entry
     const transportA = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: { Authorization: `Bearer ${keyA.key}` } } }
+      { requestInit: { headers: {
+        Authorization: `Bearer ${regDataA.apiKey.key}`,
+        ...(regDataA.encryptionSecret ? { "X-Vault-Secret": regDataA.encryptionSecret } : {}),
+      } } }
     );
     const clientA = new Client({ name: "test-client-a", version: "1.0.0" });
     await clientA.connect(transportA);
@@ -469,12 +483,16 @@ describe("hosted auth + management API", () => {
       headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
       body: JSON.stringify({ email: `enc-${RUN_ID}@test.com` }),
     });
-    const { apiKey } = await regRes.json();
+    const regData = await regRes.json();
 
     // Import an entry
     const importRes = await fetch(`${BASE}/api/vault/import`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${regData.apiKey.key}`,
+        "Content-Type": "application/json",
+        ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+      },
       body: JSON.stringify({ kind: "insight", body: "encrypted-roundtrip-test-content", tags: ["encryption"] }),
     });
     expect(importRes.status).toBe(200);
@@ -482,7 +500,10 @@ describe("hosted auth + management API", () => {
     // Search via MCP — should return decrypted content
     const transport = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: { Authorization: `Bearer ${apiKey.key}` } } }
+      { requestInit: { headers: {
+        Authorization: `Bearer ${regData.apiKey.key}`,
+        ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+      } } }
     );
     const client = new Client({ name: "test-client-enc", version: "1.0.0" });
     await client.connect(transport);
@@ -503,7 +524,7 @@ describe("hosted auth + management API", () => {
       headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
       body: JSON.stringify({ email: `del-a-${RUN_ID}@test.com` }),
     });
-    const { apiKey: keyA } = await regA.json();
+    const regDataA = await regA.json();
 
     // Register User B
     const regB = await fetch(`${BASE}/api/register`, {
@@ -511,12 +532,16 @@ describe("hosted auth + management API", () => {
       headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
       body: JSON.stringify({ email: `del-b-${RUN_ID}@test.com` }),
     });
-    const { apiKey: keyB } = await regB.json();
+    const regDataB = await regB.json();
 
     // User A imports an entry and gets the ID
     const importRes = await fetch(`${BASE}/api/vault/import`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${keyA.key}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${regDataA.apiKey.key}`,
+        "Content-Type": "application/json",
+        ...(regDataA.encryptionSecret ? { "X-Vault-Secret": regDataA.encryptionSecret } : {}),
+      },
       body: JSON.stringify({ kind: "insight", body: "cross-user-delete-test-data", tags: ["delete-test"] }),
     });
     const { id: entryId } = await importRes.json();
@@ -525,7 +550,10 @@ describe("hosted auth + management API", () => {
     // User B tries to delete User A's entry via MCP
     const transportB = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: { Authorization: `Bearer ${keyB.key}` } } }
+      { requestInit: { headers: {
+        Authorization: `Bearer ${regDataB.apiKey.key}`,
+        ...(regDataB.encryptionSecret ? { "X-Vault-Secret": regDataB.encryptionSecret } : {}),
+      } } }
     );
     const clientB = new Client({ name: "test-client-del-b", version: "1.0.0" });
     await clientB.connect(transportB);
@@ -540,7 +568,10 @@ describe("hosted auth + management API", () => {
     // Verify User A's entry still exists
     const transportA = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: { Authorization: `Bearer ${keyA.key}` } } }
+      { requestInit: { headers: {
+        Authorization: `Bearer ${regDataA.apiKey.key}`,
+        ...(regDataA.encryptionSecret ? { "X-Vault-Secret": regDataA.encryptionSecret } : {}),
+      } } }
     );
     const clientA = new Client({ name: "test-client-del-a", version: "1.0.0" });
     await clientA.connect(transportA);
@@ -563,15 +594,17 @@ describe("hosted auth + management API", () => {
       headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
       body: JSON.stringify({ email: `limit-${RUN_ID}@test.com` }),
     });
-    const { apiKey } = await regRes.json();
-    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+    const regData = await regRes.json();
 
     // Fill up to the free tier limit (500 entries) using import for speed
     // We can't actually create 500 entries in a test, so we verify the mechanism
     // by connecting via MCP and checking that checkLimits is attached
     const transport = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: { Authorization: `Bearer ${apiKey.key}` } } }
+      { requestInit: { headers: {
+        Authorization: `Bearer ${regData.apiKey.key}`,
+        ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+      } } }
     );
     const client = new Client({ name: "test-limit", version: "1.0.0" });
     await client.connect(transport);
@@ -594,17 +627,21 @@ describe("hosted auth + management API", () => {
       headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
       body: JSON.stringify({ email: `usage2-${RUN_ID}@test.com` }),
     });
-    const { apiKey } = await regRes.json();
+    const regData = await regRes.json();
 
     // Import an entry so usage is non-zero
     await fetch(`${BASE}/api/vault/import`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${regData.apiKey.key}`,
+        "Content-Type": "application/json",
+        ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+      },
       body: JSON.stringify({ kind: "insight", body: "usage tracking test" }),
     });
 
     const res = await fetch(`${BASE}/api/billing/usage`, {
-      headers: { Authorization: `Bearer ${apiKey.key}` },
+      headers: { Authorization: `Bearer ${regData.apiKey.key}` },
     });
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -672,8 +709,12 @@ describe("hosted auth + management API", () => {
       headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
       body: JSON.stringify({ email: `delete-${RUN_ID}@test.com` }),
     });
-    const { apiKey, userId } = await regRes.json();
-    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+    const regData = await regRes.json();
+    const authHeaders = {
+      Authorization: `Bearer ${regData.apiKey.key}`,
+      "Content-Type": "application/json",
+      ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+    };
 
     // Import an entry
     await fetch(`${BASE}/api/vault/import`, {
@@ -693,7 +734,7 @@ describe("hosted auth + management API", () => {
 
     // API key should no longer work
     const checkRes = await fetch(`${BASE}/api/keys`, {
-      headers: { Authorization: `Bearer ${apiKey.key}` },
+      headers: { Authorization: `Bearer ${regData.apiKey.key}` },
     });
     expect(checkRes.status).toBe(401);
   });
