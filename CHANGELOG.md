@@ -2,6 +2,11 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.6.1] — 2026-02-20
+
+### Fixed
+- Schema version in CLI `status` command corrected from "v5" to "v7 (teams)" (missed in 2.6.0 which only fixed the MCP tool output)
+
 ## [2.6.0] — 2026-02-20
 
 ### Security
