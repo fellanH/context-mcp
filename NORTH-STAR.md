@@ -2,15 +2,15 @@
 
 ## What this is
 
-Context Vault is about owning your session context,  gives AI agents persistent memory. Markdown files, local SQLite,
-semantic search. Developers drop it into any Claude workflow in under 2 minutes
-and their agents remember things across sessions.
+Context Vault is about owning your data and storing it long term in a human readable format,  
+it allow you to give any AI agent you use now or in the future persistent memory. 
+Anyone can install it into any workflow very easily and their agents remember things across sessions.
 
 ## Who it's for
 
-Developers building with AI agents — especially solo builders and small teams
+Anyone using AI seriously — especially builders and small teams
 who want local-first, no-cloud-dependency memory that actually works.
-The primary user is me. If it doesn't solve my own daily workflow problems,
+One of the primary user is me. If it doesn't solve my own daily workflow problems,
 it doesn't ship.
 
 ## What success looks like
