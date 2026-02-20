@@ -159,7 +159,7 @@ export async function ingestUrl(url, opts = {}) {
     response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "ContextVault/1.0 (+https://github.com/fellanH/context-mcp)",
+        "User-Agent": "ContextVault/1.0 (+https://github.com/fellanH/context-vault)",
         Accept: "text/html,application/xhtml+xml,text/plain,*/*",
       },
     });

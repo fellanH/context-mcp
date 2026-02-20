@@ -65,5 +65,5 @@ The full guide covers category behavior, monthly audits, and how to measure retr
 
 Blog post: https://contextvault.dev/blog/designing-kinds-tags-folders-for-long-term-memory-quality?utm_source=x&utm_medium=social&utm_campaign=blog-8
 
-GitHub: https://github.com/fellanH/context-mcp
+GitHub: https://github.com/fellanH/context-vault
 Start free: https://contextvault.dev?utm_source=x&utm_medium=social&utm_campaign=blog-8

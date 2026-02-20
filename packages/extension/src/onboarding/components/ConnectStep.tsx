@@ -129,7 +129,7 @@ export function ConnectStep({
       {!isLocal && (
         <>
           <a
-            href="https://github.com/fellanH/context-mcp/blob/main/docs/distribution/connect-in-2-minutes.md"
+            href="https://github.com/fellanH/context-vault/blob/main/docs/distribution/connect-in-2-minutes.md"
             target="_blank"
             rel="noreferrer"
             className="inline-block mb-4 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"

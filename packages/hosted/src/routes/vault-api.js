@@ -89,7 +89,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
       "Data is encrypted at rest (AES-256-GCM) and isolated per user. " +
       "We do not sell, share, or use your data for training. " +
       "You can export or delete all your data at any time via the API.\n\n" +
-      "Contact: https://github.com/fellanH/context-mcp"
+      "Contact: https://github.com/fellanH/context-vault"
     );
   });
 
@@ -416,24 +416,7 @@ export function createVaultApiRoutes(ctx, masterSecret) {
     return c.json({ imported, failed, errors: errors.slice(0, 10) });
   });
 
-  // ─── GET /api/vault/export — Export all entries ─────────────────────────────
-
-  api.get("/api/vault/export", bearerAuth(), rateLimit(), async (c) => {
-    const user = c.get("user");
-    const userCtx = await buildUserCtx(ctx, user, masterSecret);
-
-    const clauses = ["(expires_at IS NULL OR expires_at > datetime('now'))"];
-    const params = [];
-    if (userCtx.userId) {
-      clauses.push("(user_id = ? OR user_id IS NULL)");
-      params.push(userCtx.userId);
-    }
-    const where = `WHERE ${clauses.join(" AND ")}`;
-    const rows = userCtx.db.prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC`).all(...params);
-    const entries = rows.map((row) => formatEntry(row, userCtx.decrypt));
-
-    return c.json({ entries, total: entries.length, exported_at: new Date().toISOString() });
-  });
+  // NOTE: GET /api/vault/export is defined in management.js (with Pro tier check)
 
   // ─── POST /api/vault/ingest — Fetch URL and save as entry ─────────────────
 

@@ -8,7 +8,7 @@
 Persistent memory for AI agents — saves and searches knowledge across sessions.
 
 <p align="center">
-  <img src="https://github.com/fellanH/context-mcp/raw/main/demo.gif" alt="context-vault demo — Claude Code and Cursor using the knowledge vault" width="800">
+  <img src="https://github.com/fellanH/context-vault/raw/main/demo.gif" alt="context-vault demo — Claude Code and Cursor using the knowledge vault" width="800">
 </p>
 
 ## Quick Start
@@ -22,7 +22,7 @@ Setup auto-detects your tools (Claude Code, Codex, Claude Desktop, Cursor, Winds
 
 > "Search my vault for getting started"
 
-For hosted MCP setup (Claude Code, Cursor, GPT Actions), see [connect-in-2-minutes](https://github.com/fellanH/context-mcp/blob/main/docs/distribution/connect-in-2-minutes.md).
+For hosted MCP setup (Claude Code, Cursor, GPT Actions), see [connect-in-2-minutes](https://github.com/fellanH/context-vault/blob/main/docs/distribution/connect-in-2-minutes.md).
 
 > **Note:** `context-mcp` still works as a CLI alias but `context-vault` is the primary command.
 
@@ -180,7 +180,7 @@ AI:  [Returns recent session entries]
 
 ### Folders and Kinds
 
-Entries are organized into three categories — **knowledge** (enduring insights, decisions, patterns), **entity** (contacts, projects, tools), and **event** (sessions, conversations, logs). See [DATA_CATEGORIES](https://github.com/fellanH/context-mcp/blob/main/docs/DATA_CATEGORIES.md) for the full category system, kind mappings, and write semantics.
+Entries are organized into three categories — **knowledge** (enduring insights, decisions, patterns), **entity** (contacts, projects, tools), and **event** (sessions, conversations, logs). See [DATA_CATEGORIES](https://github.com/fellanH/context-vault/blob/main/docs/DATA_CATEGORIES.md) for the full category system, kind mappings, and write semantics.
 
 Each top-level subdirectory in the vault maps to a `kind` value. The directory name is depluralized:
 

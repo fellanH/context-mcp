@@ -26,7 +26,7 @@ RUN_DIR="$PROJECT_DIR/.pipeline/runs/$DATE"
 mkdir -p "$RUN_DIR"
 exec > >(tee -a "$RUN_DIR/pipeline.log") 2>&1
 
-echo "=== context-mcp daily pipeline — $DATE ==="
+echo "=== context-vault daily pipeline — $DATE ==="
 echo "Project: $PROJECT_DIR"
 echo "Vault:   $VAULT_DIR"
 echo "Run dir: $RUN_DIR"
@@ -70,7 +70,7 @@ echo "--- Stage 1: Triage ---"
 
 TRIAGE_REPORT="$RUN_DIR/triage-report.md"
 
-claude --print -p "You are a development triage bot for context-mcp (an MCP server, npm: context-vault).
+claude --print -p "You are a development triage bot for context-vault (an MCP server, npm: context-vault).
 
 Below is a bundle of user/agent feedback entries. Each has a type (bug/feature/improvement), severity, and description.
 
@@ -122,7 +122,7 @@ echo "Branch: $BRANCH"
 
 IMPLEMENT_LOG="$RUN_DIR/implement-log.txt"
 
-claude -p "You are implementing changes for context-mcp based on the triage report below.
+claude -p "You are implementing changes for context-vault based on the triage report below.
 
 Rules:
 - Only implement P0 and P1 items

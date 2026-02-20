@@ -67,7 +67,8 @@ export function registerTools(server, ctx) {
   async function ensureIndexed() {
     if (reindexDone) return;
     if (reindexPromise) return reindexPromise;
-    reindexPromise = reindex(ctx, { fullSync: true })
+    // Assign promise synchronously to prevent concurrent calls from both entering reindex()
+    const promise = reindex(ctx, { fullSync: true })
       .then((stats) => {
         reindexDone = true;
         const total = stats.added + stats.updated + stats.removed;
@@ -86,6 +87,7 @@ export function registerTools(server, ctx) {
           reindexPromise = null; // Allow retry on next tool call
         }
       });
+    reindexPromise = promise;
     return reindexPromise;
   }
 

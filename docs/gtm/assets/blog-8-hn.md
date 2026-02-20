@@ -51,5 +51,5 @@ The tag vocabulary size recommendation (~30 tags across 500 entries) is based on
 2. Has anyone built similar taxonomy systems for structured knowledge management and found different axis designs that work better?
 3. The monthly audit pattern (check kind distribution, tag frequency, folder depth) — does anyone have automated approaches for taxonomy health monitoring?
 
-GitHub: https://github.com/fellanH/context-mcp
+GitHub: https://github.com/fellanH/context-vault
 Site: https://contextvault.dev?utm_source=hn&utm_medium=social&utm_campaign=blog-8

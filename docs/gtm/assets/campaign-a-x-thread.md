@@ -60,7 +60,7 @@ No Docker, no cloud account required. Hosted option available if you want zero i
 
 ### Tweet 5 (CTA)
 
-Open source: github.com/fellanH/context-mcp
+Open source: github.com/fellanH/context-vault
 Hosted (free tier): contextvault.dev
 
 No lock-in. Every entry is a markdown file you own.

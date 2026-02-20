@@ -80,7 +80,7 @@ After two weeks of this, my session startup dropped from 15 minutes of re-explan
 
 **Links**
 
-- GitHub (open source): github.com/fellanH/context-mcp
+- GitHub (open source): github.com/fellanH/context-vault
 - Hosted (free tier): contextvault.dev
 - Setup guide: [link to blog post]
 

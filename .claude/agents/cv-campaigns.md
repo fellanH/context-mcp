@@ -49,7 +49,7 @@ Study these before writing new assets:
 ### Link Requirements
 
 Every campaign asset must include:
-- GitHub repo: `https://github.com/fellanH/context-mcp`
+- GitHub repo: `https://github.com/fellanH/context-vault`
 - Marketing site: `https://contextvault.dev`
 - Relevant blog post link: `https://contextvault.dev/blog/{slug}`
 

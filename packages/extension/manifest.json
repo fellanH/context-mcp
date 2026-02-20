@@ -3,7 +3,7 @@
   "name": "Context Vault",
   "version": "2.5.0",
   "description": "Search your knowledge vault and inject context into ChatGPT, Claude, and Gemini. Save insights from any page.",
-  "homepage_url": "https://github.com/fellanH/context-mcp",
+  "homepage_url": "https://github.com/fellanH/context-vault",
   "permissions": [
     "storage",
     "activeTab",

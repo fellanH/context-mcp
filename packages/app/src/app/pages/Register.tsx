@@ -247,7 +247,7 @@ export function Register() {
         <p className="text-center text-xs text-muted-foreground">
           Prefer local-only?{" "}
           <a
-            href="https://github.com/fellanH/context-mcp/blob/main/docs/distribution/connect-in-2-minutes.md"
+            href="https://github.com/fellanH/context-vault/blob/main/docs/distribution/connect-in-2-minutes.md"
             target="_blank"
             rel="noreferrer"
             className="text-foreground hover:underline font-medium"

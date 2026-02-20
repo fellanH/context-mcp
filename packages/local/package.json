@@ -31,11 +31,11 @@
   "author": "Felix Hellstrom",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fellanH/context-mcp.git"
+    "url": "git+https://github.com/fellanH/context-vault.git"
   },
-  "homepage": "https://github.com/fellanH/context-mcp",
+  "homepage": "https://github.com/fellanH/context-vault",
   "bugs": {
-    "url": "https://github.com/fellanH/context-mcp/issues"
+    "url": "https://github.com/fellanH/context-vault/issues"
   },
   "keywords": [
     "mcp",

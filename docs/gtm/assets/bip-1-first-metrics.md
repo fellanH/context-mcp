@@ -64,7 +64,7 @@ What's next:
 - Demo videos for both local and hosted setup
 
 Building this in public. Follow along or try it:
-- GitHub: github.com/fellanH/context-mcp
+- GitHub: github.com/fellanH/context-vault
 - Hosted: contextvault.dev
 
 Feedback welcome — what would you want from an AI memory layer?

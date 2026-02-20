@@ -96,7 +96,7 @@ export function PrivacyPage() {
           </p>
           <Button variant="outline" size="sm" asChild>
             <a
-              href="https://github.com/fellanH/context-mcp"
+              href="https://github.com/fellanH/context-vault"
               target="_blank"
               rel="noreferrer"
             >

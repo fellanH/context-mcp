@@ -29,4 +29,4 @@ FEATURES
 PRIVACY
 This extension stores only your server URL, API key, and temporary rate-limit metadata. No browsing history is collected. No data is sent anywhere except your configured server.
 
-Open source: https://github.com/fellanH/context-mcp
+Open source: https://github.com/fellanH/context-vault

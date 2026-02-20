@@ -23,7 +23,7 @@ const sections = [
     description:
       "Found something that isn't working? Open an issue on GitHub and we'll look into it.",
     link: {
-      href: "https://github.com/fellanH/context-mcp/issues",
+      href: "https://github.com/fellanH/context-vault/issues",
       label: "Open an Issue",
     },
   },
@@ -33,7 +33,7 @@ const sections = [
     description:
       "Have an idea for improving Context Vault? Start a discussion and share your thoughts.",
     link: {
-      href: "https://github.com/fellanH/context-mcp/discussions",
+      href: "https://github.com/fellanH/context-vault/discussions",
       label: "Start a Discussion",
     },
   },
@@ -128,7 +128,7 @@ export function SupportPage() {
             </div>
             <Button variant="outline" size="sm" asChild>
               <a
-                href="https://github.com/fellanH/context-mcp"
+                href="https://github.com/fellanH/context-vault"
                 target="_blank"
                 rel="noreferrer"
               >

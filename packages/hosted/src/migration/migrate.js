@@ -2,8 +2,8 @@
  * migrate.js — Bidirectional migration between local and hosted vaults.
  *
  * Commands:
- *   context-mcp migrate --to-hosted   Upload local vault to hosted
- *   context-mcp migrate --to-local    Download hosted vault to local files
+ *   context-vault migrate --to-hosted   Upload local vault to hosted
+ *   context-vault migrate --to-local    Download hosted vault to local files
  *
  * Flow (--to-hosted):
  *   1. Read all .md files from local vault

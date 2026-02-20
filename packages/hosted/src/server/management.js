@@ -190,7 +190,7 @@ export function createManagementRoutes(ctx) {
     // Generate CSRF state token to prevent login CSRF attacks
     const state = randomUUID();
     // Store state in a short-lived cookie (5 min expiry)
-    c.header("Set-Cookie", `oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=300`);
+    c.header("Set-Cookie", `oauth_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=300`);
     const url = getAuthUrl(c.req.raw, state);
     return c.redirect(url);
   });
@@ -223,7 +223,7 @@ export function createManagementRoutes(ctx) {
       return c.redirect(`${appUrl}/login?error=oauth_invalid_state`);
     }
     // Clear the state cookie
-    c.header("Set-Cookie", "oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+    c.header("Set-Cookie", "oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
 
     const redirectUri = getRedirectUri(c.req.raw);
     let profile;

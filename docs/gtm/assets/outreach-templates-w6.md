@@ -44,7 +44,7 @@ Persona-specific DM templates for founder-led outreach. All templates use `{plac
 
 ## Template 3: GitHub Stargazer
 
-**Target:** Developer who starred the `context-mcp` repo but hasn't registered for the hosted service.
+**Target:** Developer who starred the `context-vault` repo but hasn't registered for the hosted service.
 **Source code:** GH
 **Value-add:** Direct — they already know the repo. Focus on hosted setup ease.
 **Objection pre-load:** "Seems complex to set up" (one MCP endpoint plus copy-paste config, under 5 minutes)

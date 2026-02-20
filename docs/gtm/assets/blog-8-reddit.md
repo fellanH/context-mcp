@@ -66,7 +66,7 @@ After restructuring (~2 hours of work across 300 entries), my first-result relev
 **Links**
 
 - Full guide with examples: https://contextvault.dev/blog/designing-kinds-tags-folders-for-long-term-memory-quality?utm_source=reddit&utm_medium=social&utm_campaign=blog-8
-- GitHub (open source): https://github.com/fellanH/context-mcp
+- GitHub (open source): https://github.com/fellanH/context-vault
 - Start free (hosted): https://contextvault.dev?utm_source=reddit&utm_medium=social&utm_campaign=blog-8
 
 Happy to answer questions about taxonomy design or retrieval tuning. Curious how others are structuring their agent memory systems too.

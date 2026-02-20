@@ -5,10 +5,10 @@ This plan merges your active implementation tracks from `/Users/admin/.claude/pl
 
 Current repo/deployment review indicates:
 - Core hosted/API foundation is strong, with auth, billing, vault CRUD/search, and staging/prod Fly pipeline already present.
-- Deployment hardening is incomplete in CI/smoke validation: `/Users/admin/dev/context-mcp/.github/workflows/ci.yml:8` and `/Users/admin/dev/context-mcp/scripts/smoke-test.sh:30`.
+- Deployment hardening is incomplete in CI/smoke validation: `/Users/admin/dev/context-vault/.github/workflows/ci.yml:8` and `/Users/admin/dev/context-vault/scripts/smoke-test.sh:30`.
 - Production domain currently serves API health, but key public distribution endpoints are not live: `https://www.context-vault.com/` returns `404`; `https://www.context-vault.com/api/vault/openapi.json` returns `404`.
-- App UX is mostly wired to backend, but docs/message consistency is stale: `/Users/admin/dev/context-mcp/packages/app/README.md:75` and onboarding snippets in `/Users/admin/dev/context-mcp/packages/app/src/app/pages/Dashboard.tsx:80` and `/Users/admin/dev/context-mcp/packages/app/src/app/pages/Register.tsx:92`.
-- Extension phases 1-5 are mostly in place, but 6-10 are incomplete in code paths: `/Users/admin/dev/context-mcp/packages/extension/src/popup/main.tsx:1`, `/Users/admin/dev/context-mcp/packages/extension/src/background/index.ts:23`, `/Users/admin/dev/context-mcp/packages/extension/scripts/build.mjs:32`, `/Users/admin/dev/context-mcp/packages/extension/src/shared/types.ts:43`.
+- App UX is mostly wired to backend, but docs/message consistency is stale: `/Users/admin/dev/context-vault/packages/app/README.md:75` and onboarding snippets in `/Users/admin/dev/context-vault/packages/app/src/app/pages/Dashboard.tsx:80` and `/Users/admin/dev/context-vault/packages/app/src/app/pages/Register.tsx:92`.
+- Extension phases 1-5 are mostly in place, but 6-10 are incomplete in code paths: `/Users/admin/dev/context-vault/packages/extension/src/popup/main.tsx:1`, `/Users/admin/dev/context-vault/packages/extension/src/background/index.ts:23`, `/Users/admin/dev/context-vault/packages/extension/scripts/build.mjs:32`, `/Users/admin/dev/context-vault/packages/extension/src/shared/types.ts:43`.
 
 ## Business Direction (Locked)
 - Primary goal: Paid revenue in 90 days.
@@ -31,14 +31,14 @@ Out of scope for this cycle:
 
 ## Workstream 1: Production Deployment Hardening (Weeks 1-2)
 1. Fix release gates so deploys can only ship when app/API/public endpoints are valid.
-2. Add `build-app` and `build-extension` CI jobs before deploy in `/Users/admin/dev/context-mcp/.github/workflows/ci.yml`.
-3. Expand smoke checks in `/Users/admin/dev/context-mcp/scripts/smoke-test.sh`:
+2. Add `build-app` and `build-extension` CI jobs before deploy in `/Users/admin/dev/context-vault/.github/workflows/ci.yml`.
+3. Expand smoke checks in `/Users/admin/dev/context-vault/scripts/smoke-test.sh`:
 - `GET /` returns HTML with app root.
 - `GET /api/vault/openapi.json` returns `200`.
 - `GET /privacy` returns `200`.
 4. Enforce runtime consistency with Node 20 in dev/CI by adding `.nvmrc` and documenting in root README.
 5. Recover staging environment and add explicit staging health gate before production promotion.
-6. Confirm production image serves app assets via `/Users/admin/dev/context-mcp/packages/hosted/src/index.js:250` and Docker build in `/Users/admin/dev/context-mcp/packages/hosted/Dockerfile:1`.
+6. Confirm production image serves app assets via `/Users/admin/dev/context-vault/packages/hosted/src/index.js:250` and Docker build in `/Users/admin/dev/context-vault/packages/hosted/Dockerfile:1`.
 
 Acceptance criteria:
 - Main push executes test → build-app → build-extension → deploy-staging → smoke-staging → deploy-prod → smoke-prod.
@@ -47,20 +47,20 @@ Acceptance criteria:
 
 ## Workstream 2: Product Completion and Cleanup (Weeks 2-4)
 1. Close remaining app plan cleanup:
-- Remove stale mock/demo messaging from `/Users/admin/dev/context-mcp/packages/app/README.md`.
-- Delete `/Users/admin/dev/context-mcp/packages/app/src/app/lib/mockData.ts` if no live imports remain.
+- Remove stale mock/demo messaging from `/Users/admin/dev/context-vault/packages/app/README.md`.
+- Delete `/Users/admin/dev/context-vault/packages/app/src/app/lib/mockData.ts` if no live imports remain.
 2. Canonicalize endpoint snippets in app onboarding:
-- Replace `https://api.contextvault.io/mcp` with production canonical MCP URL in `/Users/admin/dev/context-mcp/packages/app/src/app/pages/Dashboard.tsx:80` and `/Users/admin/dev/context-mcp/packages/app/src/app/pages/Register.tsx:92`.
+- Replace `https://api.contextvault.io/mcp` with production canonical MCP URL in `/Users/admin/dev/context-vault/packages/app/src/app/pages/Dashboard.tsx:80` and `/Users/admin/dev/context-vault/packages/app/src/app/pages/Register.tsx:92`.
 3. Finish extension phases 6-10:
-- Wrap popup with ErrorBoundary in `/Users/admin/dev/context-mcp/packages/extension/src/popup/main.tsx`.
-- Add not-connected CTA/rate-limit warning logic in `/Users/admin/dev/context-mcp/packages/extension/src/popup/components/App.tsx`.
-- Add onboarding build output in `/Users/admin/dev/context-mcp/packages/extension/scripts/build.mjs`.
-- Implement multi-kind context menu in `/Users/admin/dev/context-mcp/packages/extension/src/background/index.ts`.
-- Add extension privacy page under `/Users/admin/dev/context-mcp/packages/extension/public/privacy.html`.
+- Wrap popup with ErrorBoundary in `/Users/admin/dev/context-vault/packages/extension/src/popup/main.tsx`.
+- Add not-connected CTA/rate-limit warning logic in `/Users/admin/dev/context-vault/packages/extension/src/popup/components/App.tsx`.
+- Add onboarding build output in `/Users/admin/dev/context-vault/packages/extension/scripts/build.mjs`.
+- Implement multi-kind context menu in `/Users/admin/dev/context-vault/packages/extension/src/background/index.ts`.
+- Add extension privacy page under `/Users/admin/dev/context-vault/packages/extension/public/privacy.html`.
 4. Fix extension host access model for user-defined vault domains:
 - Add `optional_host_permissions` strategy and runtime permission request path.
 - Keep minimum default host permissions to reduce install friction.
-5. Align default extension server URL to real hosted endpoint in `/Users/admin/dev/context-mcp/packages/extension/src/shared/types.ts:43`.
+5. Align default extension server URL to real hosted endpoint in `/Users/admin/dev/context-vault/packages/extension/src/shared/types.ts:43`.
 
 Acceptance criteria:
 - App docs match real backend behavior.

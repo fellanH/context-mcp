@@ -114,8 +114,8 @@ context-vault reindex
 ## Development
 
 ```bash
-git clone https://github.com/fellanH/context-mcp.git
-cd context-mcp
+git clone https://github.com/fellanH/context-vault.git
+cd context-vault
 nvm use
 npm install
 npm run cli -- setup

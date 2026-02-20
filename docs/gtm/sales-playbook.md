@@ -19,7 +19,7 @@
 
 ## Demo Tracks
 
-1. Local CLI flow (`context-mcp setup` + tools)
+1. Local CLI flow (`context-vault setup` + tools)
 2. Hosted MCP flow (`/mcp` + API key)
 3. Browser extension flow (search/inject/save)
 

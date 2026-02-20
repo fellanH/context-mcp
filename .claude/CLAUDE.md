@@ -5,7 +5,7 @@
 - **Name:** Context Vault
 - **What it is:** Persistent memory layer for AI agents via MCP (Model Context Protocol)
 - **Core tech:** markdown files + SQLite FTS + semantic embeddings, served over MCP
-- **Repo:** `github.com/fellanH/context-mcp`
+- **Repo:** `github.com/fellanH/context-vault`
 - **Marketing site:** contextvault.dev (SPA in `packages/marketing/`)
 - **App:** context-vault.com (SPA in `packages/app/`)
 
@@ -35,10 +35,10 @@
 
 | Resource | URL |
 |----------|-----|
-| GitHub repo | `https://github.com/fellanH/context-mcp` |
+| GitHub repo | `https://github.com/fellanH/context-vault` |
 | Marketing site | `https://contextvault.dev` |
 | App | `https://context-vault.com` |
-| Docs quickstart | `https://github.com/fellanH/context-mcp/blob/main/docs/distribution/connect-in-2-minutes.md` |
+| Docs quickstart | `https://github.com/fellanH/context-vault/blob/main/docs/distribution/connect-in-2-minutes.md` |
 
 ## GTM Docs Location
 

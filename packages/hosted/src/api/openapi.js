@@ -20,7 +20,7 @@ export function generateOpenApiSpec({ version = "1.0.0", serverUrl } = {}) {
       title: "Context Vault API",
       version,
       description: "REST API for Context Vault — a personal knowledge base with hybrid semantic search. Store insights, decisions, patterns, entities, and events, then retrieve them with natural language queries combining full-text and vector similarity search.",
-      contact: { name: "Context Vault", url: "https://github.com/fellanH/context-mcp" },
+      contact: { name: "Context Vault", url: "https://github.com/fellanH/context-vault" },
     },
     servers,
     security: [{ bearerAuth: [] }],

@@ -2,7 +2,7 @@
 
 Web app for Context Vault. Built with React Router, React Query, Tailwind CSS, and shadcn/ui.
 
-> **Note:** The app supports both **local** (no auth, SQLite vault) and **hosted** (API key auth) modes. Run `context-mcp ui` for local mode.
+> **Note:** The app supports both **local** (no auth, SQLite vault) and **hosted** (API key auth) modes. Run `context-vault ui` for local mode.
 
 ## What It Includes
 

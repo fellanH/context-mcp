@@ -11,7 +11,7 @@
 
 **Title:** Show HN: Context Vault — local-first persistent memory for AI coding tools via MCP
 
-**URL:** https://github.com/fellanH/context-mcp
+**URL:** https://github.com/fellanH/context-vault
 
 ---
 
@@ -43,5 +43,5 @@ There's also a hosted option (free tier) for zero-install setup or team sharing 
 2. Taxonomy — currently uses kind (decision, pattern, insight, reference) + tags + folders. Is this flexible enough or too rigid?
 3. MCP integrations — what other MCP clients or workflows would be useful to support?
 
-GitHub: https://github.com/fellanH/context-mcp
+GitHub: https://github.com/fellanH/context-vault
 Hosted: https://contextvault.dev

@@ -48,7 +48,7 @@ export function resolveConfig() {
       if (fc.dataDir) { config.dataDir = fc.dataDir; config.dbPath = join(resolve(fc.dataDir), "vault.db"); }
       if (fc.dbPath) config.dbPath = fc.dbPath;
       if (fc.devDir) config.devDir = fc.devDir;
-      if (fc.eventDecayDays) config.eventDecayDays = fc.eventDecayDays;
+      if (fc.eventDecayDays != null) config.eventDecayDays = fc.eventDecayDays;
       // Hosted account linking (Phase 4)
       if (fc.hostedUrl) config.hostedUrl = fc.hostedUrl;
       if (fc.apiKey) config.apiKey = fc.apiKey;
@@ -66,7 +66,7 @@ export function resolveConfig() {
   if (process.env.CONTEXT_VAULT_VAULT_DIR || process.env.CONTEXT_MCP_VAULT_DIR) { config.vaultDir = process.env.CONTEXT_VAULT_VAULT_DIR || process.env.CONTEXT_MCP_VAULT_DIR; config.resolvedFrom = "env"; }
   if (process.env.CONTEXT_VAULT_DB_PATH || process.env.CONTEXT_MCP_DB_PATH) { config.dbPath = process.env.CONTEXT_VAULT_DB_PATH || process.env.CONTEXT_MCP_DB_PATH; config.resolvedFrom = "env"; }
   if (process.env.CONTEXT_VAULT_DEV_DIR || process.env.CONTEXT_MCP_DEV_DIR) { config.devDir = process.env.CONTEXT_VAULT_DEV_DIR || process.env.CONTEXT_MCP_DEV_DIR; config.resolvedFrom = "env"; }
-  if (process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS || process.env.CONTEXT_MCP_EVENT_DECAY_DAYS) { config.eventDecayDays = Number(process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS || process.env.CONTEXT_MCP_EVENT_DECAY_DAYS); config.resolvedFrom = "env"; }
+  if (process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS != null || process.env.CONTEXT_MCP_EVENT_DECAY_DAYS != null) { config.eventDecayDays = Number(process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS ?? process.env.CONTEXT_MCP_EVENT_DECAY_DAYS); config.resolvedFrom = "env"; }
 
   // 3b. Hosted account env overrides
   if (process.env.CONTEXT_VAULT_API_KEY) { config.apiKey = process.env.CONTEXT_VAULT_API_KEY; }
@@ -76,7 +76,7 @@ export function resolveConfig() {
   if (cliArgs.vaultDir) { config.vaultDir = cliArgs.vaultDir; config.resolvedFrom = "CLI args"; }
   if (cliArgs.dbPath) { config.dbPath = cliArgs.dbPath; config.resolvedFrom = "CLI args"; }
   if (cliArgs.devDir) { config.devDir = cliArgs.devDir; config.resolvedFrom = "CLI args"; }
-  if (cliArgs.eventDecayDays) { config.eventDecayDays = cliArgs.eventDecayDays; config.resolvedFrom = "CLI args"; }
+  if (cliArgs.eventDecayDays != null) { config.eventDecayDays = cliArgs.eventDecayDays; config.resolvedFrom = "CLI args"; }
 
   // Resolve all paths to absolute
   config.vaultDir = resolve(config.vaultDir);

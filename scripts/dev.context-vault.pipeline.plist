@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>dev.context-mcp.pipeline</string>
+  <string>dev.context-vault.pipeline</string>
 
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/admin/dev/context-mcp/scripts/daily-pipeline.sh</string>
+    <string>/Users/admin/dev/context-vault/scripts/daily-pipeline.sh</string>
   </array>
 
   <key>StartCalendarInterval</key>

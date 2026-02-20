@@ -9,7 +9,7 @@ import { initDatabase, prepareStatements, insertVec, deleteVec } from "@context-
 import { embed } from "@context-vault/core/index/embed";
 
 export async function createTestCtx() {
-  const tmp = mkdtempSync(join(tmpdir(), "context-mcp-test-"));
+  const tmp = mkdtempSync(join(tmpdir(), "context-vault-test-"));
   const vaultDir = join(tmp, "vault");
   const dbPath = join(tmp, "vault.db");
   mkdirSync(vaultDir, { recursive: true });

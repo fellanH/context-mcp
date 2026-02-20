@@ -312,7 +312,7 @@ export const posts: BlogPost[] = [
     readTimeMinutes: 7,
     ctaLabel: "See 2-minute setup",
     ctaHref:
-      "https://github.com/fellanH/context-mcp/blob/main/docs/distribution/connect-in-2-minutes.md",
+      "https://github.com/fellanH/context-vault/blob/main/docs/distribution/connect-in-2-minutes.md",
     sections: [
       {
         heading: "Keep your source of truth portable",

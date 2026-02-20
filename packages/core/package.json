@@ -35,10 +35,10 @@
   "author": "Felix Hellstrom",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fellanH/context-mcp.git",
+    "url": "git+https://github.com/fellanH/context-vault.git",
     "directory": "packages/core"
   },
-  "homepage": "https://github.com/fellanH/context-mcp",
+  "homepage": "https://github.com/fellanH/context-vault",
   "dependencies": {
     "@huggingface/transformers": "^3.0.0",
     "@modelcontextprotocol/sdk": "^1.26.0",

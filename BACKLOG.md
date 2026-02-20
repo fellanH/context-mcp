@@ -10,7 +10,7 @@ Active work. Hard cap: 3 items. Finish or demote before adding.
 
 | Item | Source | Issue |
 |------|--------|-------|
-| Add unit tests for `hybridSearch` (FTS query building, scoring, filters) | [qa] | #1 |
+| ~~Add unit tests for `hybridSearch`~~ | [qa] | #1 — PR #15, 46 tests |
 | Add input size limits to local MCP tools | [qa] | #2 |
 | Fix schema version string "v6" → "v7" in `context_status` output | [qa] | #3 |
 
