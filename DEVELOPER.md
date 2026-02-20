@@ -2,173 +2,45 @@
 
 Internal reference for contributors working on the context-vault monorepo.
 
-For user-facing docs, see [README.md](./README.md).
+## Documentation Philosophy
+
+Three layers, no overlap:
+
+| Layer | Tells you | Examples |
+|-------|-----------|---------|
+| **Code** | What & How | Types, naming, structure, logic |
+| **Tests** | Expected behavior | Edge cases, contracts, invariants |
+| **Docs** | Why & Where | Business decisions, external URLs, deployment, gotchas |
+
+**Rule:** If an agent can answer the question by reading source files, the doc line is redundant. Pointers over prose.
 
 ---
 
-## Monorepo Structure
+## Code Pointers
 
-```
-context-vault-monorepo/
-├── packages/core       ← Shared library (capture, index, retrieve, tools)
-├── packages/local      ← Local MCP server (published to npm as `context-vault`)
-├── packages/hosted     ← Cloud server (Hono HTTP, deployed to Fly.io)
-├── packages/app        ← React dashboard SPA
-├── packages/marketing  ← Landing page / marketing site
-└── packages/extension  ← Chrome extension (Manifest v3)
-```
+These replace detailed sections — read the source for specifics:
 
-### Dependency Graph
-
-```
-              ┌─────────────┐
-              │  @cv/core   │  Shared: capture, index, retrieve, tools
-              └──────┬──────┘
-           ┌─────────┼─────────┐
-           ▼         ▼         ▼
-      ┌────────┐ ┌────────┐ ┌───────────┐
-      │ local  │ │ hosted │ │ extension │
-      │ (npm)  │ │(Fly.io)│ │ (Chrome)  │
-      └────────┘ └───┬────┘ └─────┬─────┘
-                     │             │
-              ┌──────┴──────┐     │
-              │  app + mkt  │     │
-              │  (embedded) │     │
-              └─────────────┘     │
-                     ▲            │
-                     └────────────┘
-                   (REST API calls)
-```
-
-- **core** is consumed by both `local` and `hosted`.
-- **app** and **marketing** are built as static assets and served by the hosted server.
-- **extension** talks to the hosted server via REST — it does **not** use MCP protocol.
+| Topic | Start here |
+|-------|-----------|
+| Monorepo layout | `ls packages/` + each `package.json` |
+| Core architecture | `packages/core/src/` — capture → index → retrieve layers |
+| ctx object shape | `packages/core/src/server/types.js` |
+| Categories & kinds | `packages/core/src/core/categories.js` |
+| Config resolution | `packages/core/src/core/config.js` (header comment) |
+| Embedding system | `packages/core/src/index/embed.js` |
+| DB schema & migrations | `packages/core/src/index/db.js` |
+| MCP tool handlers | `packages/core/src/server/tools.js` |
+| Local server entry | `packages/local/src/server/index.js` |
+| Hosted server entry | `packages/hosted/src/index.js` |
+| Sync protocol | `packages/core/src/sync/sync.js` |
+| Scripts | root `package.json` scripts section |
+| Tests | `test/unit/`, `test/integration/`, `test/helpers/ctx.js` |
 
 ---
 
-## Package Details
+## Local vs Hosted
 
-### `packages/core` — `@context-vault/core`
-
-The shared library containing all business logic. Both `local` and `hosted` are thin wrappers around it.
-
-**Three-layer architecture:**
-
-```
-            WRITE PATH                    READ PATH
-         ┌────────────┐              ┌──────────────┐
-INPUT ──▶│  Capture   │──▶ .md file  │   Retrieve   │──▶ RESULTS
-         │            │              │              │
-         │ writeEntry │              │ hybridSearch │
-         │ formatters │              │  FTS + Vec   │
-         └─────┬──────┘              └──────────────┘
-               │                            ▲
-               ▼                            │
-         ┌─────────────┐                    │
-         │    Index     │───────────────────┘
-         │  (derived)   │
-         │ indexEntry   │
-         │ reindex      │
-         │ embed + SQL  │
-         └──────────────┘
-```
-
-| Layer | Directory | Responsibility |
-|-------|-----------|----------------|
-| Capture | `src/capture/` | Write `.md` files to vault dir. No SQL. |
-| Index | `src/index/` | SQLite + FTS5 + vector embeddings. Derived from files. |
-| Retrieve | `src/retrieve/` | Read-only hybrid search (FTS + semantic). |
-| Tools | `src/server/tools.js` | 7 MCP tool handlers that coordinate the layers. |
-| Sync | `src/sync/` | Bidirectional sync protocol (manifest, diff, push/pull). |
-| Shared | `src/core/` | Config resolution, categories, frontmatter, file utilities. |
-
-**Key rule**: Vault `.md` files are the **source of truth**. The SQLite database is a derived index that can be fully rebuilt via `reindex()`. Never write directly to the DB and expect it to persist independently.
-
-**Exports** (via `package.json` exports map):
-```js
-import { writeEntry, captureAndIndex } from '@context-vault/core/capture'
-import { initDb, prepareStatements }   from '@context-vault/core/index/db'
-import { createEmbedder }             from '@context-vault/core/index/embed'
-import { hybridSearch }               from '@context-vault/core/retrieve'
-import { registerTools }              from '@context-vault/core/server/tools'
-import { resolveConfig }              from '@context-vault/core/core/config'
-import { parseFile, parseDirectory }  from '@context-vault/core/capture/importers'
-import { importEntries }              from '@context-vault/core/capture/import-pipeline'
-import { ingestUrl }                  from '@context-vault/core/capture/ingest-url'
-import { buildLocalManifest, computeSyncPlan, executeSync } from '@context-vault/core/sync'
-```
-
-### `packages/local` — `context-vault` (npm)
-
-The package users install. Runs as a **stdio MCP server** — Claude Code, Cursor, etc. spawn it as a subprocess.
-
-- Single entry point: `src/server/index.js` (~194 lines)
-- Published to npm with `bundledDependencies` (ships `@context-vault/core` inside it)
-- `scripts/prepack.js` handles the bundling before publish
-- `scripts/postinstall.js` runs setup on install
-- No auth, no encryption, no billing — everything runs locally
-- Boot sequence: Config → Dirs → DB → MCP Server → Connect stdio
-
-### `packages/hosted` — `@context-vault/hosted`
-
-Cloud deployment on Fly.io. Wraps core with HTTP transport, auth, encryption, and billing.
-
-| Concern | Files | Notes |
-|---------|-------|-------|
-| HTTP server | `src/index.js` | Hono app, MCP server factory, middleware chain |
-| Auth | `src/auth/` | Google OAuth + API key validation |
-| Encryption | `src/encryption/` | AES-256-GCM per-user, key derivation via PBKDF2 |
-| Billing | `src/billing/stripe.js` | Stripe checkout, webhooks, tier enforcement |
-| REST API | `src/routes/vault-api.js` | 10 endpoints under `/api/vault/` (CRUD, search, status, bulk import, export, ingest, manifest) |
-| Middleware | `src/middleware/` | Auth, rate limiting, logging |
-| Backups | `src/backup/r2-backup.js` | Cloudflare R2 automated backups |
-| Context | `src/server/ctx.js`, `user-ctx.js` | Shared + per-user context builders |
-
-**Two interfaces:**
-1. REST API (`/api/vault/*`) — used by extension and web app
-2. MCP over SSE — for remote MCP clients
-
-**Frontend routing**: The hosted server serves both `app` and `marketing` as static builds, routing by hostname:
-- `app.context-vault.com` → app SPA
-- `www.context-vault.com` / `context-vault.com` → marketing site
-
-### `packages/app` — `@context-vault/app`
-
-React SPA dashboard for managing vault entries via the hosted API.
-
-- React 19, TypeScript, Tailwind CSS 4, Radix UI, React Router 7, TanStack Query
-- Auth via Google OAuth or local vault connection (see `src/components/AuthProvider.tsx`)
-- `VaultMode` type (`"local" | "hosted"`) exposed via auth context — replaces inline `user?.id === "local"` checks
-- Login uses mode-first selection pattern (Local Vault / Hosted Vault cards, matching the extension)
-- Pages: Dashboard, Search, Knowledge/Entities/Events browsers, Settings (API keys, billing, data, account)
-- Built by Vite, output served by the hosted server
-
-### `packages/marketing` — `@context-vault/marketing`
-
-Static marketing site with landing page, blog, and `/get-started` mode-selection page. Same UI stack as app (Radix, Tailwind). Built by Vite, served by hosted server.
-
-### `packages/extension` — `@context-vault/extension`
-
-Chrome extension (Manifest v3) for capturing and injecting vault context into AI chat interfaces.
-
-| Component | File(s) | Role |
-|-----------|---------|------|
-| Service worker | `src/background/index.ts` | Context menus, message routing, connection badge |
-| API client | `src/background/api-client.ts` | REST calls to hosted server |
-| Content scripts | `src/content/` | Platform detection, text injection, toast notifications |
-| Platform adapters | `src/content/platforms/` | ChatGPT, Gemini, Claude, generic selectors |
-| Popup | `src/popup/` | React UI (search, results, settings) |
-| Onboarding | `src/onboarding/` | First-run setup flow |
-
-**Supported platforms**: `chatgpt.com`, `chat.openai.com`, `gemini.google.com`, `claude.ai`
-
-**Important**: The extension talks REST to the hosted server. It does not use MCP transport.
-
----
-
-## Local vs Hosted — Key Differences
-
-This is the most important distinction in the codebase.
+This is the most important architectural distinction.
 
 | | Local (`packages/local`) | Hosted (`packages/hosted`) |
 |---|---|---|
@@ -176,137 +48,21 @@ This is the most important distinction in the codebase.
 | Auth | None — local machine | Google OAuth + API keys |
 | Encryption | None — plaintext | AES-256-GCM per-user |
 | Billing | Free / open source | Stripe (Free: 50 entries, Pro: unlimited) |
-| Multi-tenancy | Single user | `user_id` column isolates data |
+| Multi-tenancy | Single user | Per-user DB isolation (LRU pool) |
 | Data location | `~/vault/` + `~/.context-mcp/` | Fly.io volume `/data/` |
 | Consumers | Claude Code, Cursor, Windsurf, Cline | Extension, web app, remote MCP clients |
 | Published | npm (`context-vault`) | Fly.io (`context-vault` app) |
 
-Both consume `@context-vault/core` and register the same 7 tools (6 original + `ingest_url`). The hosted server adds a per-request `userCtx` wrapper with encryption and tier limits.
+Both consume `@context-vault/core` and register the same 7 tools. The hosted server adds per-request `userCtx` with encryption and tier limits.
 
----
+## Hosted Architecture
 
-## The `ctx` Object
+Two interfaces serve different consumers:
 
-Every layer receives a `ctx` object as its first argument. Understanding its shape is critical.
+1. **REST API** (`/api/vault/*`) — used by the Chrome extension and web app
+2. **MCP over Streamable HTTP** (`/mcp`) — for remote MCP clients
 
-**Local ctx** (created in `packages/local/src/server/index.js`):
-```js
-{
-  db,                    // better-sqlite3 instance
-  config,                // Resolved paths (vaultDir, dataDir, dbPath, ...)
-  stmts,                 // 12 prepared SQL statements
-  embed,                 // (text) => Float32Array[384]
-  insertVec,             // (rowid, embedding) => void
-  deleteVec,             // (rowid) => void
-  activeOps: { count }   // Graceful shutdown counter
-}
-```
-
-**Hosted ctx** (extended per-request in `packages/hosted/src/server/user-ctx.js`):
-```js
-{
-  ...ctx,                // Same base from ctx.js
-  userId,                // Authenticated user ID
-  encrypt,               // (entry) => encrypted entry
-  decrypt,               // (row) => decrypted entry
-  checkLimits,           // () => { entryCount, maxEntries, ... }
-}
-```
-
----
-
-## Entry System
-
-### Categories and Kinds
-
-Every entry has a `kind` that maps to a `category`, which determines its storage behavior:
-
-| Category | Kinds | Behavior |
-|----------|-------|----------|
-| **knowledge** | insight, decision, pattern, note, document, reference, prompt | Append-only, no decay |
-| **entity** | contact, project, tool, source | **Upsert** by `identity_key`, no decay |
-| **event** | conversation, message, session, task, log, feedback | Append-only, **decays** (30-day default) |
-
-Key behavior differences:
-- **Knowledge**: Each save creates a new file with a new ULID.
-- **Entity**: Saves with the same `(kind, identity_key)` overwrite the existing file. This is how you update a contact or project.
-- **Event**: Each save creates a new file, but entries expire after `eventDecayDays` (default 30). `reindex()` prunes expired entries.
-
-### File Format
-
-Entries are stored as markdown files with YAML frontmatter:
-```
-~/vault/
-  knowledge/
-    insights/
-      01ABC123-my-insight-title.md
-    decisions/
-      01DEF456-use-sqlite.md
-  entity/
-    contacts/
-      01GHI789-john-doe.md
-  event/
-    conversations/
-      01JKL012-debugging-session.md
-```
-
-### Database Schema (v6)
-
-```sql
-CREATE TABLE vault (
-  id, kind, category, title, body, meta, tags, source, file_path,
-  identity_key, expires_at, created_at, user_id,
-  body_encrypted, title_encrypted, meta_encrypted, iv
-);
-
-CREATE VIRTUAL TABLE vault_fts USING fts5(title, body, tags, kind);
-CREATE VIRTUAL TABLE vault_vec USING vec0(embedding float[384]);
-```
-
-- `vault_fts` auto-syncs via triggers on INSERT/UPDATE/DELETE.
-- `vault_vec` stores 384-dim embeddings (all-MiniLM-L6-v2).
-- `*_encrypted` and `iv` columns are only populated in hosted mode. In local mode they're NULL.
-- Schema migrations auto-run on DB init. v4→v6 creates a backup before migrating.
-
----
-
-## Config Resolution
-
-4-step chain, lowest to highest priority:
-
-```
-Defaults  →  Config File  →  Env Vars  →  CLI Args
-```
-
-Both `CONTEXT_VAULT_*` and `CONTEXT_MCP_*` env var prefixes are supported. `CONTEXT_VAULT_*` takes priority.
-
-| Setting | Default | Env Var | CLI Flag |
-|---------|---------|---------|----------|
-| Vault dir | `~/vault` | `CONTEXT_VAULT_VAULT_DIR` | `--vault-dir` |
-| Data dir | `~/.context-mcp` | `CONTEXT_VAULT_DATA_DIR` | `--data-dir` |
-| DB path | `~/.context-mcp/vault.db` | `CONTEXT_VAULT_DB_PATH` | `--db-path` |
-| Dev dir | `~/dev` | `CONTEXT_VAULT_DEV_DIR` | `--dev-dir` |
-| Event decay | 30 days | `CONTEXT_MCP_EVENT_DECAY_DAYS` | `--event-decay-days` |
-
-Config file location: `~/.context-mcp/config.json`
-
-### Account Linking (config.json)
-
-When linked to a hosted account, the config file also stores:
-- `hostedUrl` — Server URL (default: `https://www.context-vault.com`)
-- `apiKey` — Bearer token (`cv_...`)
-- `userId`, `email`, `linkedAt` — Account metadata
-
-Env overrides: `CONTEXT_VAULT_API_KEY`, `CONTEXT_VAULT_HOSTED_URL`
-
----
-
-## Embedding System
-
-- **Model**: `Xenova/all-MiniLM-L6-v2` (384 dimensions, ~22 MB download)
-- **Downloaded to**: `~/.context-mcp/models/`
-- **Graceful degradation**: If `@huggingface/transformers` fails to load, semantic search is disabled but FTS still works. Check `context_status` for embedding health.
-- **Batch embedding**: `reindex()` processes entries in batches of 32.
+Frontend routing uses hostname inspection on the `Host` header — see `packages/hosted/src/index.js`.
 
 ---
 
@@ -314,15 +70,15 @@ Env overrides: `CONTEXT_VAULT_API_KEY`, `CONTEXT_VAULT_HOSTED_URL`
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `AUTH_REQUIRED` | Yes | `"true"` in production, `"false"` for local dev |
+| `AUTH_REQUIRED` | Yes | `"true"` in production |
 | `VAULT_MASTER_SECRET` | Yes (prod) | Encryption master key (>=16 chars) |
 | `STRIPE_SECRET_KEY` | Yes (prod) | Stripe API key |
 | `STRIPE_WEBHOOK_SECRET` | Yes (prod) | Stripe webhook verification |
 | `STRIPE_PRICE_PRO` | Yes (prod) | Stripe price ID for Pro tier |
 | `SENTRY_DSN` | No | Error tracking |
 | `PUBLIC_URL` | Yes | Public server URL |
-| `APP_HOSTS` | Yes | Hostname(s) that serve the app frontend |
-| `MARKETING_HOSTS` | Yes | Hostname(s) that serve the marketing frontend |
+| `APP_HOSTS` | Yes | Hostname(s) for app frontend |
+| `MARKETING_HOSTS` | Yes | Hostname(s) for marketing frontend |
 | `CONTEXT_MCP_DATA_DIR` | Yes | Data directory inside container |
 | `CONTEXT_MCP_VAULT_DIR` | Yes | Vault directory inside container |
 
@@ -330,170 +86,72 @@ Env overrides: `CONTEXT_VAULT_API_KEY`, `CONTEXT_VAULT_HOSTED_URL`
 
 ## CI/CD Pipeline
 
-Two GitHub Actions workflows handle different concerns:
-
 ### `ci.yml` — Hosted Deploy (push to main)
 
 ```
 Push to main
     │
     ▼
-  test-and-build
-    Node 20, npm ci, vitest, build app + marketing + extension
+  test-and-build ── Node 20, vitest, build all frontends
     │
     ▼
-  deploy-staging
-    fly deploy --config fly.staging.toml
+  deploy-staging ── fly deploy --config fly.staging.toml
     │
     ▼
-  health-staging
-    Poll /health (30 retries, 5s interval)
+  health-staging ── Poll /health (30 retries, 5s)
     │
     ▼
-  smoke-staging
-    scripts/smoke-test.sh against staging URL
+  smoke-staging ── scripts/smoke-test.sh
     │
     ▼
-  deploy-production  (manual approval required)
-    fly deploy
+  deploy-production ── manual approval required
     │
     ▼
   smoke-production
-    scripts/smoke-test.sh against production URL
 ```
 
 ### `publish.yml` — npm Publish (tag push)
 
 ```
-Push tag v*
-    │
-    ▼
-  checkout + npm ci
-    │
-    ▼
-  verify tag matches package.json version
-    │
-    ▼
-  npm test
-    │
-    ▼
-  npm publish --provenance
-    Uses NPM_TOKEN secret (granular automation token, bypasses OTP)
-    │
-    ▼
-  create GitHub Release
-    Extracts changelog section for this version
+Push tag v* → checkout → verify tag matches package.json → npm test → npm publish --provenance → GitHub Release
 ```
 
-**Required secret**: `NPM_TOKEN` — granular access token from npmjs.com scoped to `context-vault` with read+write permission.
+Required secret: `NPM_TOKEN` (granular automation token scoped to `context-vault`).
 
-### `publish-extension.yml` — Chrome Web Store Publish (tag push)
+### `publish-extension.yml` — Chrome Web Store (tag push)
 
 ```
-Push tag v*  (or manual workflow_dispatch)
-    │
-    ▼
-  checkout + npm ci
-    │
-    ▼
-  verify tag matches manifest.json version
-    │
-    ▼
-  npm run extension:build
-    │
-    ▼
-  zip dist/ → extension.zip
-    │
-    ▼
-  node scripts/publish-extension.mjs extension.zip
-    (OAuth2 token exchange → upload → publish)
+Push tag v* → verify tag matches manifest.json → extension:build → zip → publish via OAuth2
 ```
 
-**Required secrets**: `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN`, `CWS_EXTENSION_ID`
+Required secrets: `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN`, `CWS_EXTENSION_ID`. See `packages/extension/store/SETUP.md`.
 
-See `packages/extension/store/SETUP.md` for first-time credential setup.
-
-### Releasing to npm
+### Releasing
 
 ```bash
-# 1. Add a ## [x.y.z] section to CHANGELOG.md
+# 1. Add ## [x.y.z] section to CHANGELOG.md
 # 2. Run the release script
 npm run release -- patch    # or minor / major / 2.5.0
 ```
 
-`npm run release` handles everything: bumps version in all 4 package.json files (root, core, local + core dependency, extension) and the extension `manifest.json`, verifies CHANGELOG has an entry, commits, tags, and pushes. The tag push triggers `publish.yml` (npm) and `publish-extension.yml` (Chrome Web Store).
-
-**Preflight checks** (the script aborts if any fail):
-- Working tree must be clean
-- Must be on the `main` branch
-- CHANGELOG.md must have a `## [x.y.z]` section for the new version
-
-### Docker
-
-The Dockerfile (`packages/hosted/Dockerfile`) is a two-stage build:
-1. **Builder**: Node 20-slim, install deps, build app + marketing
-2. **Production**: Slim image, `tini` init, non-root `vault` user, `curl` health check
-
----
-
-## Scripts
-
-```bash
-# Root shortcuts
-npm test                          # Vitest (unit + integration)
-npm run test:watch                # Vitest in watch mode
-npm run cli                       # Run local CLI (e.g. npm run cli -- setup)
-npm run ui                        # Build app then launch local dashboard
-npm run app:dev                   # App dev server (Vite)
-npm run app:build                 # App production build
-npm run marketing:dev             # Marketing dev server (Vite)
-npm run marketing:build           # Marketing production build
-npm run extension:dev             # Extension watch build
-npm run extension:build           # Extension production build
-npm run hosted:dev                # Hosted server with --watch
-npm run release -- patch          # Bump, commit, tag, push → CI publishes to npm + CWS
-npm run publish:extension         # Manual CWS publish (needs env vars)
-npm run deploy                    # Fly.io production deploy
-npm run docker:build              # Build Docker image
-npm run docker:run                # Run Docker container locally
-
-# Per-workspace (equivalent)
-npm run dev -w packages/app       # Same as npm run app:dev
-npm run dev -w packages/marketing # Same as npm run marketing:dev
-npm run dev -w packages/extension # Same as npm run extension:dev
-npm run dev -w packages/hosted    # Same as npm run hosted:dev
-```
-
----
-
-## Testing
-
-```bash
-npm test          # Run all tests
-npm run test:watch  # Watch mode
-```
-
-Test files live in `/test/`:
-- `test/unit/` — Frontmatter, files, categories, encryption, billing, formatting, importers, URL ingestion
-- `test/integration/` — Round-trip save/search, list, feedback, hosted auth
-- `test/helpers/ctx.js` — Shared test context builder
+The script bumps versions in all package.json files + extension manifest, verifies CHANGELOG, commits, tags, and pushes. Tag push triggers npm + CWS publish workflows.
 
 ---
 
 ## Common Gotchas
 
-1. **Zod + MCP SDK interop**: The MCP SDK uses `zod/v4-mini` internally. `z.record(z.unknown())` from full `zod` breaks when the SDK converts to JSON schema. Use `z.any()` for free-form object params. Pass raw shape objects `{ key: z.string() }` to `tool()`, not `z.object({...})`.
+1. **Zod + MCP SDK interop**: The MCP SDK uses `zod/v4-mini`. Use `z.any()` for free-form object params. Pass raw shape objects to `tool()`, not `z.object({...})`.
 
-2. **DB is derived, files are truth**: Never treat the database as canonical. `reindex()` rebuilds it entirely from vault files. If the DB gets corrupted, delete it and reindex — zero data loss.
+2. **DB is derived, files are truth**: `reindex()` rebuilds from vault files. Corrupt DB? Delete and reindex — zero data loss.
 
-3. **Local bundles core**: The npm package uses `bundledDependencies` to ship `@context-vault/core` inside it. The `prepack` script copies it before `npm publish`.
+3. **Local bundles core**: npm package uses `bundledDependencies`. `prepack` script copies `@context-vault/core` before publish.
 
-4. **First-run model download**: The embedding model (~22 MB) downloads on first use to `~/.context-mcp/models/`. If it fails, search silently degrades to FTS-only (no vectors).
+4. **First-run model download**: Embedding model (~22 MB) downloads on first use. If it fails, search degrades to FTS-only.
 
-5. **Entity upsert vs append**: Most kinds are append-only. Entities upsert by `(user_id, kind, identity_key)` — the existing file gets overwritten, not duplicated.
+5. **Entity upsert vs append**: Most kinds are append-only. Entities upsert by `(user_id, kind, identity_key)`.
 
-6. **Hosted encryption tradeoff**: In hosted mode, `body`/`title`/`meta` are encrypted in the DB. A plaintext preview (first ~200 chars of body) is stored for FTS. Full content requires decryption via the user's derived key.
+6. **Hosted encryption tradeoff**: Plaintext preview (first ~200 chars) stored for FTS. Titles also unencrypted. Full content requires DEK.
 
-7. **Extension uses REST, not MCP**: The Chrome extension calls `/api/vault/*` endpoints on the hosted server. It has no MCP transport layer.
+7. **Extension uses REST, not MCP**: Chrome extension calls `/api/vault/*` endpoints. No MCP transport.
 
-8. **Frontend routing by hostname**: The hosted server inspects the `Host` header to decide whether to serve the app or marketing frontend. Both are embedded as static builds.
+8. **Frontend routing by hostname**: Hosted server inspects `Host` header to route to app vs marketing frontend. Both embedded as static builds.

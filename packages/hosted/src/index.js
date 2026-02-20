@@ -6,6 +6,9 @@
  *
  * Stateless per-request model: each request gets a fresh McpServer + transport.
  *
+ * Frontend routing: APP_HOSTS / MARKETING_HOSTS env vars determine which
+ * static build (app vs marketing) is served, based on the request Host header.
+ *
  * Database isolation modes:
  *   PER_USER_DB=true  → Each user gets their own vault.db + vault/ directory
  *   PER_USER_DB=false → Shared vault.db with WHERE user_id filtering (legacy)
