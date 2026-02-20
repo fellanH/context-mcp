@@ -1,5 +1,15 @@
 #!/usr/bin/env node
 
+// Node.js version guard — must run before any ESM imports
+const nodeVersion = parseInt(process.versions.node.split(".")[0], 10);
+if (nodeVersion < 20) {
+  process.stderr.write(
+    `\ncontext-vault requires Node.js >= 20 (you have ${process.versions.node}).\n` +
+    `Install a newer version: https://nodejs.org/\n\n`
+  );
+  process.exit(1);
+}
+
 /**
  * context-vault CLI — Unified entry point
  *
@@ -21,7 +31,7 @@ import {
 } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { homedir, platform } from "node:os";
-import { execSync, fork } from "node:child_process";
+import { execSync, execFile, fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createServer as createNetServer } from "node:net";
 
@@ -106,14 +116,11 @@ function vscodeDataDir() {
 
 // ─── Tool Detection ──────────────────────────────────────────────────────────
 
-function commandExists(bin) {
-  try {
-    const cmd = PLATFORM === "win32" ? `where ${bin}` : `which ${bin}`;
-    execSync(cmd, { stdio: "pipe", timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
+function commandExistsAsync(bin) {
+  const cmd = PLATFORM === "win32" ? "where" : "which";
+  return new Promise((resolve) => {
+    execFile(cmd, [bin], { timeout: 5000 }, (err) => resolve(!err));
+  });
 }
 
 /** Check if a directory exists at any of the given paths */
@@ -125,13 +132,13 @@ const TOOLS = [
   {
     id: "claude-code",
     name: "Claude Code",
-    detect: () => commandExists("claude"),
+    detect: () => commandExistsAsync("claude"),
     configType: "cli",
   },
   {
     id: "codex",
     name: "Codex",
-    detect: () => commandExists("codex"),
+    detect: () => commandExistsAsync("codex"),
     configType: "cli",
   },
   {
@@ -202,6 +209,29 @@ const TOOLS = [
   },
 ];
 
+/** Detect all tools in parallel. Returns { detected: Tool[], results: { tool, found }[] } */
+async function detectAllTools() {
+  const results = await Promise.all(
+    TOOLS.map(async (tool) => {
+      const found = await tool.detect();
+      return { tool, found };
+    })
+  );
+  const detected = results.filter((r) => r.found).map((r) => r.tool);
+  return { detected, results };
+}
+
+/** Print tool detection results in deterministic TOOLS order */
+function printDetectionResults(results) {
+  for (const { tool, found } of results) {
+    if (found) {
+      console.log(`  ${green("+")} ${tool.name}`);
+    } else {
+      console.log(`  ${dim("-")} ${dim(tool.name)} ${dim("(not found)")}`);
+    }
+  }
+}
+
 // ─── Help ────────────────────────────────────────────────────────────────────
 
 function showHelp() {
@@ -239,6 +269,8 @@ ${bold("Options:")}
 // ─── Setup Command ───────────────────────────────────────────────────────────
 
 async function runSetup() {
+  const setupStart = Date.now();
+
   // Banner
   console.log();
   console.log(`  ${bold("◇ context-vault")} ${dim(`v${VERSION}`)}`);
@@ -273,16 +305,8 @@ async function runSetup() {
       // Skip vault setup, just reconfigure tools
       console.log();
       console.log(dim(`  [1/2]`) + bold(" Detecting tools...\n"));
-      const detected = [];
-      for (const tool of TOOLS) {
-        const found = tool.detect();
-        if (found) {
-          detected.push(tool);
-          console.log(`  ${green("+")} ${tool.name}`);
-        } else {
-          console.log(`  ${dim("-")} ${dim(tool.name)} ${dim("(not found)")}`);
-        }
-      }
+      const { detected, results: detectionResults } = await detectAllTools();
+      printDetectionResults(detectionResults);
       console.log();
 
       if (detected.length === 0) {
@@ -345,16 +369,8 @@ async function runSetup() {
 
   // Detect tools
   console.log(dim(`  [1/5]`) + bold(" Detecting tools...\n"));
-  const detected = [];
-  for (const tool of TOOLS) {
-    const found = tool.detect();
-    if (found) {
-      detected.push(tool);
-      console.log(`  ${green("+")} ${tool.name}`);
-    } else {
-      console.log(`  ${dim("-")} ${dim(tool.name)} ${dim("(not found)")}`);
-    }
-  }
+  const { detected, results: detectionResults } = await detectAllTools();
+  printDetectionResults(detectionResults);
   console.log();
 
   if (detected.length === 0) {
@@ -381,7 +397,13 @@ async function runSetup() {
     ${dim("}")}
   ${dim("}")}\n`);
     }
-    return;
+
+    // In non-interactive mode, continue setup without tools (vault, config, etc.)
+    if (isNonInteractive) {
+      console.log(dim("  Continuing setup without tool configuration (--yes mode).\n"));
+    } else {
+      return;
+    }
   }
 
   // Select tools
@@ -482,7 +504,12 @@ async function runSetup() {
         process.stdout.write(`\r  ${green("+")} Embedding model ready              \n`);
       } catch (e) {
         clearInterval(spinner);
+        const code = e.code || e.cause?.code || "";
+        const isNetwork = ["ENOTFOUND", "ETIMEDOUT", "ECONNREFUSED", "ECONNRESET", "ERR_SOCKET_TIMEOUT"].includes(code);
         process.stdout.write(`\r  ${yellow("!")} Model download failed: ${e.message}              \n`);
+        if (isNetwork) {
+          console.log(dim(`    Check your internet connection and try again.`));
+        }
         console.log(dim(`    Retry: context-vault setup`));
         console.log(dim(`    Semantic search disabled — full-text search still works.`));
       }
@@ -544,9 +571,21 @@ async function runSetup() {
   // Health check
   console.log(`\n  ${dim("[5/5]")}${bold(" Health check...")}\n`);
   const okResults = results.filter((r) => r.ok);
+
+  // Verify DB is accessible
+  let dbAccessible = false;
+  try {
+    const { initDatabase } = await import("@context-vault/core/index/db");
+    const db = await initDatabase(vaultConfig.dbPath);
+    db.prepare("SELECT 1").get();
+    db.close();
+    dbAccessible = true;
+  } catch {}
+
   const checks = [
     { label: "Vault directory exists", pass: existsSync(resolvedVaultDir) },
     { label: "Config file written", pass: existsSync(configPath) },
+    { label: "Database accessible", pass: dbAccessible },
     { label: "At least one tool configured", pass: okResults.length > 0 },
   ];
   const passed = checks.filter((c) => c.pass).length;
@@ -555,9 +594,10 @@ async function runSetup() {
   }
 
   // Completion box
+  const elapsed = ((Date.now() - setupStart) / 1000).toFixed(1);
   const toolName = okResults.length ? okResults[0].tool.name : "your AI tool";
   const boxLines = [
-    `  ✓ Setup complete — ${passed}/${checks.length} checks passed`,
+    `  ✓ Setup complete — ${passed}/${checks.length} checks passed (${elapsed}s)`,
     ``,
     `  ${bold("AI Tools")} — open ${toolName} and try:`,
     `  "Search my vault for getting started"`,
@@ -826,16 +866,8 @@ async function runConnect() {
 
   // Detect tools
   console.log(dim(`  [1/2]`) + bold(" Detecting tools...\n"));
-  const detected = [];
-  for (const tool of TOOLS) {
-    const found = tool.detect();
-    if (found) {
-      detected.push(tool);
-      console.log(`  ${green("+")} ${tool.name}`);
-    } else {
-      console.log(`  ${dim("-")} ${dim(tool.name)} ${dim("(not found)")}`);
-    }
-  }
+  const { detected, results: connectDetectionResults } = await detectAllTools();
+  printDetectionResults(connectDetectionResults);
   console.log();
 
   if (detected.length === 0) {
