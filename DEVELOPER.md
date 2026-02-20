@@ -86,45 +86,63 @@ Frontend routing uses hostname inspection on the `Host` header — see `packages
 
 ## CI/CD Pipeline
 
-### `ci.yml` — Hosted Deploy (push to main)
+### `ci.yml` — Test + Build Gate (PR and push to main)
 
 ```
-Push to main
+PR to main / Push to main
     │
     ▼
-  test-and-build ── Node 20, vitest, build all frontends
+  changes ── dorny/paths-filter detects affected packages
+    │
+    ├── test ────────────── always: npm ci + npm test
+    ├── build-app ────────── if app/** or core/** changed
+    ├── build-marketing ──── if marketing/** or core/** changed
+    └── build-extension ──── if extension/** or core/** changed
+```
+
+### `deploy.yml` — Hosted Deploy (triggered by ci.yml success on main)
+
+```
+ci.yml succeeds on main push
     │
     ▼
-  deploy-staging ── fly deploy --config fly.staging.toml
+  gate ── skip if CI failed
     │
     ▼
-  health-staging ── Poll /health (30 retries, 5s)
+  changes ── detect backend vs frontend changes
     │
-    ▼
-  smoke-staging ── scripts/smoke-test.sh
-    │
-    ▼
-  deploy-production ── manual approval required
-    │
-    ▼
-  smoke-production
+    ├── deploy-backend-staging ──── if hosted/** or core/** changed (Fly.io staging)
+    └── deploy-frontends-staging ── if app/** or marketing/** changed (Vercel, no --prod)
+         │
+         ▼
+       health-staging ── poll /health (30 retries × 5s)
+         │
+         ▼
+       smoke-staging ── scripts/smoke-test.sh
+         │
+         ▼
+       deploy-backend-production ──── manual approval (Fly.io prod)
+       deploy-frontends-production ── manual approval (Vercel, --prod)
+         │
+         ▼
+       smoke-production
 ```
 
 ### `publish.yml` — npm Publish (tag push)
 
 ```
-Push tag v* → checkout → verify tag matches package.json → npm test → npm publish --provenance → GitHub Release
+Push tag v* → verify tag == package.json version → npm test → npm publish --provenance → GitHub Release
 ```
 
-Required secret: `NPM_TOKEN` (granular automation token scoped to `context-vault`).
+Required secret: `NPM_TOKEN`.
 
 ### `publish-extension.yml` — Chrome Web Store (tag push)
 
 ```
-Push tag v* → verify tag matches manifest.json → extension:build → zip → publish via OAuth2
+Push tag v* → verify tag == manifest.json version → extension:build → zip → publish via OAuth2
 ```
 
-Required secrets: `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN`, `CWS_EXTENSION_ID`. See `packages/extension/store/SETUP.md`.
+Auto-trigger disabled until CWS secrets are configured. Run via `workflow_dispatch` until then.
 
 ### Releasing
 

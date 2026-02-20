@@ -19,6 +19,8 @@ Persistent memory layer for AI agents via MCP. Markdown files + SQLite FTS + sem
 
 Every Claude Code working session follows this workflow:
 
+> Full reference: see `DEV-PLAYBOOK.md` in the project root.
+
 ### 1. Orient
 - Read `BACKLOG.md` (engineering) or `docs/gtm/GTM-BACKLOG.md` + `docs/gtm/GTM-CONTEXT.md` (GTM)
 - Check `Now` section for active work items
@@ -33,9 +35,12 @@ Present plan for user approval **before writing code**.
 
 - **Non-trivial**: Why this/why now, 2-3 options with trade-offs, scope & risk
 - **Trivial**: One-line summary, proceed after approval
+- **Open PR check**: Run `gh pr list` before pitching. If a PR is already open, explicitly merge it, close it, or confirm you are continuing it — never silently start new work on top of an open PR.
 
 ### 4. Branch
 - Create `feat/`, `fix/`, or `chore/` branch — no direct commits to `main` (#21)
+- Branch name must encode the package scope: `feat/<scope>-<slug>` where scope = marketing | hosted | cli | extension | core | infra. See branch prefix map in `DEV-PLAYBOOK.md`.
+- One agent, one branch. Never commit to a branch owned by another agent in the same session.
 - GTM-only tasks with no code changes skip this step
 
 ### 5. Work
@@ -55,6 +60,7 @@ Present plan for user approval **before writing code**.
 End-of-session retrospective: **Shipped**, **Went well**, **Friction**, **Learned**, **Actions**.
 
 Persist: `save_context` (kind: `session-review`, tags: `context-vault, retro`). Durable lessons → memory files or CLAUDE.md. Actionable friction → issues or backlog.
+- **Branch cleanup**: delete merged branches — `git branch -d <branch>` locally and `git push origin --delete <branch>` for any branch merged this session.
 
 ### Branch naming
 | Prefix | Use |
@@ -62,6 +68,18 @@ Persist: `save_context` (kind: `session-review`, tags: `context-vault, retro`). 
 | `feat/` | New features |
 | `fix/` | Bug fixes |
 | `chore/` | Infra, deps, cleanup |
+
+### Sprint Tracking
+
+BACKLOG.md `Now` must mirror open PRs at all times:
+
+| Event | Action |
+|---|---|
+| PR opened | Move item to `Now` |
+| PR merged | Move item to `Done` |
+| PR closed without merge | Move item back to `Next` |
+
+Hard cap: 3 items in `Now`. If `Now` has an item with no matching open PR, stop and investigate before proceeding.
 
 ### Issue labels
 | Label | Purpose |
