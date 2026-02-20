@@ -36,13 +36,38 @@ export type MessageType =
   | { type: "inject_result"; success: boolean }
   | { type: "get_messages" }
   | { type: "messages_result"; messages: ChatMessage[]; platform: string }
-  | { type: "capture"; kind: string; body: string; title?: string; tags?: string[]; source?: string }
+  | {
+      type: "capture";
+      kind: string;
+      body: string;
+      title?: string;
+      tags?: string[];
+      source?: string;
+    }
   | { type: "capture_result"; id: string }
   | { type: "get_settings" }
-  | { type: "settings"; serverUrl: string; apiKey: string; connected: boolean; mode: VaultMode; vaultPath: string }
-  | { type: "save_settings"; serverUrl: string; apiKey: string; mode: VaultMode; vaultPath: string }
+  | {
+      type: "settings";
+      serverUrl: string;
+      apiKey: string;
+      connected: boolean;
+      mode: VaultMode;
+      vaultPath: string;
+    }
+  | {
+      type: "save_settings";
+      serverUrl: string;
+      apiKey: string;
+      mode: VaultMode;
+      vaultPath: string;
+    }
   | { type: "test_connection" }
-  | { type: "connection_result"; success: boolean; error?: string; code?: string }
+  | {
+      type: "connection_result";
+      success: boolean;
+      error?: string;
+      code?: string;
+    }
   | { type: "check_health" }
   | { type: "health_result"; reachable: boolean; mode: VaultMode }
   | { type: "error"; message: string };
@@ -58,7 +83,7 @@ export interface ExtensionSettings {
 
 /** Default settings */
 export const DEFAULT_SETTINGS: ExtensionSettings = {
-  serverUrl: "https://app.context-vault.com",
+  serverUrl: "https://api.context-vault.com",
   apiKey: "",
   mode: "hosted",
   vaultPath: "",

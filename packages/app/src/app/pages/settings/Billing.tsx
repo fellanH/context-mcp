@@ -1,7 +1,12 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { UsageMeter } from "../../components/UsageMeter";
 import { TierBadge } from "../../components/TierBadge";
@@ -16,19 +21,40 @@ const plans = [
   {
     tier: "free" as const,
     price: "$0",
-    features: ["500 entries", "10 MB storage", "200 requests/day", "1 API key", "Community support"],
+    features: [
+      "500 entries",
+      "10 MB storage",
+      "200 requests/day",
+      "1 API key",
+      "Community support",
+    ],
   },
   {
     tier: "pro" as const,
     price: "$9",
     period: "/mo",
-    features: ["Unlimited entries", "1 GB storage", "Unlimited requests", "Unlimited API keys", "Export/Import", "Priority support"],
+    features: [
+      "Unlimited entries",
+      "1 GB storage",
+      "Unlimited requests",
+      "Unlimited API keys",
+      "Export/Import",
+      "Priority support",
+    ],
   },
   {
     tier: "team" as const,
     price: "$29",
     period: "/mo",
-    features: ["Unlimited entries", "10 GB storage", "Unlimited requests", "Unlimited API keys", "Team sharing", "SSO", "Dedicated support"],
+    features: [
+      "Unlimited entries",
+      "10 GB storage",
+      "Unlimited requests",
+      "Unlimited API keys",
+      "Team sharing",
+      "SSO",
+      "Dedicated support",
+    ],
   },
 ];
 
@@ -48,7 +74,7 @@ export function Billing() {
 
   const handleUpgrade = (tier: string) => {
     if (tier === "team") {
-      toast.info("Contact us at team@contextvault.io for Team plans");
+      toast.info("Contact us at team@context-vault.com for Team plans");
       return;
     }
     checkoutMutation.mutate(
@@ -63,7 +89,7 @@ export function Billing() {
         onError: () => {
           toast.error("Failed to start checkout");
         },
-      }
+      },
     );
   };
 
@@ -112,8 +138,12 @@ export function Billing() {
               {usage.requestsToday.limit === Infinity ? (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Requests today</span>
-                    <span className="font-mono">{usage.requestsToday.used} (unlimited)</span>
+                    <span className="text-muted-foreground">
+                      Requests today
+                    </span>
+                    <span className="font-mono">
+                      {usage.requestsToday.used} (unlimited)
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -127,7 +157,9 @@ export function Billing() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">API keys</span>
-                    <span className="font-mono">{usage.apiKeys.active} (unlimited)</span>
+                    <span className="font-mono">
+                      {usage.apiKeys.active} (unlimited)
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -148,9 +180,12 @@ export function Billing() {
             <div className="flex items-center gap-3">
               <Cloud className="size-5 text-primary shrink-0" />
               <div>
-                <p className="text-sm font-medium">Billing is available on hosted accounts</p>
+                <p className="text-sm font-medium">
+                  Billing is available on hosted accounts
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Your local vault has no usage limits. To access cloud features like sync, backup, and team sharing, create a hosted account.
+                  Your local vault has no usage limits. To access cloud features
+                  like sync, backup, and team sharing, create a hosted account.
                 </p>
               </div>
             </div>
@@ -164,21 +199,37 @@ export function Billing() {
           {plans.map((plan) => {
             const isCurrent = plan.tier === currentTier;
             return (
-              <Card key={plan.tier} className={isCurrent ? "border-primary" : ""}>
+              <Card
+                key={plan.tier}
+                className={isCurrent ? "border-primary" : ""}
+              >
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base capitalize">{plan.tier}</CardTitle>
-                    {isCurrent && <Badge variant="outline" className="text-[10px]">Current</Badge>}
+                    <CardTitle className="text-base capitalize">
+                      {plan.tier}
+                    </CardTitle>
+                    {isCurrent && (
+                      <Badge variant="outline" className="text-[10px]">
+                        Current
+                      </Badge>
+                    )}
                   </div>
                   <div className="mt-2">
                     <span className="text-2xl font-bold">{plan.price}</span>
-                    {plan.period && <span className="text-sm text-muted-foreground">{plan.period}</span>}
+                    {plan.period && (
+                      <span className="text-sm text-muted-foreground">
+                        {plan.period}
+                      </span>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2 mb-4">
                     {plan.features.map((feature) => (
-                      <li key={feature} className="flex items-center gap-2 text-sm">
+                      <li
+                        key={feature}
+                        className="flex items-center gap-2 text-sm"
+                      >
                         <Check className="size-3.5 text-primary shrink-0" />
                         {feature}
                       </li>
