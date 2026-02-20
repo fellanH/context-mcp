@@ -4,12 +4,12 @@ Use Context Vault in the cloud — no local install, no Node.js. Works across de
 
 **Endpoints:**
 
-| Service | URL |
-|---------|-----|
-| App | `https://www.context-vault.com/` |
-| MCP | `https://www.context-vault.com/mcp` |
-| OpenAPI | `https://www.context-vault.com/api/vault/openapi.json` |
-| Privacy | `https://www.context-vault.com/privacy` |
+| Service   | URL                                                    |
+| --------- | ------------------------------------------------------ |
+| Dashboard | `https://app.context-vault.com/`                       |
+| MCP       | `https://www.context-vault.com/mcp`                    |
+| OpenAPI   | `https://www.context-vault.com/api/vault/openapi.json` |
+| Privacy   | `https://www.context-vault.com/privacy`                |
 
 ---
 

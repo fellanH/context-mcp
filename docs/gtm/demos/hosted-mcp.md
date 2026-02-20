@@ -8,7 +8,7 @@
 
 ## Prerequisites
 
-- A contextvault.dev account (free tier)
+- A context-vault.com account (free tier)
 - An MCP-compatible client (Claude Code, Cursor, Windsurf, etc.)
 - No Node.js or local installation required
 
@@ -18,7 +18,7 @@
 
 ### Step 1: Register and Copy API Key
 
-Navigate to contextvault.dev and create a free account.
+Navigate to context-vault.com and create a free account.
 
 **Say:** "No local install needed. Just sign up, grab your API key, and you're ready."
 
@@ -32,7 +32,7 @@ Paste the hosted MCP endpoint and API key into your client's MCP settings:
 {
   "mcpServers": {
     "context-vault": {
-      "url": "https://mcp.contextvault.dev",
+      "url": "https://www.context-vault.com/mcp",
       "headers": {
         "Authorization": "Bearer cv_your_api_key_here"
       }
@@ -54,6 +54,7 @@ Use the MCP tool `context_status`:
 ```
 
 **Expected output:**
+
 ```
 Vault status:  connected
 Entries:       1 (seed entry)
@@ -80,6 +81,7 @@ Use the MCP tool `save_context`:
 ```
 
 **Expected output:**
+
 ```
 Saved: decision/use-hosted-mcp-for-team-shared-context.md
 Indexed: 1 new entry
@@ -100,6 +102,7 @@ Use the MCP tool `get_context`:
 ```
 
 **Expected output:**
+
 ```
 1. Use hosted MCP for team-shared context (score: 0.91)
    Kind: decision | Tags: architecture, team, hosting
@@ -143,4 +146,4 @@ Chose hosted over local so all team members share the same vault without syncing
 
 ## Closing
 
-"That's a full hosted memory cycle — register, connect, save, retrieve, and verify portability. Zero install, same tools, no lock-in. Start free at contextvault.dev."
+"That's a full hosted memory cycle — register, connect, save, retrieve, and verify portability. Zero install, same tools, no lock-in. Start free at context-vault.com."

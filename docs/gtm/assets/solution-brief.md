@@ -21,12 +21,15 @@ Context Vault bridges the gap between your knowledge and your AI tools. Save dec
 ## How It Works
 
 ### 1. Install
+
 Install the CLI globally or connect to hosted MCP. One command, no infrastructure required.
 
 ### 2. Save Context During Work
+
 Use `save_context` to capture insights, decisions, patterns, and references as you work. Entries are stored as portable markdown files with YAML frontmatter.
 
 ### 3. Retrieve in Future Sessions
+
 Your AI tools call `get_context` to search your vault. Hybrid full-text + semantic search returns the most relevant entries, weighted by recency and relevance.
 
 ---
@@ -43,18 +46,19 @@ Your AI tools call `get_context` to search your vault. Hybrid full-text + semant
 
 ## Pricing
 
-| Tier | What You Get | Cost |
-|------|-------------|------|
-| **Free (local)** | Full CLI, unlimited local entries, hybrid search, all MCP tools | Free forever |
+| Tier             | What You Get                                                          | Cost              |
+| ---------------- | --------------------------------------------------------------------- | ----------------- |
+| **Free (local)** | Full CLI, unlimited local entries, hybrid search, all MCP tools       | Free forever      |
 | **Pro (hosted)** | Managed MCP endpoint, cloud sync, API key access, zero infrastructure | Per-usage pricing |
 
 ---
 
 ## Get Started
 
-Start free at **contextvault.dev**
+Start free at **context-vault.com**
 
 Install locally in under 2 minutes:
+
 ```
 npm install -g context-vault && context-vault setup
 ```

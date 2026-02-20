@@ -34,6 +34,7 @@ I restructured around three axes that Context Vault supports natively: kinds, ta
 **Kinds — the primary organizing axis**
 
 Instead of dumping everything as a "note," I use the most specific kind that fits:
+
 - `decision` — when I chose between two approaches and want to remember why
 - `pattern` — reusable code or workflow approaches
 - `insight` — surprising discoveries about APIs, libraries, or behavior
@@ -65,8 +66,8 @@ After restructuring (~2 hours of work across 300 entries), my first-result relev
 
 **Links**
 
-- Full guide with examples: https://contextvault.dev/blog/designing-kinds-tags-folders-for-long-term-memory-quality?utm_source=reddit&utm_medium=social&utm_campaign=blog-8
+- Full guide with examples: https://context-vault.com/blog/designing-kinds-tags-folders-for-long-term-memory-quality?utm_source=reddit&utm_medium=social&utm_campaign=blog-8
 - GitHub (open source): https://github.com/fellanH/context-vault
-- Start free (hosted): https://contextvault.dev?utm_source=reddit&utm_medium=social&utm_campaign=blog-8
+- Start free (hosted): https://context-vault.com?utm_source=reddit&utm_medium=social&utm_campaign=blog-8
 
 Happy to answer questions about taxonomy design or retrieval tuning. Curious how others are structuring their agent memory systems too.
