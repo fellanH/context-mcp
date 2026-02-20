@@ -15,6 +15,7 @@ fi
 PROTECTED=(
   "packages/core/src/index/db.js"
   "scripts/release.mjs"
+  "NORTH-STAR.md"
 )
 
 for protected in "${PROTECTED[@]}"; do
