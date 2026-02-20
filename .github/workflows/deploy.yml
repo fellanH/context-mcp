@@ -1,0 +1,152 @@
+name: Deploy
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  # Gate: skip deploy if CI failed (workflow_run fires on both success and failure)
+  gate:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - run: echo "CI passed — proceeding with deploy"
+
+  deploy-backend-staging:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only --config fly.staging.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.STAGING_FLY_API_TOKEN }}
+
+  deploy-frontends-staging:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build marketing
+        run: npm run build --workspace=packages/marketing
+      - name: Build app
+        run: npm run build --workspace=packages/app
+        env:
+          VITE_API_URL: https://context-vault-staging.fly.dev/api
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+      - name: Deploy marketing to Vercel (staging)
+        run: |
+          cd packages/marketing
+          vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} \
+            --scope=${{ secrets.VERCEL_ORG_ID }} \
+            --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_MARKETING_PROJECT_ID }}
+      - name: Deploy app to Vercel (staging)
+        run: |
+          cd packages/app
+          vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} \
+            --scope=${{ secrets.VERCEL_ORG_ID }} \
+            --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_APP_PROJECT_ID }}
+
+  health-staging:
+    needs: [deploy-backend-staging, deploy-frontends-staging]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for staging health
+        run: |
+          set -euo pipefail
+          URL="https://context-vault-staging.fly.dev/health"
+          for i in {1..30}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$URL" || true)
+            if [ "$code" = "200" ]; then
+              echo "Staging healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Staging health check failed"
+          exit 1
+
+  smoke-staging:
+    needs: health-staging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/smoke-test.sh https://context-vault-staging.fly.dev
+
+  deploy-backend-production:
+    needs: smoke-staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-frontends-production:
+    needs: smoke-staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build marketing
+        run: npm run build --workspace=packages/marketing
+        env:
+          VITE_APP_BASE_URL: https://app.context-vault.com
+      - name: Build app
+        run: npm run build --workspace=packages/app
+        env:
+          VITE_API_URL: https://api.context-vault.com/api
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+      - name: Deploy marketing to Vercel (production)
+        run: |
+          cd packages/marketing
+          vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} \
+            --scope=${{ secrets.VERCEL_ORG_ID }} \
+            --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_MARKETING_PROJECT_ID }}
+      - name: Deploy app to Vercel (production)
+        run: |
+          cd packages/app
+          vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} \
+            --scope=${{ secrets.VERCEL_ORG_ID }} \
+            --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_APP_PROJECT_ID }}
+
+  smoke-production:
+    needs: [deploy-backend-production, deploy-frontends-production]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/smoke-test.sh https://api.context-vault.com https://app.context-vault.com https://context-vault.com
