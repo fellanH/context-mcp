@@ -4,8 +4,8 @@ on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
     paths:
-      - 'packages/**'
-      - 'test/**'
+      - "packages/**"
+      - "test/**"
 
 jobs:
   claude-review:
@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
 
     steps:
@@ -29,8 +29,16 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+          prompt: |
+            Review this pull request for the context-vault monorepo (packages: core, local, hosted, app, marketing, extension).
+
+            Focus on:
+            1. Logic errors and correctness
+            2. Security issues (injection, auth bypass, data exposure, hardcoded secrets)
+            3. Hardcoded constants that may exist elsewhere in the repo — grep for the value across all packages before assuming it's unique (duplicate constants are a known recurring issue)
+            4. Missing test coverage for changed source files in packages/core, local, or hosted
+            5. Scope creep — files modified outside the stated purpose of the PR
+
+            Be concise. Post inline comments for specific line-level issues. End with a single summary comment: Approve / Request Changes / FYI only, with a one-line reason.
+
+            Skip style nitpicks. Skip comments on test-only changes unless the tests themselves are wrong.
