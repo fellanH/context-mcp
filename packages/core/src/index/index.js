@@ -307,11 +307,16 @@ export async function reindex(ctx, opts = {}) {
             created,
           );
           if (result.changes > 0) {
-            const rowid = ctx.stmts.getRowid.get(id).rowid;
-            const embeddingText = [parsed.title, parsed.body]
-              .filter(Boolean)
-              .join(" ");
-            pendingEmbeds.push({ rowid, text: embeddingText });
+            const rowidResult = ctx.stmts.getRowid.get(id);
+            if (rowidResult?.rowid) {
+              const embeddingText = [parsed.title, parsed.body]
+                .filter(Boolean)
+                .join(" ");
+              pendingEmbeds.push({
+                rowid: rowidResult.rowid,
+                text: embeddingText,
+              });
+            }
             stats.added++;
           } else {
             stats.unchanged++;

@@ -157,9 +157,9 @@ export async function hybridSearch(
             : 15;
         const vecRows = ctx.db
           .prepare(
-            `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ${vecLimit}`,
+            `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ?`,
           )
-          .all(queryVec);
+          .all(queryVec, vecLimit);
 
         if (vecRows.length) {
           // Batch hydration: single query instead of N+1

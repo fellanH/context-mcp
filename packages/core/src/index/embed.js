@@ -14,38 +14,51 @@ let extractor = null;
 /** @type {null | true | false} null = unknown, true = working, false = failed */
 let embedAvailable = null;
 
+/** Shared promise for in-flight initialization — prevents concurrent loads */
+let loadingPromise = null;
+
 async function ensurePipeline() {
   if (embedAvailable === false) return null;
   if (extractor) return extractor;
+  if (loadingPromise) return loadingPromise;
 
-  try {
-    // Dynamic import — @huggingface/transformers is optional (its transitive
-    // dep `sharp` can fail to install on some platforms).  When missing, the
-    // server still works with full-text search only.
-    const { pipeline, env } = await import("@huggingface/transformers");
+  loadingPromise = (async () => {
+    try {
+      // Dynamic import — @huggingface/transformers is optional (its transitive
+      // dep `sharp` can fail to install on some platforms).  When missing, the
+      // server still works with full-text search only.
+      const { pipeline, env } = await import("@huggingface/transformers");
 
-    // Redirect model cache to ~/.context-mcp/models/ so it works when the
-    // package is installed globally in a root-owned directory (e.g. /usr/lib/node_modules/).
-    const modelCacheDir = join(homedir(), ".context-mcp", "models");
-    mkdirSync(modelCacheDir, { recursive: true });
-    env.cacheDir = modelCacheDir;
+      // Redirect model cache to ~/.context-mcp/models/ so it works when the
+      // package is installed globally in a root-owned directory (e.g. /usr/lib/node_modules/).
+      const modelCacheDir = join(homedir(), ".context-mcp", "models");
+      mkdirSync(modelCacheDir, { recursive: true });
+      env.cacheDir = modelCacheDir;
 
-    console.error(
-      "[context-vault] Loading embedding model (first run may download ~22MB)...",
-    );
-    extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
-    embedAvailable = true;
-    return extractor;
-  } catch (e) {
-    embedAvailable = false;
-    console.error(
-      `[context-vault] Failed to load embedding model: ${e.message}`,
-    );
-    console.error(
-      `[context-vault] Semantic search disabled. Full-text search still works.`,
-    );
-    return null;
-  }
+      console.error(
+        "[context-vault] Loading embedding model (first run may download ~22MB)...",
+      );
+      extractor = await pipeline(
+        "feature-extraction",
+        "Xenova/all-MiniLM-L6-v2",
+      );
+      embedAvailable = true;
+      return extractor;
+    } catch (e) {
+      embedAvailable = false;
+      console.error(
+        `[context-vault] Failed to load embedding model: ${e.message}`,
+      );
+      console.error(
+        `[context-vault] Semantic search disabled. Full-text search still works.`,
+      );
+      return null;
+    } finally {
+      loadingPromise = null;
+    }
+  })();
+
+  return loadingPromise;
 }
 
 export async function embed(text) {
@@ -57,6 +70,7 @@ export async function embed(text) {
   if (!result?.data?.length) {
     extractor = null;
     embedAvailable = null;
+    loadingPromise = null;
     throw new Error("Embedding pipeline returned empty result");
   }
   return new Float32Array(result.data);
@@ -76,6 +90,7 @@ export async function embedBatch(texts) {
   if (!result?.data?.length) {
     extractor = null;
     embedAvailable = null;
+    loadingPromise = null;
     throw new Error("Embedding pipeline returned empty result");
   }
   const dim = result.data.length / texts.length;
@@ -93,6 +108,7 @@ export async function embedBatch(texts) {
 export function resetEmbedPipeline() {
   extractor = null;
   embedAvailable = null;
+  loadingPromise = null;
 }
 
 /** Check if embedding is currently available. */
