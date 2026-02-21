@@ -13,18 +13,9 @@ Persistent memory for AI agents — saves and searches knowledge across sessions
 npx context-vault setup
 ```
 
-That's it. One command — no global install required.
-
-Setup detects your AI tools (Claude Code, Codex, Claude Desktop, Cursor, Windsurf, Cline, and more), downloads the embedding model (~22MB), seeds your vault, and configures MCP.
+One command — no global install required. Setup detects your AI tools (Claude Code, Codex, Claude Desktop, Cursor, Windsurf, Cline, and more), downloads the embedding model (~22MB), seeds your vault, and configures MCP.
 
 Then open your AI tool and try: **"Search my vault for getting started"**
-
-**Prefer a permanent install?**
-
-```bash
-npm install -g context-vault
-context-vault setup
-```
 
 ## What It Does
 

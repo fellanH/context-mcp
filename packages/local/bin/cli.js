@@ -585,42 +585,6 @@ async function runSetup() {
     console.log(`  ${c.pass ? green("✓") : red("✗")} ${c.label}`);
   }
 
-  // Offer permanent global install when running via npx
-  if (isNpx() && !isNonInteractive) {
-    console.log();
-    const doInstall = await prompt(
-      `  Install permanently for faster startup? (npm install -g context-vault) (Y/n):`,
-      "Y",
-    );
-    if (doInstall.toLowerCase() !== "n") {
-      process.stdout.write("  Installing globally...");
-      try {
-        execSync("npm install -g context-vault", { stdio: "pipe" });
-        process.stdout.write(
-          `\r  ${green("+")} Installed globally. Updating tool configs...\n`,
-        );
-        for (const tool of selected) {
-          try {
-            await configureWithLauncher(tool, customVaultDir);
-          } catch {}
-        }
-        console.log(
-          `  ${green("+")} Tool configs updated to use permanent install.`,
-        );
-      } catch (e) {
-        const stderr = e.stderr?.toString().trim();
-        process.stdout.write(
-          `\r  ${yellow("!")} Global install failed: ${stderr || e.message}\n`,
-        );
-        console.log(
-          dim(
-            `  MCP tools configured with npx — will work but slower to start.`,
-          ),
-        );
-      }
-    }
-  }
-
   // Completion box
   const elapsed = ((Date.now() - setupStart) / 1000).toFixed(1);
   const toolName = okResults.length ? okResults[0].tool.name : "your AI tool";
@@ -779,55 +743,6 @@ function configureJsonTool(tool, vaultDir) {
   }
 
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
-}
-
-/** Configure a tool using the stable launcher path (for post-global-install reconfigure) */
-async function configureWithLauncher(tool, vaultDir) {
-  const launcherPath = join(HOME, ".context-mcp", "server.mjs");
-  if (tool.configType === "cli" && tool.id === "codex") {
-    try {
-      execSync("codex mcp remove context-vault", { stdio: "pipe" });
-    } catch {}
-    const cmdArgs = [`"${launcherPath}"`];
-    if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-    execSync(`codex mcp add context-vault -- node ${cmdArgs.join(" ")}`, {
-      stdio: "pipe",
-    });
-  } else if (tool.configType === "cli") {
-    const env = { ...process.env };
-    delete env.CLAUDECODE;
-    try {
-      execSync("claude mcp remove context-vault -s user", {
-        stdio: "pipe",
-        env,
-      });
-    } catch {}
-    const cmdArgs = [`"${launcherPath}"`];
-    if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-    execSync(
-      `claude mcp add -s user context-vault -- node ${cmdArgs.join(" ")}`,
-      { stdio: "pipe", env },
-    );
-  } else {
-    const configPath = tool.configPath;
-    const configDir = dirname(configPath);
-    if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-    let config = {};
-    if (existsSync(configPath)) {
-      try {
-        config = JSON.parse(readFileSync(configPath, "utf-8"));
-      } catch {}
-    }
-    if (!config[tool.configKey]) config[tool.configKey] = {};
-    delete config[tool.configKey]["context-mcp"];
-    const serverArgs = [];
-    if (vaultDir) serverArgs.push("--vault-dir", vaultDir);
-    config[tool.configKey]["context-vault"] = {
-      command: "node",
-      args: [launcherPath, ...serverArgs],
-    };
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
-  }
 }
 
 function createSeedEntries(vaultDir) {
