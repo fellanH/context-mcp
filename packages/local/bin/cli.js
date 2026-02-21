@@ -649,14 +649,14 @@ async function configureClaude(tool, vaultDir) {
       const cmdArgs = [`"${launcherPath}"`];
       if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
       execSync(
-        `claude mcp add -s user context-vault -- node ${cmdArgs.join(" ")}`,
+        `claude mcp add -s user context-vault -- ${process.execPath} ${cmdArgs.join(" ")}`,
         { stdio: "pipe", env },
       );
     } else {
       const cmdArgs = [`"${SERVER_PATH}"`];
       if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
       execSync(
-        `claude mcp add -s user context-vault -- node ${cmdArgs.join(" ")}`,
+        `claude mcp add -s user context-vault -- ${process.execPath} ${cmdArgs.join(" ")}`,
         { stdio: "pipe", env },
       );
     }
@@ -687,15 +687,21 @@ async function configureCodex(tool, vaultDir) {
       const launcherPath = join(HOME, ".context-mcp", "server.mjs");
       const cmdArgs = [`"${launcherPath}"`];
       if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-      execSync(`codex mcp add context-vault -- node ${cmdArgs.join(" ")}`, {
-        stdio: "pipe",
-      });
+      execSync(
+        `codex mcp add context-vault -- ${process.execPath} ${cmdArgs.join(" ")}`,
+        {
+          stdio: "pipe",
+        },
+      );
     } else {
       const cmdArgs = [`"${SERVER_PATH}"`];
       if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-      execSync(`codex mcp add context-vault -- node ${cmdArgs.join(" ")}`, {
-        stdio: "pipe",
-      });
+      execSync(
+        `codex mcp add context-vault -- ${process.execPath} ${cmdArgs.join(" ")}`,
+        {
+          stdio: "pipe",
+        },
+      );
     }
   } catch (e) {
     const stderr = e.stderr?.toString().trim();
@@ -742,14 +748,14 @@ function configureJsonTool(tool, vaultDir) {
     const serverArgs = [];
     if (vaultDir) serverArgs.push("--vault-dir", vaultDir);
     config[tool.configKey]["context-vault"] = {
-      command: "node",
+      command: process.execPath,
       args: [launcherPath, ...serverArgs],
     };
   } else {
     const serverArgs = [SERVER_PATH];
     if (vaultDir) serverArgs.push("--vault-dir", vaultDir);
     config[tool.configKey]["context-vault"] = {
-      command: "node",
+      command: process.execPath,
       args: serverArgs,
     };
   }
