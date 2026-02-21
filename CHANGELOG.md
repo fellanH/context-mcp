@@ -2,6 +2,17 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.8.16] — 2026-02-22
+
+### Fixed
+
+- `reindex()` now deletes stale vectors atomically with insert (only on successful embedding), preventing entries from being permanently left without vectors if `embedBatch()` fails mid-batch
+- `indexEntry()` skips writing already-expired entries to the DB and FTS index
+- `export` command no longer crashes on malformed JSON in `tags`/`meta` columns — falls back to `[]`/`{}` gracefully
+- Tag post-filter over-fetch is now capped at 500 rows (`MAX_FETCH_LIMIT`) to bound memory usage
+- `context-status` tool name corrected in vault-not-found error message (was `context_status`)
+- `embed.js` JSDoc updated to document the `loadingPromise` state (fourth state alongside `null/true/false`)
+
 ## [2.8.15] — 2026-02-22
 
 ### Fixed
