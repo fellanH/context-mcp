@@ -120,10 +120,10 @@ console.log("  tests passed\n");
 // --- Publish to npm ---
 
 console.log("  publishing to npm...");
-run("npm publish --workspace packages/local --access public");
-console.log(`  published context-vault@${newVersion}`);
 run("npm publish --workspace packages/core --access public");
-console.log(`  published @context-vault/core@${newVersion}\n`);
+console.log(`  published @context-vault/core@${newVersion}`);
+run("npm publish --workspace packages/local --access public");
+console.log(`  published context-vault@${newVersion}\n`);
 
 // --- Commit, tag, push ---
 
