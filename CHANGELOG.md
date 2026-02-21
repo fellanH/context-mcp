@@ -2,6 +2,16 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.8.1] — 2026-02-21
+
+### Fixed
+
+- Removed stale test files (`format.test.js`, `onboarding.test.js`) that imported from `packages/app` after it was extracted to a separate repo — CI was failing on `npm test`
+
+### Test suite
+
+- **399 tests** across 22 test files
+
 ## [2.8.0] — 2026-02-20
 
 ### Changed
