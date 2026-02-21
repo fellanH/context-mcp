@@ -32,10 +32,16 @@ export async function handler({ id }, ctx, { ensureIndexed }) {
   }
 
   // Delete file from disk first (source of truth)
+  let fileWarning = null;
   if (entry.file_path) {
     try {
       unlinkSync(entry.file_path);
-    } catch {}
+    } catch (e) {
+      // ENOENT = already gone — not an error worth surfacing
+      if (e.code !== "ENOENT") {
+        fileWarning = `file could not be removed from disk (${e.code}): ${entry.file_path}`;
+      }
+    }
   }
 
   // Delete vector embedding
@@ -49,5 +55,6 @@ export async function handler({ id }, ctx, { ensureIndexed }) {
   // Delete DB row (FTS trigger handles FTS cleanup)
   ctx.stmts.deleteEntry.run(id);
 
-  return ok(`Deleted ${entry.kind}: ${entry.title || "(untitled)"} [${id}]`);
+  const msg = `Deleted ${entry.kind}: ${entry.title || "(untitled)"} [${id}]`;
+  return ok(fileWarning ? `${msg}\nWarning: ${fileWarning}` : msg);
 }

@@ -28,9 +28,11 @@ export function registerTools(server, ctx) {
     return async (...args) => {
       if (ctx.activeOps) ctx.activeOps.count++;
       let timer;
+      let handlerPromise;
       try {
+        handlerPromise = Promise.resolve(handler(...args));
         return await Promise.race([
-          Promise.resolve(handler(...args)),
+          handlerPromise,
           new Promise((_, reject) => {
             timer = setTimeout(
               () => reject(new Error("TOOL_TIMEOUT")),
@@ -40,6 +42,9 @@ export function registerTools(server, ctx) {
         ]);
       } catch (e) {
         if (e.message === "TOOL_TIMEOUT") {
+          // Suppress any late rejection from the still-running handler to
+          // prevent unhandled promise rejection warnings in the host process.
+          handlerPromise?.catch(() => {});
           return err(
             "Tool timed out after 60s. Try a simpler query or run `context-vault reindex` first.",
             "TIMEOUT",

@@ -99,9 +99,9 @@ export async function embedBatch(texts) {
       `Unexpected embedding dimension: ${result.data.length} / ${texts.length} = ${dim}`,
     );
   }
-  return texts.map(
-    (_, i) => new Float32Array(result.data.buffer, i * dim * 4, dim),
-  );
+  // subarray() creates a view into result.data's index-space, correctly
+  // accounting for any non-zero byteOffset on the source typed array.
+  return texts.map((_, i) => result.data.subarray(i * dim, (i + 1) * dim));
 }
 
 /** Force re-initialization on next embed call. */
