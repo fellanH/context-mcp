@@ -1,10 +1,3 @@
-/**
- * management.js — REST API routes for key management, billing, and user operations.
- *
- * Mounted alongside the MCP endpoint in the Hono app.
- * Exported as a factory function to receive ctx for vault DB access.
- */
-
 import { Hono } from "hono";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { rmSync } from "node:fs";

@@ -1,10 +1,3 @@
-/**
- * constants.js — Shared validation constants for vault entries.
- *
- * Canonical source for input size limits used across local (core tools) and
- * hosted (REST API validation). Import from here; never redefine locally.
- */
-
 export const MAX_BODY_LENGTH = 100 * 1024; // 100KB
 export const MAX_TITLE_LENGTH = 500;
 export const MAX_KIND_LENGTH = 64;

@@ -1,12 +1,3 @@
-/**
- * tools.js — MCP tool registrations (orchestrator)
- *
- * Seven tools: get_context (search), save_context (write/update), list_context (browse),
- * delete_context (remove), submit_feedback (bug/feature reports), ingest_url (fetch+save),
- * context_status (diag).
- * Auto-reindex runs transparently on first tool call per session.
- */
-
 import { reindex } from "../index/index.js";
 import { err } from "./helpers.js";
 
@@ -30,12 +21,6 @@ const toolModules = [
 
 const TOOL_TIMEOUT_MS = 60_000;
 
-/**
- * Register all MCP tools on the server.
- *
- * @param {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer} server
- * @param {import('./types.js').BaseCtx & Partial<import('./types.js').HostedCtxExtensions>} ctx
- */
 export function registerTools(server, ctx) {
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
 

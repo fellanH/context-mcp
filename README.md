@@ -56,7 +56,7 @@ Your AI agent uses these automatically — you don’t call them directly.
 | `ingest_url`     | Fetch URL, extract, save           |
 | `context_status` | Health and config                  |
 
-See [DATA_CATEGORIES.md](./DATA_CATEGORIES.md) for kinds (insight, decision, pattern, etc.) and folder structure.
+Kinds: `insight` · `decision` · `pattern` · `reference` · `contact` — derived from vault subdirectory names.
 
 ## CLI Reference
 
@@ -75,7 +75,7 @@ See [DATA_CATEGORIES.md](./DATA_CATEGORIES.md) for kinds (insight, decision, pat
 
 ## Hosted Option
 
-Prefer cloud over local? No Node.js required — sign up, get an API key, and connect in 2 minutes. See [connect-in-2-minutes.md](./docs/distribution/connect-in-2-minutes.md).
+Prefer cloud over local? No Node.js required — sign up at [app.context-vault.com](https://app.context-vault.com), get an API key, and connect in 2 minutes.
 
 ## Configuration
 

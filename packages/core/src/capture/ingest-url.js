@@ -1,19 +1,3 @@
-/**
- * ingest-url.js — URL fetch + HTML → markdown conversion
- *
- * Fetches a URL, extracts readable content, converts to markdown,
- * and returns an EntryData object ready for captureAndIndex().
- *
- * Uses Node built-in fetch() (Node 18+). No external dependencies.
- */
-
-/**
- * Convert HTML to simplified markdown.
- * Strips scripts/styles, converts headings/links/lists/code.
- *
- * @param {string} html
- * @returns {string}
- */
 export function htmlToMarkdown(html) {
   let md = html;
 

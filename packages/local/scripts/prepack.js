@@ -1,12 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * prepack.js — Cross-platform bundle preparation
- *
- * Copies @context-vault/core into node_modules for npm pack bundling.
- * Replaces the Unix shell script in package.json "prepack".
- */
-
 import {
   cpSync,
   rmSync,

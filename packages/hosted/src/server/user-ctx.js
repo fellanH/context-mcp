@@ -1,18 +1,6 @@
-/**
- * user-ctx.js — Build per-user vault context from shared server context.
- *
- * In per-user DB mode (PER_USER_DB=true):
- *   Each user gets their own SQLite database, vault directory, and prepared statements
- *   from the UserDbPool. The core package operates within this isolated sandbox
- *   with zero changes — it just sees a different ctx.
- *
- * In legacy mode (PER_USER_DB=false):
- *   Same shared-database behavior as before, with WHERE user_id filtering.
- *
- * getCachedUserCtx() wraps buildUserCtx() with an in-memory TTL cache keyed by
- * userId + teamId. This avoids re-allocating closure objects and re-running
- * pool.get() / getTierLimits() on every HTTP request from the same user.
- */
+// Per-user DB mode: each user gets an isolated SQLite + vault dir from UserDbPool.
+// Legacy mode: shared DB with WHERE user_id filtering.
+// getCachedUserCtx() caches by userId+teamId to avoid pool.get() on every request.
 
 import {
   encryptForStorage,

@@ -1,21 +1,5 @@
-/**
- * turso.js — Per-user Turso database adapter.
- *
- * Creates a libSQL client for a user's Turso database.
- * The schema mirrors the local vault schema (v5) but adapted for libSQL.
- *
- * Key differences from local better-sqlite3:
- *   - Uses @libsql/client (wire-compatible with SQLite)
- *   - Async API (all queries return Promises)
- *   - No sqlite-vec support on Turso — vector search runs locally
- *   - Encrypted body columns (Phase 5) instead of plaintext
- *
- * For the initial implementation, uses libSQL in local file mode
- * (embedded SQLite via libsql-node), which means:
- *   - Same machine, same filesystem — just different driver
- *   - Migrating to remote Turso requires only changing the URL
- *   - sqlite-vec is NOT available in libsql — embeddings handled separately
- */
+// libSQL adapter for per-user databases. Async API (vs better-sqlite3 sync).
+// No sqlite-vec — embeddings are handled separately. Schema mirrors local vault v5.
 
 import { createClient } from "@libsql/client";
 

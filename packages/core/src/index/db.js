@@ -1,7 +1,3 @@
-/**
- * db.js — Database schema, initialization, and prepared statements
- */
-
 import { unlinkSync, copyFileSync, existsSync } from "node:fs";
 
 export class NativeModuleError extends Error {

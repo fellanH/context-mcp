@@ -1,6 +1,6 @@
 # @context-vault/hosted
 
-Hosted context-vault server — Hono HTTP server serving MCP over Streamable HTTP transport with auth, billing, and multi-tenant vault storage.
+Hosted context-vault server — Hono HTTP server with MCP over Streamable HTTP, auth, billing, and multi-tenant vault storage.
 
 ## Architecture
 
@@ -15,161 +15,38 @@ Hosted context-vault server — Hono HTTP server serving MCP over Streamable HTT
 │  *    /api/billing/*       Stripe billing       │
 │  POST /api/vault/import    Entry import         │
 │  GET  /api/vault/export    Entry export (Pro)   │
-│                                                 │
-│  ┌───────────┐  ┌──────────┐  ┌─────────────┐  │
-│  │ Auth      │  │ Billing  │  │ Core Vault  │  │
-│  │ (API key) │  │ (Stripe) │  │ (shared)    │  │
-│  └───────────┘  └──────────┘  └─────────────┘  │
 └─────────────────────────────────────────────────┘
 ```
 
-Uses `@context-vault/core` for all vault operations (same 6 MCP tools as local mode). Each HTTP request gets a fresh McpServer + transport but shares the same ctx (DB, embeddings, config).
+Uses `@context-vault/core` for all vault operations. Each request gets a fresh McpServer + transport sharing a per-user ctx (DB, embeddings, config).
 
 ## Environment Variables
 
-| Variable                | Required | Default                                   | Description                                                             |
-| ----------------------- | -------- | ----------------------------------------- | ----------------------------------------------------------------------- |
-| `PORT`                  | No       | `3000`                                    | HTTP server port                                                        |
-| `AUTH_REQUIRED`         | No       | `false`                                   | Enable API key auth for MCP endpoint                                    |
-| `PUBLIC_URL`            | No       | —                                         | Canonical app URL used for OAuth/login redirects (set to app subdomain) |
-| `STRIPE_SECRET_KEY`     | No       | —                                         | Stripe API secret key (enables billing)                                 |
-| `STRIPE_WEBHOOK_SECRET` | No       | —                                         | Stripe webhook signing secret                                           |
-| `STRIPE_PRICE_PRO`      | No       | —                                         | Stripe Price ID for Pro tier                                            |
-| `APP_HOSTS`             | No       | `app.context-vault.com`                   | Comma-separated hostnames that should serve product app frontend        |
-| `MARKETING_HOSTS`       | No       | `www.context-vault.com,context-vault.com` | Comma-separated hostnames that should serve marketing frontend          |
-| `DEFAULT_FRONTEND`      | No       | `marketing`                               | Frontend for unknown hosts (`marketing` or `app`)                       |
-| `LOCALHOST_FRONTEND`    | No       | `app`                                     | Frontend for localhost dev host (`marketing` or `app`)                  |
-| `CONTEXT_MCP_DATA_DIR`  | No       | `~/.context-mcp`                          | Data directory (databases)                                              |
-| `CONTEXT_MCP_VAULT_DIR` | No       | `<data_dir>/vault`                        | Vault markdown file storage                                             |
+| Variable                | Required | Default                                   | Description                           |
+| ----------------------- | -------- | ----------------------------------------- | ------------------------------------- |
+| `PORT`                  | No       | `3000`                                    | HTTP server port                      |
+| `AUTH_REQUIRED`         | No       | `false`                                   | Enable API key auth for MCP endpoint  |
+| `PUBLIC_URL`            | No       | —                                         | Canonical app URL for OAuth redirects |
+| `STRIPE_SECRET_KEY`     | No       | —                                         | Stripe API secret key                 |
+| `STRIPE_WEBHOOK_SECRET` | No       | —                                         | Stripe webhook signing secret         |
+| `STRIPE_PRICE_PRO`      | No       | —                                         | Stripe Price ID for Pro tier          |
+| `APP_HOSTS`             | No       | `app.context-vault.com`                   | Hostnames serving the product app     |
+| `MARKETING_HOSTS`       | No       | `www.context-vault.com,context-vault.com` | Hostnames serving marketing           |
+| `CONTEXT_MCP_DATA_DIR`  | No       | `~/.context-mcp`                          | Data directory                        |
+| `CONTEXT_MCP_VAULT_DIR` | No       | `<data_dir>/vault`                        | Vault markdown storage                |
 
 ## Local Development
 
 ```bash
-# From monorepo root
 npm install
-
-# Start in dev mode (no auth, auto-reload)
 npm run dev --workspace=packages/hosted
-
-# Start with auth enabled
-AUTH_REQUIRED=true npm run dev --workspace=packages/hosted
 ```
 
-The server starts at `http://localhost:3000` with:
-
-- Health check: `GET /health`
-- MCP endpoint: `POST /mcp`
-- Management API: `/api/*`
+Server starts at `http://localhost:3000`. Health: `GET /health`, MCP: `POST /mcp`, Management: `/api/*`.
 
 ## Deployment
 
-**Preferred platform:** Fly.io (Docker-based) for the hosted MCP server.
-
-### Hosting Architecture
-
-Recommended production setup is a single Fly.io app:
-
-| Surface              | Host / Route              | Served by                                       |
-| -------------------- | ------------------------- | ----------------------------------------------- |
-| Marketing site (SPA) | `www.context-vault.com/*` | Hono static serving (`packages/marketing/dist`) |
-| Product app (SPA)    | `app.context-vault.com/*` | Hono static serving (`packages/app/dist`)       |
-| Hosted REST API      | `/api/*`                  | Hono routes                                     |
-| MCP endpoint         | `/mcp`                    | Streamable HTTP MCP transport                   |
-| OpenAPI schema       | `/api/vault/openapi.json` | Public route                                    |
-| Privacy policy       | `/privacy`                | Public route                                    |
-
-This keeps marketing and product surfaces isolated while retaining one hosted runtime.
-
-### Fly.io (recommended)
-
-From the monorepo root:
-
-```bash
-# Install flyctl: https://fly.io/docs/hands-on/install-flyctl/
-fly launch --name context-vault --copy-config --no-deploy
-
-# Set secrets (use live keys for production)
-fly secrets set AUTH_REQUIRED=true
-fly secrets set STRIPE_SECRET_KEY=sk_live_...
-fly secrets set STRIPE_WEBHOOK_SECRET=whsec_...
-fly secrets set STRIPE_PRICE_PRO=price_...
-
-# Deploy
-fly deploy
-```
-
-Create a `fly.toml` at monorepo root:
-
-```toml
-# fly.toml
-app = "context-vault"
-
-[build]
-  dockerfile = "packages/hosted/Dockerfile"
-  [build.context]
-    path = "."
-
-  [build.args]
-    VITE_APP_BASE_URL = "https://app.context-vault.com"
-
-[env]
-  PORT = "3000"
-  AUTH_REQUIRED = "true"
-  PUBLIC_URL = "https://app.context-vault.com"
-  APP_HOSTS = "app.context-vault.com"
-  MARKETING_HOSTS = "www.context-vault.com,context-vault.com"
-  CONTEXT_MCP_DATA_DIR = "/data"
-  CONTEXT_MCP_VAULT_DIR = "/data/vault"
-
-[[mounts]]
-  source = "context_vault_data"
-  destination = "/data"
-
-[http_service]
-  internal_port = 3000
-  force_https = true
-  auto_stop_machines = true
-  auto_start_machines = true
-  min_machines_running = 0
-  processes = ["app"]
-```
-
-Create the volume before first deploy: `fly volumes create context_vault_data --size 1`
-
-### Railway
-
-```bash
-# Set environment variables in Railway dashboard:
-# PORT=3000
-# AUTH_REQUIRED=true
-# STRIPE_SECRET_KEY=sk_live_...
-# STRIPE_WEBHOOK_SECRET=whsec_...
-# STRIPE_PRICE_PRO=price_...
-
-# Deploy from monorepo root
-railway up
-```
-
-### Docker (standalone)
-
-```bash
-docker build \
-  --build-arg VITE_APP_BASE_URL=https://app.context-vault.com \
-  -f packages/hosted/Dockerfile \
-  -t context-vault .
-docker run -p 3000:3000 \
-  -e AUTH_REQUIRED=true \
-  -e PUBLIC_URL=https://app.context-vault.com \
-  -e APP_HOSTS=app.context-vault.com \
-  -e MARKETING_HOSTS=www.context-vault.com,context-vault.com \
-  -e STRIPE_SECRET_KEY=sk_live_... \
-  -e STRIPE_WEBHOOK_SECRET=whsec_... \
-  -e STRIPE_PRICE_PRO=price_... \
-  -v context_vault_data:/data \
-  -e CONTEXT_MCP_DATA_DIR=/data \
-  -e CONTEXT_MCP_VAULT_DIR=/data/vault \
-  context-vault
-```
+Deployed to Fly.io via CI on push to main. Config lives in `fly.toml` at monorepo root.
 
 ## License
 
