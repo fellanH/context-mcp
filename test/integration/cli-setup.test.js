@@ -297,6 +297,262 @@ describe("full setup flow E2E", () => {
   });
 });
 
+describe("setup --vault-dir flag", () => {
+  it("uses custom vault dir from --vault-dir flag", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-vaultdir-"));
+    const customVault = join(tmpHome, "custom-vault");
+
+    try {
+      const { exitCode } = runCli(
+        `setup --yes --skip-embeddings --vault-dir ${customVault}`,
+        { env: { HOME: tmpHome }, timeout: 60000 },
+      );
+      expect(exitCode).toBe(0);
+      expect(existsSync(customVault)).toBe(true);
+
+      const config = JSON.parse(
+        readFileSync(join(tmpHome, ".context-mcp", "config.json"), "utf-8"),
+      );
+      expect(config.vaultDir).toBe(customVault);
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("creates seed entries under the custom vault dir", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-vaultdir-seed-"));
+    const customVault = join(tmpHome, "data-vault");
+
+    try {
+      runCli(`setup --yes --skip-embeddings --vault-dir ${customVault}`, {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+
+      const seedPath = join(
+        customVault,
+        "knowledge",
+        "insights",
+        "getting-started.md",
+      );
+      expect(existsSync(seedPath)).toBe(true);
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("setup error cases", () => {
+  it("exits with error when vault dir path is a file", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-error-"));
+    // Create a file at the default vault path so setup can't make a dir there
+    writeFileSync(join(tmpHome, "vault"), "I am a file, not a directory");
+
+    try {
+      const { exitCode, stderr, stdout } = runCli(
+        "setup --yes --skip-embeddings",
+        { env: { HOME: tmpHome }, timeout: 60000 },
+      );
+      expect(exitCode).toBe(1);
+      expect((stderr + stdout).toLowerCase()).toMatch(/not a directory/);
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("configureJsonTool via real CLI", () => {
+  it("writes ~/.cursor/mcp.json when Cursor dir is detected", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-cursor-"));
+    mkdirSync(join(tmpHome, ".cursor"));
+
+    try {
+      const { exitCode } = runCli("setup --yes --skip-embeddings", {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+      expect(exitCode).toBe(0);
+
+      const configPath = join(tmpHome, ".cursor", "mcp.json");
+      expect(existsSync(configPath)).toBe(true);
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      const entry = config.mcpServers?.["context-vault"];
+      expect(entry).toBeDefined();
+      // Uses process.execPath, not bare "node"
+      expect(entry.command).toBe(process.execPath);
+      expect(Array.isArray(entry.args)).toBe(true);
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("includes --vault-dir in tool config args when using custom vault", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-cursor-vault-"));
+    const customVault = join(tmpHome, "my-vault");
+    mkdirSync(join(tmpHome, ".cursor"));
+
+    try {
+      runCli(`setup --yes --skip-embeddings --vault-dir ${customVault}`, {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+
+      const config = JSON.parse(
+        readFileSync(join(tmpHome, ".cursor", "mcp.json"), "utf-8"),
+      );
+      const args = config.mcpServers?.["context-vault"]?.args ?? [];
+      expect(args).toContain("--vault-dir");
+      expect(args).toContain(customVault);
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("removes legacy context-mcp entry from existing tool config", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-legacy-cursor-"));
+    const cursorDir = join(tmpHome, ".cursor");
+    mkdirSync(cursorDir);
+    writeFileSync(
+      join(cursorDir, "mcp.json"),
+      JSON.stringify(
+        {
+          mcpServers: { "context-mcp": { command: "node", args: ["/old"] } },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    try {
+      runCli("setup --yes --skip-embeddings", {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+
+      const config = JSON.parse(
+        readFileSync(join(cursorDir, "mcp.json"), "utf-8"),
+      );
+      expect(config.mcpServers["context-mcp"]).toBeUndefined();
+      expect(config.mcpServers["context-vault"]).toBeDefined();
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("overwrites stale context-vault entry on re-run", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-rerun-cursor-"));
+    const cursorDir = join(tmpHome, ".cursor");
+    mkdirSync(cursorDir);
+    writeFileSync(
+      join(cursorDir, "mcp.json"),
+      JSON.stringify(
+        {
+          mcpServers: {
+            "context-vault": { command: "old-node", args: ["/old/server.js"] },
+          },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    try {
+      runCli("setup --yes --skip-embeddings", {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+
+      const config = JSON.parse(
+        readFileSync(join(cursorDir, "mcp.json"), "utf-8"),
+      );
+      const entry = config.mcpServers["context-vault"];
+      expect(entry.command).toBe(process.execPath);
+      expect(entry.args[0]).not.toBe("/old/server.js");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves other MCP server entries when adding context-vault", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-preserve-cursor-"));
+    const cursorDir = join(tmpHome, ".cursor");
+    mkdirSync(cursorDir);
+    writeFileSync(
+      join(cursorDir, "mcp.json"),
+      JSON.stringify(
+        { mcpServers: { "other-mcp": { command: "other", args: [] } } },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    try {
+      runCli("setup --yes --skip-embeddings", {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+
+      const config = JSON.parse(
+        readFileSync(join(cursorDir, "mcp.json"), "utf-8"),
+      );
+      expect(config.mcpServers["other-mcp"]).toBeDefined();
+      expect(config.mcpServers["context-vault"]).toBeDefined();
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("detects Windsurf new-style dir (~/.windsurf) and writes mcp.json", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-windsurf-"));
+    mkdirSync(join(tmpHome, ".windsurf"));
+
+    try {
+      const { exitCode } = runCli("setup --yes --skip-embeddings", {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+      expect(exitCode).toBe(0);
+
+      // New-style path: ~/.windsurf/mcp.json
+      const configPath = join(tmpHome, ".windsurf", "mcp.json");
+      expect(existsSync(configPath)).toBe(true);
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.mcpServers?.["context-vault"]).toBeDefined();
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("detects Windsurf old-style dir (~/.codeium/windsurf) and writes mcp_config.json", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-windsurf-old-"));
+    mkdirSync(join(tmpHome, ".codeium", "windsurf"), { recursive: true });
+
+    try {
+      const { exitCode } = runCli("setup --yes --skip-embeddings", {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+      expect(exitCode).toBe(0);
+
+      // Old-style path: ~/.codeium/windsurf/mcp_config.json
+      const configPath = join(
+        tmpHome,
+        ".codeium",
+        "windsurf",
+        "mcp_config.json",
+      );
+      expect(existsSync(configPath)).toBe(true);
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.mcpServers?.["context-vault"]).toBeDefined();
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("seed entry searchability", () => {
   let testCtx;
   let cleanup;

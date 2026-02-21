@@ -13,6 +13,7 @@ if (nodeVersion < 20) {
 import { createInterface } from "node:readline";
 import {
   existsSync,
+  statSync,
   readFileSync,
   writeFileSync,
   mkdirSync,
@@ -21,7 +22,7 @@ import {
 } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { homedir, platform } from "node:os";
-import { execSync, execFile } from "node:child_process";
+import { execSync, execFile, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -148,7 +149,11 @@ const TOOLS = [
     detect: () =>
       anyDirExists(join(HOME, ".codeium", "windsurf"), join(HOME, ".windsurf")),
     configType: "json",
-    configPath: join(HOME, ".codeium", "windsurf", "mcp_config.json"),
+    get configPath() {
+      return existsSync(join(HOME, ".windsurf"))
+        ? join(HOME, ".windsurf", "mcp.json")
+        : join(HOME, ".codeium", "windsurf", "mcp_config.json");
+    },
     configKey: "mcpServers",
   },
   {
@@ -422,32 +427,45 @@ async function runSetup() {
 
   // Vault directory (content files)
   console.log(dim(`  [2/5]`) + bold(" Configuring vault...\n"));
-  const defaultVaultDir = join(HOME, "vault");
+  const defaultVaultDir = getFlag("--vault-dir") || join(HOME, "vault");
   const vaultDir = isNonInteractive
     ? defaultVaultDir
     : await prompt(`  Vault directory:`, defaultVaultDir);
   const resolvedVaultDir = resolve(vaultDir);
 
-  // Create vault dir if needed
-  if (!existsSync(resolvedVaultDir)) {
-    if (isNonInteractive) {
-      mkdirSync(resolvedVaultDir, { recursive: true });
-      console.log(`\n  ${green("+")} Created ${resolvedVaultDir}`);
-    } else {
-      const create = await prompt(
-        `\n  ${resolvedVaultDir} doesn't exist. Create it? (Y/n):`,
-        "Y",
+  // Guard: vault dir path must not be an existing file
+  if (existsSync(resolvedVaultDir)) {
+    if (!statSync(resolvedVaultDir).isDirectory()) {
+      console.error(
+        `\n  ${red("Error:")} ${resolvedVaultDir} exists but is not a directory.`,
       );
-      if (create.toLowerCase() !== "n") {
-        mkdirSync(resolvedVaultDir, { recursive: true });
-        console.log(`  ${green("+")} Created ${resolvedVaultDir}`);
-      }
+      console.error(
+        dim(`  Remove or rename the file, then run setup again.\n`),
+      );
+      process.exit(1);
+    }
+  } else if (isNonInteractive) {
+    mkdirSync(resolvedVaultDir, { recursive: true });
+    console.log(`\n  ${green("+")} Created ${resolvedVaultDir}`);
+  } else {
+    const create = await prompt(
+      `\n  ${resolvedVaultDir} doesn't exist. Create it? (Y/n):`,
+      "Y",
+    );
+    if (create.toLowerCase() !== "n") {
+      mkdirSync(resolvedVaultDir, { recursive: true });
+      console.log(`  ${green("+")} Created ${resolvedVaultDir}`);
     }
   }
 
   // Ensure data dir exists for DB storage
   const dataDir = join(HOME, ".context-mcp");
   mkdirSync(dataDir, { recursive: true });
+
+  // Keep server.mjs launcher up to date so it always resolves to the current installation
+  if (isInstalledPackage()) {
+    writeFileSync(join(dataDir, "server.mjs"), `import "${SERVER_PATH}";\n`);
+  }
 
   // Write config.json to data dir (persistent, survives reinstalls)
   const configPath = join(dataDir, "config.json");
@@ -627,36 +645,52 @@ async function configureClaude(tool, vaultDir) {
   const env = { ...process.env };
   delete env.CLAUDECODE;
 
-  // Clean up old name
-  try {
-    execSync("claude mcp remove context-mcp -s user", { stdio: "pipe", env });
-  } catch {}
-
-  try {
-    execSync("claude mcp remove context-vault -s user", { stdio: "pipe", env });
-  } catch {}
+  // Clean up old names
+  for (const oldName of ["context-mcp", "context-vault"]) {
+    try {
+      execFileSync("claude", ["mcp", "remove", oldName, "-s", "user"], {
+        stdio: "pipe",
+        env,
+      });
+    } catch {}
+  }
 
   try {
     if (isNpx()) {
-      const cmdArgs = ["-y", "context-vault", "serve"];
-      if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-      execSync(
-        `claude mcp add -s user context-vault -- npx ${cmdArgs.join(" ")}`,
-        { stdio: "pipe", env },
-      );
-    } else if (isInstalledPackage()) {
-      const launcherPath = join(HOME, ".context-mcp", "server.mjs");
-      const cmdArgs = [`"${launcherPath}"`];
-      if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-      execSync(
-        `claude mcp add -s user context-vault -- ${process.execPath} ${cmdArgs.join(" ")}`,
+      const serverArgs = ["-y", "context-vault", "serve"];
+      if (vaultDir) serverArgs.push("--vault-dir", vaultDir);
+      execFileSync(
+        "claude",
+        [
+          "mcp",
+          "add",
+          "-s",
+          "user",
+          "context-vault",
+          "--",
+          "npx",
+          ...serverArgs,
+        ],
         { stdio: "pipe", env },
       );
     } else {
-      const cmdArgs = [`"${SERVER_PATH}"`];
-      if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-      execSync(
-        `claude mcp add -s user context-vault -- ${process.execPath} ${cmdArgs.join(" ")}`,
+      const serverPath = isInstalledPackage()
+        ? join(HOME, ".context-mcp", "server.mjs")
+        : SERVER_PATH;
+      const nodeArgs = [serverPath];
+      if (vaultDir) nodeArgs.push("--vault-dir", vaultDir);
+      execFileSync(
+        "claude",
+        [
+          "mcp",
+          "add",
+          "-s",
+          "user",
+          "context-vault",
+          "--",
+          process.execPath,
+          ...nodeArgs,
+        ],
         { stdio: "pipe", env },
       );
     }
@@ -667,40 +701,32 @@ async function configureClaude(tool, vaultDir) {
 }
 
 async function configureCodex(tool, vaultDir) {
-  // Clean up old name
-  try {
-    execSync("codex mcp remove context-mcp", { stdio: "pipe" });
-  } catch {}
-
-  try {
-    execSync("codex mcp remove context-vault", { stdio: "pipe" });
-  } catch {}
+  // Clean up old names
+  for (const oldName of ["context-mcp", "context-vault"]) {
+    try {
+      execFileSync("codex", ["mcp", "remove", oldName], { stdio: "pipe" });
+    } catch {}
+  }
 
   try {
     if (isNpx()) {
-      const cmdArgs = ["-y", "context-vault", "serve"];
-      if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-      execSync(`codex mcp add context-vault -- npx ${cmdArgs.join(" ")}`, {
-        stdio: "pipe",
-      });
-    } else if (isInstalledPackage()) {
-      const launcherPath = join(HOME, ".context-mcp", "server.mjs");
-      const cmdArgs = [`"${launcherPath}"`];
-      if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-      execSync(
-        `codex mcp add context-vault -- ${process.execPath} ${cmdArgs.join(" ")}`,
-        {
-          stdio: "pipe",
-        },
+      const serverArgs = ["-y", "context-vault", "serve"];
+      if (vaultDir) serverArgs.push("--vault-dir", vaultDir);
+      execFileSync(
+        "codex",
+        ["mcp", "add", "context-vault", "--", "npx", ...serverArgs],
+        { stdio: "pipe" },
       );
     } else {
-      const cmdArgs = [`"${SERVER_PATH}"`];
-      if (vaultDir) cmdArgs.push("--vault-dir", `"${vaultDir}"`);
-      execSync(
-        `codex mcp add context-vault -- ${process.execPath} ${cmdArgs.join(" ")}`,
-        {
-          stdio: "pipe",
-        },
+      const serverPath = isInstalledPackage()
+        ? join(HOME, ".context-mcp", "server.mjs")
+        : SERVER_PATH;
+      const nodeArgs = [serverPath];
+      if (vaultDir) nodeArgs.push("--vault-dir", vaultDir);
+      execFileSync(
+        "codex",
+        ["mcp", "add", "context-vault", "--", process.execPath, ...nodeArgs],
+        { stdio: "pipe" },
       );
     }
   } catch (e) {
