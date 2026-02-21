@@ -2,6 +2,14 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.8.15] — 2026-02-22
+
+### Fixed
+
+- Tool timeout wrapper now suppresses the orphaned handler promise rejection after a 60s timeout, preventing unhandled promise rejection warnings in the host process
+- `delete_context` surfaces non-ENOENT file deletion failures (e.g. permission errors) as a warning in the success response instead of silently swallowing them
+- `embedBatch` now uses `subarray()` instead of `new Float32Array(buffer, offset, dim)`, correctly handling typed array views with non-zero `byteOffset`
+
 ## [2.8.14] — 2026-02-22
 
 ### Fixed
