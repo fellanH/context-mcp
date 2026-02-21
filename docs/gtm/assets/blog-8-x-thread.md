@@ -25,6 +25,7 @@ Thread:
 Most devs dump everything as "notes."
 
 At scale, that means:
+
 - Architectural decisions mixed with debug logs
 - Tags like "wip" and "tuesday" that are useless in 2 weeks
 - Deeply nested folders that no search engine uses
@@ -38,6 +39,7 @@ Flat taxonomy = noisy retrieval = agent can't find what it needs.
 Context Vault organizes entries on 3 axes:
 
 **Kinds** — the primary axis. Built-in types:
+
 - Knowledge (insight, decision, pattern, reference)
 - Entity (contact, project, tool) — upserted by identity key
 - Event (session, log) — auto-windowed by recency
@@ -63,7 +65,7 @@ Keep vocabulary under 30 tags. Check existing ones before adding new.
 
 The full guide covers category behavior, monthly audits, and how to measure retrieval precision.
 
-Blog post: https://contextvault.dev/blog/designing-kinds-tags-folders-for-long-term-memory-quality?utm_source=x&utm_medium=social&utm_campaign=blog-8
+Blog post: https://context-vault.com/blog/designing-kinds-tags-folders-for-long-term-memory-quality?utm_source=x&utm_medium=social&utm_campaign=blog-8
 
 GitHub: https://github.com/fellanH/context-vault
-Start free: https://contextvault.dev?utm_source=x&utm_medium=social&utm_campaign=blog-8
+Start free: https://context-vault.com?utm_source=x&utm_medium=social&utm_campaign=blog-8

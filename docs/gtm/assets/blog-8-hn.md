@@ -12,7 +12,7 @@
 
 **Title:** Designing Kinds, Tags, and Folders for Long-Term AI Agent Memory Quality
 
-**URL:** https://contextvault.dev/blog/designing-kinds-tags-folders-for-long-term-memory-quality?utm_source=hn&utm_medium=social&utm_campaign=blog-8
+**URL:** https://context-vault.com/blog/designing-kinds-tags-folders-for-long-term-memory-quality?utm_source=hn&utm_medium=social&utm_campaign=blog-8
 
 ---
 
@@ -52,4 +52,4 @@ The tag vocabulary size recommendation (~30 tags across 500 entries) is based on
 3. The monthly audit pattern (check kind distribution, tag frequency, folder depth) — does anyone have automated approaches for taxonomy health monitoring?
 
 GitHub: https://github.com/fellanH/context-vault
-Site: https://contextvault.dev?utm_source=hn&utm_medium=social&utm_campaign=blog-8
+Site: https://context-vault.com?utm_source=hn&utm_medium=social&utm_campaign=blog-8

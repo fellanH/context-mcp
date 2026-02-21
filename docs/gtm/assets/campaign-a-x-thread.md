@@ -22,6 +22,7 @@ Thread ↓
 ### Tweet 2 (Problem)
 
 Every session starts from zero:
+
 - Re-explain your architecture
 - Re-describe your conventions
 - Re-share the decisions you made yesterday
@@ -61,7 +62,7 @@ No Docker, no cloud account required. Hosted option available if you want zero i
 ### Tweet 5 (CTA)
 
 Open source: github.com/fellanH/context-vault
-Hosted (free tier): contextvault.dev
+Hosted (free tier): context-vault.com
 
 No lock-in. Every entry is a markdown file you own.
 

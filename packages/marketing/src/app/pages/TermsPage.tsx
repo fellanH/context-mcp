@@ -63,7 +63,7 @@ const sections = [
   {
     icon: Mail,
     title: "Contact",
-    body: "Questions about these Terms? Reach us at support@contextvault.dev or open an issue at github.com/fellanH/context-vault.",
+    body: "Questions about these Terms? Reach us at support@context-vault.com or open an issue at github.com/fellanH/context-vault.",
   },
 ] as const;
 

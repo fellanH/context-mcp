@@ -23,6 +23,7 @@ npm install -g context-vault
 ```
 
 **Expected output:**
+
 ```
 added 1 package in 3s
 ```
@@ -38,6 +39,7 @@ context-vault setup
 ```
 
 **Expected output:**
+
 ```
 Creating vault directory at ~/.context-vault/
 Downloading embedding model (first run only)...
@@ -56,6 +58,7 @@ context-vault status
 ```
 
 **Expected output:**
+
 ```
 Vault path:    ~/.context-vault
 Entries:       1 (seed entry)
@@ -82,6 +85,7 @@ Use the MCP tool `save_context` (or demonstrate via CLI):
 ```
 
 **Expected output:**
+
 ```
 Saved: insight/sqlite-is-fast-enough-for-local-search.md
 Indexed: 1 new entry
@@ -102,6 +106,7 @@ Use the MCP tool `get_context`:
 ```
 
 **Expected output:**
+
 ```
 1. SQLite is fast enough for local search (score: 0.92)
    Kind: insight | Tags: performance, sqlite, architecture
@@ -119,6 +124,7 @@ cat ~/.context-vault/insight/sqlite-is-fast-enough-for-local-search.md
 ```
 
 **Expected output:**
+
 ```markdown
 ---
 title: SQLite is fast enough for local search
@@ -148,4 +154,4 @@ Tested with 1,000 entries — hybrid search returns results in under 50ms. No ne
 
 ## Closing
 
-"That's a full memory cycle — install, save, retrieve, and verify the file on disk. All local, all yours. Start free at contextvault.dev."
+"That's a full memory cycle — install, save, retrieve, and verify the file on disk. All local, all yours. Start free at context-vault.com."

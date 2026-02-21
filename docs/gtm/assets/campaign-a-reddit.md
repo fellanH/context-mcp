@@ -31,6 +31,7 @@ The core issue: AI coding tools don't have memory between sessions. Every conver
 Context Vault is an MCP server that gives your AI tools persistent memory. It works with Claude Code, Cursor, and any MCP-compatible client.
 
 Three core tools:
+
 - `save_context` — saves an entry as a markdown file and indexes it for search
 - `get_context` — hybrid search combining full-text matching, semantic similarity, and recency weighting
 - `context_status` — health check for your vault
@@ -40,16 +41,19 @@ Every entry is a standard markdown file with YAML frontmatter. No proprietary fo
 **Setup (3 steps)**
 
 1. Install globally:
+
 ```bash
 npm install -g context-vault
 ```
 
 2. Run setup (creates vault, downloads embedding model, initializes DB):
+
 ```bash
 context-vault setup
 ```
 
 3. Add the MCP config to your editor settings:
+
 ```json
 {
   "mcpServers": {
@@ -81,7 +85,7 @@ After two weeks of this, my session startup dropped from 15 minutes of re-explan
 **Links**
 
 - GitHub (open source): github.com/fellanH/context-vault
-- Hosted (free tier): contextvault.dev
+- Hosted (free tier): context-vault.com
 - Setup guide: [link to blog post]
 
 Happy to answer questions about the architecture or help with setup.

@@ -44,4 +44,4 @@ There's also a hosted option (free tier) for zero-install setup or team sharing 
 3. MCP integrations — what other MCP clients or workflows would be useful to support?
 
 GitHub: https://github.com/fellanH/context-vault
-Hosted: https://contextvault.dev
+Hosted: https://context-vault.com
