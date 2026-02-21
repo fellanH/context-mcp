@@ -2,7 +2,8 @@ import { injectContentEditable, extractTextContent } from "./types";
 import type { PlatformAdapter } from "./types";
 import type { ChatMessage } from "@/shared/types";
 
-const log = (...args: unknown[]) => console.debug("[context-vault:gemini]", ...args);
+const log = (...args: unknown[]) =>
+  console.debug("[context-vault:gemini]", ...args);
 
 export const geminiAdapter: PlatformAdapter = {
   name: "Gemini",
@@ -14,9 +15,15 @@ export const geminiAdapter: PlatformAdapter = {
   getChatInput() {
     // Fallback selector chain for Gemini's rich text editor
     return (
-      document.querySelector<HTMLElement>('.ql-editor[contenteditable="true"]') ||
-      document.querySelector<HTMLElement>('div[contenteditable="true"][role="textbox"]') ||
-      document.querySelector<HTMLElement>('rich-textarea [contenteditable="true"]') ||
+      document.querySelector<HTMLElement>(
+        '.ql-editor[contenteditable="true"]',
+      ) ||
+      document.querySelector<HTMLElement>(
+        'div[contenteditable="true"][role="textbox"]',
+      ) ||
+      document.querySelector<HTMLElement>(
+        'rich-textarea [contenteditable="true"]',
+      ) ||
       document.querySelector<HTMLElement>('[contenteditable="true"]')
     );
   },
@@ -33,8 +40,12 @@ export const geminiAdapter: PlatformAdapter = {
   getMessages(): ChatMessage[] {
     try {
       // Strategy 1: custom elements (user-query / model-response)
-      const userQueries = Array.from(document.querySelectorAll<HTMLElement>("user-query"));
-      const modelResponses = Array.from(document.querySelectorAll<HTMLElement>("model-response"));
+      const userQueries = Array.from(
+        document.querySelectorAll<HTMLElement>("user-query"),
+      );
+      const modelResponses = Array.from(
+        document.querySelectorAll<HTMLElement>("model-response"),
+      );
       if (userQueries.length > 0 || modelResponses.length > 0) {
         const tagged: { el: HTMLElement; role: "user" | "assistant" }[] = [
           ...userQueries.map((el) => ({ el, role: "user" as const })),
@@ -50,7 +61,12 @@ export const geminiAdapter: PlatformAdapter = {
         for (const { el, role } of tagged) {
           const content = extractTextContent(el);
           if (content) {
-            messages.push({ index: messages.length, role, content, platform: this.name });
+            messages.push({
+              index: messages.length,
+              role,
+              content,
+              platform: this.name,
+            });
           }
         }
         if (messages.length > 0) {
@@ -63,7 +79,9 @@ export const geminiAdapter: PlatformAdapter = {
       // (querySelectorAll never returns null, so || fallback doesn't work)
       let chatTurns = document.querySelectorAll<HTMLElement>("ms-chat-turn");
       if (chatTurns.length === 0) {
-        chatTurns = document.querySelectorAll<HTMLElement>('[class*="chat-turn"]');
+        chatTurns = document.querySelectorAll<HTMLElement>(
+          '[class*="chat-turn"]',
+        );
       }
       if (chatTurns.length > 0) {
         const messages: ChatMessage[] = [];

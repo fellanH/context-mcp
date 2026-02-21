@@ -26,7 +26,12 @@ describe("parseArgs", () => {
   });
 
   it("parses --db-path", () => {
-    const result = parseArgs(["node", "script.js", "--db-path", "/my/db.sqlite"]);
+    const result = parseArgs([
+      "node",
+      "script.js",
+      "--db-path",
+      "/my/db.sqlite",
+    ]);
     expect(result.dbPath).toBe("/my/db.sqlite");
   });
 
@@ -47,12 +52,18 @@ describe("parseArgs", () => {
 
   it("parses multiple args together", () => {
     const result = parseArgs([
-      "node", "script.js",
-      "--vault-dir", "/v",
-      "--data-dir", "/d",
-      "--db-path", "/db",
-      "--dev-dir", "/dev",
-      "--event-decay-days", "7",
+      "node",
+      "script.js",
+      "--vault-dir",
+      "/v",
+      "--data-dir",
+      "/d",
+      "--db-path",
+      "/db",
+      "--dev-dir",
+      "/dev",
+      "--event-decay-days",
+      "7",
     ]);
     expect(result.vaultDir).toBe("/v");
     expect(result.dataDir).toBe("/d");
@@ -325,9 +336,12 @@ describe("resolveConfig", () => {
     process.env.CONTEXT_VAULT_VAULT_DIR = "/env/vault";
 
     process.argv = [
-      "node", "script.js",
-      "--vault-dir", "/cli/vault",
-      "--dev-dir", "/cli/dev",
+      "node",
+      "script.js",
+      "--vault-dir",
+      "/cli/vault",
+      "--dev-dir",
+      "/cli/dev",
     ];
 
     const cfg = resolveConfig();

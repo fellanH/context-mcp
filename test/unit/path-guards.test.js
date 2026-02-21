@@ -15,7 +15,7 @@ describe("safeJoin", () => {
 
     it("joins nested subdirectories", () => {
       expect(safeJoin(base, "sub", "deep", "file.md")).toBe(
-        resolve(base, "sub", "deep", "file.md")
+        resolve(base, "sub", "deep", "file.md"),
       );
     });
 
@@ -29,7 +29,7 @@ describe("safeJoin", () => {
 
     it("handles paths with spaces", () => {
       expect(safeJoin(base, "my folder", "file.md")).toBe(
-        resolve(base, "my folder", "file.md")
+        resolve(base, "my folder", "file.md"),
       );
     });
   });
@@ -40,25 +40,25 @@ describe("safeJoin", () => {
     });
 
     it("blocks ../../", () => {
-      expect(() => safeJoin(base, "..", "..")).toThrow("Path traversal blocked");
+      expect(() => safeJoin(base, "..", "..")).toThrow(
+        "Path traversal blocked",
+      );
     });
 
     it("blocks ../../../etc/passwd", () => {
       expect(() => safeJoin(base, "..", "..", "..", "etc", "passwd")).toThrow(
-        "Path traversal blocked"
+        "Path traversal blocked",
       );
     });
 
     it("blocks traversal embedded in a subpath", () => {
       expect(() => safeJoin(base, "sub", "..", "..", "escape")).toThrow(
-        "Path traversal blocked"
+        "Path traversal blocked",
       );
     });
 
     it("allows sub/../sub (stays within base)", () => {
-      expect(safeJoin(base, "sub", "..", "other")).toBe(
-        resolve(base, "other")
-      );
+      expect(safeJoin(base, "sub", "..", "other")).toBe(resolve(base, "other"));
     });
   });
 
@@ -113,7 +113,7 @@ describe("safeJoin", () => {
 
     it("handles deeply nested valid path", () => {
       expect(safeJoin(base, "a", "b", "c", "d", "e")).toBe(
-        resolve(base, "a", "b", "c", "d", "e")
+        resolve(base, "a", "b", "c", "d", "e"),
       );
     });
   });
@@ -127,7 +127,7 @@ describe("safeJoin", () => {
       // the sep check by using a base that is a prefix of another dir
       const shortBase = "/tmp/v";
       expect(() => safeJoin(shortBase, "../vault/secret")).toThrow(
-        "Path traversal blocked"
+        "Path traversal blocked",
       );
     });
   });
@@ -157,67 +157,63 @@ describe("safeFolderPath", () => {
     it("appends a nested subfolder", () => {
       const result = safeFolderPath(vaultDir, "insight", "react/hooks");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "react", "hooks")
+        resolve(vaultDir, "knowledge", "insights", "react", "hooks"),
       );
     });
 
     it("works with entity kinds", () => {
       const result = safeFolderPath(vaultDir, "contact", "vendors");
-      expect(result).toBe(
-        resolve(vaultDir, "entities", "contacts", "vendors")
-      );
+      expect(result).toBe(resolve(vaultDir, "entities", "contacts", "vendors"));
     });
 
     it("works with event kinds", () => {
       const result = safeFolderPath(vaultDir, "session", "2024");
-      expect(result).toBe(
-        resolve(vaultDir, "events", "sessions", "2024")
-      );
+      expect(result).toBe(resolve(vaultDir, "events", "sessions", "2024"));
     });
   });
 
   describe("traversal attacks", () => {
     it("blocks ../", () => {
       expect(() => safeFolderPath(vaultDir, "insight", "../")).toThrow(
-        "Folder path escapes vault"
+        "Folder path escapes vault",
       );
     });
 
     it("blocks ../../", () => {
       expect(() => safeFolderPath(vaultDir, "insight", "../../")).toThrow(
-        "Folder path escapes vault"
+        "Folder path escapes vault",
       );
     });
 
     it("blocks ../../../etc/passwd", () => {
       expect(() =>
-        safeFolderPath(vaultDir, "insight", "../../../etc/passwd")
+        safeFolderPath(vaultDir, "insight", "../../../etc/passwd"),
       ).toThrow("Folder path escapes vault");
     });
 
     it("blocks traversal that escapes kind dir", () => {
       expect(() =>
-        safeFolderPath(vaultDir, "insight", "../decisions/secret")
+        safeFolderPath(vaultDir, "insight", "../decisions/secret"),
       ).toThrow("Folder path escapes vault");
     });
 
     it("blocks traversal that escapes vault entirely", () => {
       expect(() =>
-        safeFolderPath(vaultDir, "insight", "../../../../etc/shadow")
+        safeFolderPath(vaultDir, "insight", "../../../../etc/shadow"),
       ).toThrow("Folder path escapes vault");
     });
   });
 
   describe("absolute path injection", () => {
     it("blocks /etc/passwd", () => {
-      expect(() =>
-        safeFolderPath(vaultDir, "insight", "/etc/passwd")
-      ).toThrow("Folder path escapes vault");
+      expect(() => safeFolderPath(vaultDir, "insight", "/etc/passwd")).toThrow(
+        "Folder path escapes vault",
+      );
     });
 
     it("blocks absolute root path", () => {
       expect(() => safeFolderPath(vaultDir, "insight", "/")).toThrow(
-        "Folder path escapes vault"
+        "Folder path escapes vault",
       );
     });
   });
@@ -227,15 +223,13 @@ describe("safeFolderPath", () => {
       // URL-encoded strings are NOT decoded by resolve/path — they stay literal
       const result = safeFolderPath(vaultDir, "insight", "%2e%2e%2f");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "%2e%2e%2f")
+        resolve(vaultDir, "knowledge", "insights", "%2e%2e%2f"),
       );
     });
 
     it("treats %2e%2e/ as a literal folder name", () => {
       const result = safeFolderPath(vaultDir, "insight", "%2e%2e/");
-      expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "%2e%2e")
-      );
+      expect(result).toBe(resolve(vaultDir, "knowledge", "insights", "%2e%2e"));
     });
   });
 
@@ -247,35 +241,33 @@ describe("safeFolderPath", () => {
 
     it("blocks double dot folder", () => {
       expect(() => safeFolderPath(vaultDir, "insight", "..")).toThrow(
-        "Folder path escapes vault"
+        "Folder path escapes vault",
       );
     });
 
     it("normalizes trailing slashes", () => {
       const result = safeFolderPath(vaultDir, "insight", "react/");
-      expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "react")
-      );
+      expect(result).toBe(resolve(vaultDir, "knowledge", "insights", "react"));
     });
 
     it("normalizes double slashes in folder", () => {
       const result = safeFolderPath(vaultDir, "insight", "react//hooks");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "react", "hooks")
+        resolve(vaultDir, "knowledge", "insights", "react", "hooks"),
       );
     });
 
     it("handles folder with spaces", () => {
       const result = safeFolderPath(vaultDir, "insight", "my folder");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "my folder")
+        resolve(vaultDir, "knowledge", "insights", "my folder"),
       );
     });
 
     it("handles deeply nested valid folder", () => {
       const result = safeFolderPath(vaultDir, "insight", "a/b/c/d");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "a", "b", "c", "d")
+        resolve(vaultDir, "knowledge", "insights", "a", "b", "c", "d"),
       );
     });
   });

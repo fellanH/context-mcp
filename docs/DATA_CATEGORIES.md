@@ -5,10 +5,10 @@ Three fundamental categories derived from two irreducible behavioral axes:
 1. **Mutability** — is the data written once (append) or updated in place (upsert)?
 2. **Temporal relevance** — does value endure or decay over time?
 
-|                  | Append-only   | Upsert     |
-|------------------|---------------|------------|
-| **Enduring**     | Knowledge     | Entity     |
-| **Decaying**     | Event         | Entity¹    |
+|              | Append-only | Upsert  |
+| ------------ | ----------- | ------- |
+| **Enduring** | Knowledge   | Entity  |
+| **Decaying** | Event       | Entity¹ |
 
 ¹ Decaying + upsert is just an Entity with a TTL, not a distinct category.
 
@@ -102,14 +102,14 @@ High volume. May need sampling or aggregation before storage. Short TTL.
 
 ## How category drives the system
 
-| Concern              | Knowledge              | Entity                          | Event                          |
-|----------------------|------------------------|---------------------------------|--------------------------------|
-| Write semantics      | `INSERT`               | `INSERT OR REPLACE` on key      | `INSERT`                       |
-| Identity             | ULID                   | Explicit key per kind           | ULID + timestamp               |
-| Retrieval default    | Semantic               | Exact match, semantic fallback  | Time-window + semantic         |
-| Decay                | Never                  | Optional TTL                    | Configurable window            |
-| Chunking             | If content exceeds threshold | No                         | If content exceeds threshold   |
-| Embedding            | Full content           | Full content                    | Full content                   |
+| Concern           | Knowledge                    | Entity                         | Event                        |
+| ----------------- | ---------------------------- | ------------------------------ | ---------------------------- |
+| Write semantics   | `INSERT`                     | `INSERT OR REPLACE` on key     | `INSERT`                     |
+| Identity          | ULID                         | Explicit key per kind          | ULID + timestamp             |
+| Retrieval default | Semantic                     | Exact match, semantic fallback | Time-window + semantic       |
+| Decay             | Never                        | Optional TTL                   | Configurable window          |
+| Chunking          | If content exceeds threshold | No                             | If content exceeds threshold |
+| Embedding         | Full content                 | Full content                   | Full content                 |
 
 ### Adding new kinds
 

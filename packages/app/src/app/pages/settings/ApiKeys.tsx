@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Badge } from "../../components/ui/badge";
@@ -63,17 +68,21 @@ export function ApiKeys() {
 
   const copyConfig = () =>
     copyToClipboard(
-      JSON.stringify({
-        mcpServers: {
-          "context-vault": {
-            url: "https://api.context-vault.com/mcp",
-            headers: {
-              Authorization: "Bearer YOUR_API_KEY",
+      JSON.stringify(
+        {
+          mcpServers: {
+            "context-vault": {
+              url: "https://api.context-vault.com/mcp",
+              headers: {
+                Authorization: "Bearer YOUR_API_KEY",
+              },
             },
           },
         },
-      }, null, 2),
-      "Config"
+        null,
+        2,
+      ),
+      "Config",
     );
 
   return (
@@ -103,7 +112,11 @@ export function ApiKeys() {
                 className="size-8 shrink-0"
                 onClick={() => copyToClipboard(newlyCreatedKey, "API key")}
               >
-                {copied === "API key" ? <Check className="size-3" /> : <Copy className="size-3" />}
+                {copied === "API key" ? (
+                  <Check className="size-3" />
+                ) : (
+                  <Copy className="size-3" />
+                )}
               </Button>
             </div>
             <Button
@@ -122,7 +135,11 @@ export function ApiKeys() {
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle className="text-base">Your Keys</CardTitle>
           {!isLocalMode && (
-            <Button size="sm" className="gap-1.5" onClick={() => setShowCreate(true)}>
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setShowCreate(true)}
+            >
               <Plus className="size-3.5" />
               Create New Key
             </Button>
@@ -132,7 +149,9 @@ export function ApiKeys() {
           {!isLocalMode && showCreate && (
             <div className="flex items-end gap-2 mb-4 pb-4 border-b border-border">
               <div className="flex-1 space-y-1.5">
-                <Label htmlFor="keyName" className="text-xs">Key name</Label>
+                <Label htmlFor="keyName" className="text-xs">
+                  Key name
+                </Label>
                 <Input
                   id="keyName"
                   placeholder="e.g. Development, Production"
@@ -142,21 +161,34 @@ export function ApiKeys() {
                   disabled={createMutation.isPending}
                 />
               </div>
-              <Button size="sm" onClick={createKey} disabled={createMutation.isPending}>
+              <Button
+                size="sm"
+                onClick={createKey}
+                disabled={createMutation.isPending}
+              >
                 {createMutation.isPending ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
                   "Create"
                 )}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowCreate(false)}
+              >
+                Cancel
+              </Button>
             </div>
           )}
 
           {isLoading ? (
             <div className="space-y-2">
               {[1, 2].map((i) => (
-                <div key={i} className="h-12 rounded-lg bg-muted animate-pulse" />
+                <div
+                  key={i}
+                  className="h-12 rounded-lg bg-muted animate-pulse"
+                />
               ))}
             </div>
           ) : !keys || keys.length === 0 ? (
@@ -183,7 +215,9 @@ export function ApiKeys() {
                       {key.createdAt.toLocaleDateString()}
                     </Badge>
                     <Badge variant="outline" className="text-[10px]">
-                      {key.lastUsedAt ? `Used ${key.lastUsedAt.toLocaleDateString()}` : "Never used"}
+                      {key.lastUsedAt
+                        ? `Used ${key.lastUsedAt.toLocaleDateString()}`
+                        : "Never used"}
                     </Badge>
                   </div>
                   {!isLocalMode && (
@@ -216,20 +250,22 @@ export function ApiKeys() {
           {isLocalMode ? (
             <>
               <p className="text-sm text-muted-foreground">
-                Local mode runs on your machine and does not require a hosted API key.
+                Local mode runs on your machine and does not require a hosted
+                API key.
               </p>
               <pre className="bg-muted p-4 rounded-lg text-xs font-mono overflow-x-auto">
-{`context-vault ui`}
+                {`context-vault ui`}
               </pre>
             </>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                Add this configuration to your Claude Code MCP settings to connect:
+                Add this configuration to your Claude Code MCP settings to
+                connect:
               </p>
               <div className="relative">
                 <pre className="bg-muted p-4 rounded-lg text-xs font-mono overflow-x-auto">
-{`{
+                  {`{
   "mcpServers": {
     "context-vault": {
       "url": "https://api.context-vault.com/mcp",
@@ -246,7 +282,11 @@ export function ApiKeys() {
                   className="absolute top-2 right-2 gap-1.5 text-xs"
                   onClick={copyConfig}
                 >
-                  {copied === "Config" ? <Check className="size-3" /> : <Copy className="size-3" />}
+                  {copied === "Config" ? (
+                    <Check className="size-3" />
+                  ) : (
+                    <Copy className="size-3" />
+                  )}
                   Copy
                 </Button>
               </div>

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { htmlToMarkdown, extractHtmlContent } from "@context-vault/core/capture/ingest-url";
+import {
+  htmlToMarkdown,
+  extractHtmlContent,
+} from "@context-vault/core/capture/ingest-url";
 
 // ─── htmlToMarkdown ──────────────────────────────────────────────────────────
 
@@ -46,7 +49,7 @@ describe("htmlToMarkdown", () => {
 
   it("strips script and style tags", () => {
     const md = htmlToMarkdown(
-      '<p>Visible</p><script>alert("xss")</script><style>.hidden{}</style>'
+      '<p>Visible</p><script>alert("xss")</script><style>.hidden{}</style>',
     );
     expect(md).toContain("Visible");
     expect(md).not.toContain("alert");
@@ -55,7 +58,7 @@ describe("htmlToMarkdown", () => {
 
   it("strips nav, header, footer, aside", () => {
     const md = htmlToMarkdown(
-      "<nav>Menu</nav><header>Header</header><main><p>Content</p></main><footer>Footer</footer><aside>Side</aside>"
+      "<nav>Menu</nav><header>Header</header><main><p>Content</p></main><footer>Footer</footer><aside>Side</aside>",
     );
     expect(md).toContain("Content");
     expect(md).not.toContain("Menu");
@@ -75,7 +78,9 @@ describe("htmlToMarkdown", () => {
   });
 
   it("handles nested tags", () => {
-    const md = htmlToMarkdown("<p><strong>Bold <em>and italic</em></strong></p>");
+    const md = htmlToMarkdown(
+      "<p><strong>Bold <em>and italic</em></strong></p>",
+    );
     // Regex-based converter processes outer tags first, so inner em is stripped
     expect(md).toContain("Bold");
     expect(md).toContain("italic");
@@ -91,7 +96,8 @@ describe("htmlToMarkdown", () => {
 
 describe("extractHtmlContent", () => {
   it("extracts title from <title> tag", () => {
-    const html = "<html><head><title>Page Title</title></head><body><p>Content</p></body></html>";
+    const html =
+      "<html><head><title>Page Title</title></head><body><p>Content</p></body></html>";
     const { title } = extractHtmlContent(html, "https://example.com");
     expect(title).toBe("Page Title");
   });

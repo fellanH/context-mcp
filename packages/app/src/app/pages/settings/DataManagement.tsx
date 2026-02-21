@@ -1,7 +1,12 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
 import { Textarea } from "../../components/ui/textarea";
 import { Label } from "../../components/ui/label";
 import { Badge } from "../../components/ui/badge";
@@ -9,7 +14,12 @@ import { Progress } from "../../components/ui/progress";
 import { Input } from "../../components/ui/input";
 import { Upload, Download, Trash2, Lock, Loader2 } from "lucide-react";
 import { useAuth } from "../../lib/auth";
-import { useImportEntry, useExportVault, useDeleteAccount, useRawUsage } from "../../lib/hooks";
+import {
+  useImportEntry,
+  useExportVault,
+  useDeleteAccount,
+  useRawUsage,
+} from "../../lib/hooks";
 import { toast } from "sonner";
 
 export function DataManagement() {
@@ -142,7 +152,11 @@ export function DataManagement() {
             />
           </div>
           <div className="flex gap-2">
-            <Button size="sm" onClick={handleImport} disabled={importing || !jsonInput.trim()}>
+            <Button
+              size="sm"
+              onClick={handleImport}
+              disabled={importing || !jsonInput.trim()}
+            >
               {importing ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin mr-1.5" />
@@ -184,7 +198,9 @@ export function DataManagement() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Lock className="size-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Export is available on Pro and Team plans.</span>
+                <span className="text-sm text-muted-foreground">
+                  Export is available on Pro and Team plans.
+                </span>
               </div>
               <Badge variant="secondary">Upgrade to Pro</Badge>
             </div>
@@ -210,16 +226,21 @@ export function DataManagement() {
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <Trash2 className="size-4 text-destructive" />
-            <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
+            <CardTitle className="text-base text-destructive">
+              Danger Zone
+            </CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Permanently delete your account and all vault data. This action cannot be undone.
+            Permanently delete your account and all vault data. This action
+            cannot be undone.
           </p>
           <div className="space-y-2">
             <Label htmlFor="deleteConfirm" className="text-xs">
-              Type <span className="font-mono font-bold">delete my account</span> to confirm
+              Type{" "}
+              <span className="font-mono font-bold">delete my account</span> to
+              confirm
             </Label>
             <Input
               id="deleteConfirm"
@@ -232,7 +253,9 @@ export function DataManagement() {
           <Button
             variant="destructive"
             size="sm"
-            disabled={deleteConfirm !== "delete my account" || deleteMutation.isPending}
+            disabled={
+              deleteConfirm !== "delete my account" || deleteMutation.isPending
+            }
             onClick={handleDeleteAccount}
           >
             {deleteMutation.isPending ? (

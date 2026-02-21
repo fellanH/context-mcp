@@ -13,9 +13,21 @@
  * Prunes backups older than 30 days.
  */
 
-import { readFileSync, writeFileSync, renameSync, readdirSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  readdirSync,
+  existsSync,
+} from "node:fs";
 import { join } from "node:path";
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
 import { PER_USER_DB } from "../server/ctx.js";
 import { pool } from "../server/user-db.js";
 
@@ -63,7 +75,9 @@ export async function backupDatabases(ctx, metaDb, config) {
   const timestamp = now.toISOString().replace(/[:.]/g, "-");
 
   // WAL checkpoint meta.db
-  try { metaDb.pragma("wal_checkpoint(TRUNCATE)"); } catch (e) {
+  try {
+    metaDb.pragma("wal_checkpoint(TRUNCATE)");
+  } catch (e) {
     console.warn(`[backup] meta WAL checkpoint failed: ${e.message}`);
   }
 
@@ -73,12 +87,14 @@ export async function backupDatabases(ctx, metaDb, config) {
   // 1. Always backup meta.db
   const metaBuffer = readFileSync(metaDbPath);
   const metaKey = `backups/${datePrefix}/meta-${timestamp}.db`;
-  await client.send(new PutObjectCommand({
-    Bucket: r2Config.bucket,
-    Key: metaKey,
-    Body: metaBuffer,
-    ContentType: "application/x-sqlite3",
-  }));
+  await client.send(
+    new PutObjectCommand({
+      Bucket: r2Config.bucket,
+      Key: metaKey,
+      Body: metaBuffer,
+      ContentType: "application/x-sqlite3",
+    }),
+  );
   uploadedKeys.push(metaKey);
 
   if (PER_USER_DB) {
@@ -107,40 +123,48 @@ export async function backupDatabases(ctx, metaDb, config) {
 
             const buffer = readFileSync(userDbPath);
             const key = `backups/${datePrefix}/users/${userId}/vault-${timestamp}.db`;
-            await client.send(new PutObjectCommand({
-              Bucket: r2Config.bucket,
-              Key: key,
-              Body: buffer,
-              ContentType: "application/x-sqlite3",
-            }));
+            await client.send(
+              new PutObjectCommand({
+                Bucket: r2Config.bucket,
+                Key: key,
+                Body: buffer,
+                ContentType: "application/x-sqlite3",
+              }),
+            );
             return key;
-          })
+          }),
         );
 
         for (const result of results) {
           if (result.status === "fulfilled" && result.value) {
             uploadedKeys.push(result.value);
           } else if (result.status === "rejected") {
-            console.error(`[backup] Per-user backup failed: ${result.reason?.message}`);
+            console.error(
+              `[backup] Per-user backup failed: ${result.reason?.message}`,
+            );
           }
         }
       }
     }
   } else {
     // Legacy mode: backup shared vault.db
-    try { ctx.db.pragma("wal_checkpoint(TRUNCATE)"); } catch (e) {
+    try {
+      ctx.db.pragma("wal_checkpoint(TRUNCATE)");
+    } catch (e) {
       console.warn(`[backup] vault WAL checkpoint failed: ${e.message}`);
     }
 
     const vaultDbPath = config.dbPath;
     const buffer = readFileSync(vaultDbPath);
     const key = `backups/${datePrefix}/vault-${timestamp}.db`;
-    await client.send(new PutObjectCommand({
-      Bucket: r2Config.bucket,
-      Key: key,
-      Body: buffer,
-      ContentType: "application/x-sqlite3",
-    }));
+    await client.send(
+      new PutObjectCommand({
+        Bucket: r2Config.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: "application/x-sqlite3",
+      }),
+    );
     uploadedKeys.push(key);
   }
 
@@ -148,13 +172,15 @@ export async function backupDatabases(ctx, metaDb, config) {
   await pruneOldBackups(client, r2Config.bucket, 30);
 
   lastBackupTimestamp = now.toISOString();
-  console.log(JSON.stringify({
-    level: "info",
-    event: "backup_completed",
-    timestamp: lastBackupTimestamp,
-    files: uploadedKeys.length,
-    mode: PER_USER_DB ? "per-user" : "legacy",
-  }));
+  console.log(
+    JSON.stringify({
+      level: "info",
+      event: "backup_completed",
+      timestamp: lastBackupTimestamp,
+      files: uploadedKeys.length,
+      mode: PER_USER_DB ? "per-user" : "legacy",
+    }),
+  );
 
   return lastBackupTimestamp;
 }
@@ -175,16 +201,21 @@ export async function restoreUserFromBackup(userId, timestamp, bucket) {
   const ts = timestamp.replace(/[:.]/g, "-");
 
   const key = `backups/${datePrefix}/users/${userId}/vault-${ts}.db`;
-  const dataDir = process.env.CONTEXT_VAULT_DATA_DIR || process.env.CONTEXT_MCP_DATA_DIR || "/data";
+  const dataDir =
+    process.env.CONTEXT_VAULT_DATA_DIR ||
+    process.env.CONTEXT_MCP_DATA_DIR ||
+    "/data";
   const dest = join(dataDir, "users", userId, "vault.db");
 
   // Evict from pool before restoring
   pool.evict(userId);
 
-  const response = await client.send(new GetObjectCommand({
-    Bucket: bucket || r2Config.bucket,
-    Key: key,
-  }));
+  const response = await client.send(
+    new GetObjectCommand({
+      Bucket: bucket || r2Config.bucket,
+      Key: key,
+    }),
+  );
 
   const chunks = [];
   for await (const chunk of response.Body) chunks.push(chunk);
@@ -208,13 +239,15 @@ export async function restoreUserFromBackup(userId, timestamp, bucket) {
   // Atomic rename
   renameSync(restorePath, dest);
 
-  console.log(JSON.stringify({
-    level: "info",
-    event: "user_restore_completed",
-    userId,
-    timestamp,
-    key,
-  }));
+  console.log(
+    JSON.stringify({
+      level: "info",
+      event: "user_restore_completed",
+      userId,
+      timestamp,
+      key,
+    }),
+  );
 }
 
 /**
@@ -227,18 +260,29 @@ export async function restoreFromBackup(bucket, timestamp) {
   const client = createR2Client(r2Config);
   const datePrefix = timestamp.slice(0, 10);
   const ts = timestamp.replace(/[:.]/g, "-");
-  const dataDir = process.env.CONTEXT_VAULT_DATA_DIR || process.env.CONTEXT_MCP_DATA_DIR || join(process.env.HOME, ".context-mcp");
+  const dataDir =
+    process.env.CONTEXT_VAULT_DATA_DIR ||
+    process.env.CONTEXT_MCP_DATA_DIR ||
+    join(process.env.HOME, ".context-mcp");
 
   const files = [
-    { key: `backups/${datePrefix}/vault-${ts}.db`, dest: join(dataDir, "vault.db") },
-    { key: `backups/${datePrefix}/meta-${ts}.db`, dest: join(dataDir, "meta.db") },
+    {
+      key: `backups/${datePrefix}/vault-${ts}.db`,
+      dest: join(dataDir, "vault.db"),
+    },
+    {
+      key: `backups/${datePrefix}/meta-${ts}.db`,
+      dest: join(dataDir, "meta.db"),
+    },
   ];
 
   for (const { key, dest } of files) {
-    const response = await client.send(new GetObjectCommand({
-      Bucket: bucket || r2Config.bucket,
-      Key: key,
-    }));
+    const response = await client.send(
+      new GetObjectCommand({
+        Bucket: bucket || r2Config.bucket,
+        Key: key,
+      }),
+    );
 
     const chunks = [];
     for await (const chunk of response.Body) chunks.push(chunk);
@@ -263,12 +307,14 @@ export async function restoreFromBackup(bucket, timestamp) {
     renameSync(restorePath, dest);
   }
 
-  console.log(JSON.stringify({
-    level: "info",
-    event: "restore_completed",
-    timestamp,
-    files: files.map((f) => f.key),
-  }));
+  console.log(
+    JSON.stringify({
+      level: "info",
+      event: "restore_completed",
+      timestamp,
+      files: files.map((f) => f.key),
+    }),
+  );
 }
 
 /**
@@ -283,11 +329,13 @@ async function pruneOldBackups(client, bucket, days) {
   const toDelete = [];
 
   do {
-    const list = await client.send(new ListObjectsV2Command({
-      Bucket: bucket,
-      Prefix: "backups/",
-      ContinuationToken: continuationToken,
-    }));
+    const list = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: "backups/",
+        ContinuationToken: continuationToken,
+      }),
+    );
 
     for (const obj of list.Contents || []) {
       // Extract date from key: backups/YYYY-MM-DD/...
@@ -297,23 +345,29 @@ async function pruneOldBackups(client, bucket, days) {
       }
     }
 
-    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+    continuationToken = list.IsTruncated
+      ? list.NextContinuationToken
+      : undefined;
   } while (continuationToken);
 
   if (toDelete.length > 0) {
     // Delete in batches of 1000 (S3 limit)
     for (let i = 0; i < toDelete.length; i += 1000) {
-      await client.send(new DeleteObjectsCommand({
-        Bucket: bucket,
-        Delete: { Objects: toDelete.slice(i, i + 1000) },
-      }));
+      await client.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: { Objects: toDelete.slice(i, i + 1000) },
+        }),
+      );
     }
-    console.log(JSON.stringify({
-      level: "info",
-      event: "backup_pruned",
-      deleted: toDelete.length,
-      cutoff: cutoffStr,
-    }));
+    console.log(
+      JSON.stringify({
+        level: "info",
+        event: "backup_pruned",
+        deleted: toDelete.length,
+        cutoff: cutoffStr,
+      }),
+    );
   }
 }
 
@@ -332,12 +386,14 @@ export function scheduleBackups(ctx, metaDb, config) {
 
   const runBackup = () => {
     backupDatabases(ctx, metaDb, config).catch((err) => {
-      console.error(JSON.stringify({
-        level: "error",
-        event: "backup_failed",
-        error: err.message,
-        ts: new Date().toISOString(),
-      }));
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "backup_failed",
+          error: err.message,
+          ts: new Date().toISOString(),
+        }),
+      );
     });
   };
 
@@ -348,6 +404,8 @@ export function scheduleBackups(ctx, metaDb, config) {
   const timer = setInterval(runBackup, intervalMs);
   timer.unref(); // Don't keep process alive for backups
 
-  console.log(`[backup] Scheduled every ${hours}h to R2 bucket: ${r2Config.bucket}`);
+  console.log(
+    `[backup] Scheduled every ${hours}h to R2 bucket: ${r2Config.bucket}`,
+  );
   return timer;
 }

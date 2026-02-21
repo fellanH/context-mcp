@@ -31,7 +31,9 @@ export function BlogPostPage() {
     );
   }
 
-  const ctaHref = post.ctaHref.startsWith("/") ? appHref(post.ctaHref) : post.ctaHref;
+  const ctaHref = post.ctaHref.startsWith("/")
+    ? appHref(post.ctaHref)
+    : post.ctaHref;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-14 sm:py-16">

@@ -2,7 +2,7 @@
 
 :root {
   --font-size: 14px;
-  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
   --background: #f8f8f8;
   --foreground: #212121;
   --card: #ffffff;
@@ -132,7 +132,12 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family:
+      "Inter",
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
   }
 
   /**

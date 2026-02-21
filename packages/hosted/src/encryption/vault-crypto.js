@@ -43,7 +43,11 @@ export function decryptFromStorage(row, userId, masterSecret, clientKeyShare) {
     return {
       body: row.body,
       title: row.title || null,
-      meta: row.meta ? (typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta) : null,
+      meta: row.meta
+        ? typeof row.meta === "string"
+          ? JSON.parse(row.meta)
+          : row.meta
+        : null,
     };
   }
 
@@ -64,7 +68,9 @@ function getDekForUser(userId, masterSecret, clientKeyShare) {
   const stmts = prepareMetaStatements(getMetaDb());
   const dekData = stmts.getUserDekData.get(userId);
   if (!dekData?.encrypted_dek || !dekData?.dek_salt) {
-    throw new Error(`No encryption key found for user ${userId}. Was the user registered with VAULT_MASTER_SECRET set?`);
+    throw new Error(
+      `No encryption key found for user ${userId}. Was the user registered with VAULT_MASTER_SECRET set?`,
+    );
   }
 
   const encryptionMode = dekData.encryption_mode || "legacy";

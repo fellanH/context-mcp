@@ -36,24 +36,24 @@ For hosted MCP setup (Claude Code, Cursor, GPT Actions), see [connect-in-2-minut
 
 The server exposes six tools. Your AI agent calls them automatically — you don't invoke them directly.
 
-| Tool | Type | Description |
-|------|------|-------------|
-| `get_context` | Read | Hybrid FTS5 + vector search across all knowledge |
-| `save_context` | Write | Save new knowledge or update existing entries by ID |
-| `list_context` | Browse | List vault entries with filtering and pagination |
-| `delete_context` | Delete | Remove an entry by ID (file + index) |
-| `submit_feedback` | Write | Submit bug reports or feature requests |
-| `context_status` | Diag | Show resolved config, health, and per-kind file counts |
+| Tool              | Type   | Description                                            |
+| ----------------- | ------ | ------------------------------------------------------ |
+| `get_context`     | Read   | Hybrid FTS5 + vector search across all knowledge       |
+| `save_context`    | Write  | Save new knowledge or update existing entries by ID    |
+| `list_context`    | Browse | List vault entries with filtering and pagination       |
+| `delete_context`  | Delete | Remove an entry by ID (file + index)                   |
+| `submit_feedback` | Write  | Submit bug reports or feature requests                 |
+| `context_status`  | Diag   | Show resolved config, health, and per-kind file counts |
 
 ### `get_context` — Search your vault
 
 ```js
 get_context({
-  query: "react query caching",       // Natural language or keywords
-  kind: "insight",                     // Optional: filter by kind
-  tags: ["react"],                     // Optional: filter by tags
-  limit: 5                             // Optional: max results (default 10)
-})
+  query: "react query caching", // Natural language or keywords
+  kind: "insight", // Optional: filter by kind
+  tags: ["react"], // Optional: filter by tags
+  limit: 5, // Optional: max results (default 10)
+});
 ```
 
 Returns entries ranked by combined full-text and semantic similarity, with recency weighting.
@@ -63,22 +63,22 @@ Returns entries ranked by combined full-text and semantic similarity, with recen
 ```js
 // Create new entry
 save_context({
-  kind: "insight",                     // Determines folder: insights/
+  kind: "insight", // Determines folder: insights/
   body: "React Query staleTime defaults to 0",
   tags: ["react", "performance"],
-  title: "staleTime gotcha",           // Optional
-  meta: { type: "gotcha" },            // Optional: any structured data
-  folder: "react/hooks",              // Optional: subfolder organization
-  source: "debugging-session"          // Optional: provenance
-})
+  title: "staleTime gotcha", // Optional
+  meta: { type: "gotcha" }, // Optional: any structured data
+  folder: "react/hooks", // Optional: subfolder organization
+  source: "debugging-session", // Optional: provenance
+});
 // → ~/vault/knowledge/insights/react/hooks/staletime-gotcha.md
 
 // Update existing entry by ID
 save_context({
-  id: "01HXYZ...",                     // ULID from a previous save
-  body: "Updated content here",        // Only provide fields you want to change
-  tags: ["react", "updated"]           // Omitted fields are preserved
-})
+  id: "01HXYZ...", // ULID from a previous save
+  body: "Updated content here", // Only provide fields you want to change
+  tags: ["react", "updated"], // Omitted fields are preserved
+});
 ```
 
 The `kind` field accepts any string — `"insight"`, `"decision"`, `"pattern"`, `"reference"`, or any custom kind. The folder is auto-created from the pluralized kind name.
@@ -89,12 +89,12 @@ When updating (`id` provided), omitted fields are preserved from the original. Y
 
 ```js
 list_context({
-  kind: "insight",                     // Optional: filter by kind
-  category: "knowledge",              // Optional: knowledge, entity, or event
-  tags: ["react"],                    // Optional: filter by tags
-  limit: 10,                          // Optional: max results (default 20, max 100)
-  offset: 0                           // Optional: pagination offset
-})
+  kind: "insight", // Optional: filter by kind
+  category: "knowledge", // Optional: knowledge, entity, or event
+  tags: ["react"], // Optional: filter by tags
+  limit: 10, // Optional: max results (default 20, max 100)
+  offset: 0, // Optional: pagination offset
+});
 ```
 
 Returns entry metadata (id, title, kind, category, tags, created_at) without body content. Use `get_context` with a search query to retrieve full entries.
@@ -103,8 +103,8 @@ Returns entry metadata (id, title, kind, category, tags, created_at) without bod
 
 ```js
 delete_context({
-  id: "01HXYZ..."                      // ULID of the entry to delete
-})
+  id: "01HXYZ...", // ULID of the entry to delete
+});
 ```
 
 Removes the markdown file from disk and cleans up the database and vector index.
@@ -117,17 +117,17 @@ Shows vault path, database size, file counts per kind, embedding coverage, and a
 
 ### CLI Commands
 
-| Command | Description |
-|---------|-------------|
-| `context-vault setup` | Interactive installer — detects tools, writes configs |
-| `context-vault connect --key cv_...` | Connect AI tools to hosted vault |
-| `context-vault serve` | Start the MCP server (used by AI clients) |
-| `context-vault ui [--port 3141]` | Launch web dashboard |
-| `context-vault status` | Show vault health, paths, and entry counts |
-| `context-vault reindex` | Rebuild search index from vault files |
-| `context-vault update` | Check for and install updates |
-| `context-vault uninstall` | Remove MCP configs and optionally data |
-| `context-vault migrate` | Migrate vault between local and hosted |
+| Command                              | Description                                           |
+| ------------------------------------ | ----------------------------------------------------- |
+| `context-vault setup`                | Interactive installer — detects tools, writes configs |
+| `context-vault connect --key cv_...` | Connect AI tools to hosted vault                      |
+| `context-vault serve`                | Start the MCP server (used by AI clients)             |
+| `context-vault ui [--port 3141]`     | Launch web dashboard                                  |
+| `context-vault status`               | Show vault health, paths, and entry counts            |
+| `context-vault reindex`              | Rebuild search index from vault files                 |
+| `context-vault update`               | Check for and install updates                         |
+| `context-vault uninstall`            | Remove MCP configs and optionally data                |
+| `context-vault migrate`              | Migrate vault between local and hosted                |
 
 ### AI Tool Examples
 
@@ -214,6 +214,7 @@ tags: ["react", "performance"]
 source: claude-code
 created: 2026-02-17T12:00:00Z
 ---
+
 React Query's staleTime defaults to 0 — set it explicitly or every mount triggers a refetch.
 ```
 
@@ -239,12 +240,12 @@ CLI args  >  env vars  >  config file  >  convention defaults
 
 ### Defaults
 
-| Setting | Default |
-|---------|---------|
-| Vault dir | `~/vault/` |
-| Data dir | `~/.context-mcp/` |
-| Database | `~/.context-mcp/vault.db` |
-| Dev dir | `~/dev/` |
+| Setting   | Default                   |
+| --------- | ------------------------- |
+| Vault dir | `~/vault/`                |
+| Data dir  | `~/.context-mcp/`         |
+| Database  | `~/.context-mcp/vault.db` |
+| Dev dir   | `~/dev/`                  |
 
 ### Config File (`~/.context-mcp/config.json`)
 
@@ -263,12 +264,12 @@ Lives in the data directory alongside the database. Created by `setup`, or creat
 
 Both `CONTEXT_VAULT_*` and `CONTEXT_MCP_*` prefixes are supported. The `CONTEXT_VAULT_*` prefix takes priority.
 
-| Variable | Overrides |
-|----------|-----------|
-| `CONTEXT_VAULT_VAULT_DIR` / `CONTEXT_MCP_VAULT_DIR` | Vault directory (knowledge files) |
-| `CONTEXT_VAULT_DB_PATH` / `CONTEXT_MCP_DB_PATH` | Database path |
-| `CONTEXT_VAULT_DEV_DIR` / `CONTEXT_MCP_DEV_DIR` | Dev directory |
-| `CONTEXT_VAULT_DATA_DIR` / `CONTEXT_MCP_DATA_DIR` | Data directory (DB + config storage) |
+| Variable                                            | Overrides                            |
+| --------------------------------------------------- | ------------------------------------ |
+| `CONTEXT_VAULT_VAULT_DIR` / `CONTEXT_MCP_VAULT_DIR` | Vault directory (knowledge files)    |
+| `CONTEXT_VAULT_DB_PATH` / `CONTEXT_MCP_DB_PATH`     | Database path                        |
+| `CONTEXT_VAULT_DEV_DIR` / `CONTEXT_MCP_DEV_DIR`     | Dev directory                        |
+| `CONTEXT_VAULT_DATA_DIR` / `CONTEXT_MCP_DATA_DIR`   | Data directory (DB + config storage) |
 
 ### CLI Arguments
 
@@ -283,17 +284,17 @@ context-vault serve --data-dir /custom/data --db-path /custom/data/vault.db
 context-vault <command> [options]
 ```
 
-| Command | Description |
-|---------|-------------|
-| `setup` | Interactive MCP installer — detects tools, writes configs |
-| `connect --key cv_...` | Connect AI tools to hosted vault |
-| `serve` | Start the MCP server (used by AI clients in MCP configs) |
-| `ui [--port 3141]` | Launch the web dashboard |
-| `reindex` | Rebuild search index from knowledge files |
-| `status` | Show vault diagnostics (paths, counts, health) |
-| `update` | Check for and install updates |
-| `uninstall` | Remove MCP configs and optionally data |
-| `migrate --to-hosted/--to-local` | Migrate vault between local and hosted |
+| Command                          | Description                                               |
+| -------------------------------- | --------------------------------------------------------- |
+| `setup`                          | Interactive MCP installer — detects tools, writes configs |
+| `connect --key cv_...`           | Connect AI tools to hosted vault                          |
+| `serve`                          | Start the MCP server (used by AI clients in MCP configs)  |
+| `ui [--port 3141]`               | Launch the web dashboard                                  |
+| `reindex`                        | Rebuild search index from knowledge files                 |
+| `status`                         | Show vault diagnostics (paths, counts, health)            |
+| `update`                         | Check for and install updates                             |
+| `uninstall`                      | Remove MCP configs and optionally data                    |
+| `migrate --to-hosted/--to-local` | Migrate vault between local and hosted                    |
 
 If running from source without a global install, use `npx context-vault` or `node packages/local/bin/cli.js` instead of `context-vault`.
 
@@ -346,6 +347,7 @@ You can also pass config via environment variables in the MCP config block:
 The server is an MCP (Model Context Protocol) process — you don't start or stop it manually. Your AI client (Claude Code, Codex, Cursor, Windsurf, Cline, etc.) spawns it automatically as a child process when a session begins, based on the `mcpServers` config above. The server communicates over stdio and lives for the duration of the session. When the session ends, the client terminates the process and SQLite cleans up its WAL files.
 
 This means:
+
 - **No daemon, no port, no background service.** The server only runs while your AI client is active.
 - **Multiple sessions** can run separate server instances concurrently — SQLite WAL mode handles concurrent access safely.
 - **Embedding model** is downloaded during `setup` (~22MB, all-MiniLM-L6-v2). If setup was skipped, it downloads on first use.
@@ -426,12 +428,12 @@ Shows all resolved paths (vault dir, data dir, DB path, config file) and where e
 
 ## Dependencies
 
-| Package | Purpose |
-|---------|---------|
+| Package                     | Purpose                                        |
+| --------------------------- | ---------------------------------------------- |
 | `@modelcontextprotocol/sdk` | MCP protocol (McpServer, StdioServerTransport) |
-| `better-sqlite3` | SQLite driver |
-| `sqlite-vec` | Vector search (384-dim float32) |
-| `@huggingface/transformers` | Local embeddings (all-MiniLM-L6-v2, ~22MB) |
+| `better-sqlite3`            | SQLite driver                                  |
+| `sqlite-vec`                | Vector search (384-dim float32)                |
+| `@huggingface/transformers` | Local embeddings (all-MiniLM-L6-v2, ~22MB)     |
 
 ## License
 

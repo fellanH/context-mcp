@@ -32,7 +32,11 @@ export function Onboarding() {
     <div className="min-h-screen flex items-center justify-center">
       {step === "welcome" && <WelcomeStep onNext={() => setStep("mode")} />}
       {step === "mode" && (
-        <ModeSelectStep mode={mode} onSelect={handleModeSelect} onNext={() => setStep("connect")} />
+        <ModeSelectStep
+          mode={mode}
+          onSelect={handleModeSelect}
+          onNext={() => setStep("connect")}
+        />
       )}
       {step === "connect" && (
         <ConnectStep

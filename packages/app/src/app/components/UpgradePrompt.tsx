@@ -7,7 +7,10 @@ interface UpgradePromptProps {
   compact?: boolean;
 }
 
-export function UpgradePrompt({ message = "Upgrade to Pro for more", compact }: UpgradePromptProps) {
+export function UpgradePrompt({
+  message = "Upgrade to Pro for more",
+  compact,
+}: UpgradePromptProps) {
   if (compact) {
     return (
       <Link to="/settings/billing">

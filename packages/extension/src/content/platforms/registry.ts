@@ -9,7 +9,12 @@ import { claudeAdapter } from "./claude";
 import { geminiAdapter } from "./gemini";
 import { genericAdapter } from "./generic";
 
-const adapters: PlatformAdapter[] = [chatgptAdapter, claudeAdapter, geminiAdapter, genericAdapter];
+const adapters: PlatformAdapter[] = [
+  chatgptAdapter,
+  claudeAdapter,
+  geminiAdapter,
+  genericAdapter,
+];
 
 export function detectPlatform(): PlatformAdapter {
   for (const adapter of adapters) {

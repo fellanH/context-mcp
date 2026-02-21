@@ -70,10 +70,13 @@ export function QuickSearch() {
     setIsSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const raw = await api.post<{ results: ApiSearchResult[] }>("/vault/search", {
-          query: query.trim(),
-          limit: 5,
-        });
+        const raw = await api.post<{ results: ApiSearchResult[] }>(
+          "/vault/search",
+          {
+            query: query.trim(),
+            limit: 5,
+          },
+        );
         setSearchResults(raw.results.map(transformSearchResult));
       } catch {
         setSearchResults([]);
@@ -93,7 +96,7 @@ export function QuickSearch() {
       setQuery("");
       navigate(path);
     },
-    [navigate]
+    [navigate],
   );
 
   const handleViewAll = useCallback(() => {
@@ -131,14 +134,17 @@ export function QuickSearch() {
                     entry.category === "knowledge"
                       ? "/vault/knowledge"
                       : entry.category === "entity"
-                      ? "/vault/entities"
-                      : "/vault/events";
+                        ? "/vault/entities"
+                        : "/vault/events";
                   handleSelect(path);
                 }}
               >
                 <FileText className="size-4 mr-2 shrink-0" />
                 <span className="flex-1 truncate">{entry.title}</span>
-                <Badge variant="secondary" className="text-[10px] ml-2 shrink-0">
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] ml-2 shrink-0"
+                >
                   {entry.kind}
                 </Badge>
               </CommandItem>

@@ -38,15 +38,15 @@ export function MarketingLayout() {
             <Button asChild variant={onBlog ? "secondary" : "ghost"} size="sm">
               <Link to="/blog">Blog</Link>
             </Button>
-            <Button asChild variant={onGetStarted ? "secondary" : "ghost"} size="sm">
+            <Button
+              asChild
+              variant={onGetStarted ? "secondary" : "ghost"}
+              size="sm"
+            >
               <Link to="/get-started">Get Started</Link>
             </Button>
             <Button asChild variant="ghost" size="sm">
-              <a
-                href={docsQuickstartUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <a href={docsQuickstartUrl} target="_blank" rel="noreferrer">
                 Docs
               </a>
             </Button>
@@ -67,7 +67,11 @@ export function MarketingLayout() {
           </p>
           <div className="flex items-center gap-3">
             <Button asChild variant="link" size="sm" className="px-0">
-              <a href="https://github.com/fellanH/context-vault" target="_blank" rel="noreferrer">
+              <a
+                href="https://github.com/fellanH/context-vault"
+                target="_blank"
+                rel="noreferrer"
+              >
                 GitHub
               </a>
             </Button>

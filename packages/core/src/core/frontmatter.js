@@ -14,7 +14,9 @@ export function formatFrontmatter(meta) {
       lines.push(`${k}: [${v.map((i) => JSON.stringify(i)).join(", ")}]`);
     } else {
       const str = String(v);
-      lines.push(`${k}: ${NEEDS_QUOTING.test(str) ? JSON.stringify(str) : str}`);
+      lines.push(
+        `${k}: ${NEEDS_QUOTING.test(str) ? JSON.stringify(str) : str}`,
+      );
     }
   }
   lines.push("---");
@@ -32,8 +34,17 @@ export function parseFrontmatter(text) {
     const key = line.slice(0, idx).trim();
     let val = line.slice(idx + 1).trim();
     // Unquote JSON-quoted strings from formatFrontmatter
-    if (val.length >= 2 && val.startsWith('"') && val.endsWith('"') && !val.startsWith('["')) {
-      try { val = JSON.parse(val); } catch { /* keep as-is */ }
+    if (
+      val.length >= 2 &&
+      val.startsWith('"') &&
+      val.endsWith('"') &&
+      !val.startsWith('["')
+    ) {
+      try {
+        val = JSON.parse(val);
+      } catch {
+        /* keep as-is */
+      }
     }
     // Parse arrays: [a, b, c]
     if (val.startsWith("[") && val.endsWith("]")) {
@@ -53,7 +64,14 @@ export function parseFrontmatter(text) {
 
 // ─── Extract Custom Meta ────────────────────────────────────────────────────
 
-const RESERVED_FM_KEYS = new Set(["id", "tags", "source", "created", "identity_key", "expires_at"]);
+const RESERVED_FM_KEYS = new Set([
+  "id",
+  "tags",
+  "source",
+  "created",
+  "identity_key",
+  "expires_at",
+]);
 
 export function extractCustomMeta(fmMeta) {
   const custom = {};

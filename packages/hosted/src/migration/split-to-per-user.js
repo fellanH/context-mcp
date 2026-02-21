@@ -21,9 +21,22 @@
  * The migration is idempotent — running it again skips users whose directories already exist.
  */
 
-import { existsSync, mkdirSync, copyFileSync, renameSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  copyFileSync,
+  renameSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { join, resolve, relative, basename, dirname } from "node:path";
-import { initDatabase, prepareStatements, insertVec, deleteVec } from "@context-vault/core/index/db";
+import {
+  initDatabase,
+  prepareStatements,
+  insertVec,
+  deleteVec,
+} from "@context-vault/core/index/db";
 import { reindex } from "@context-vault/core/index/reindex";
 import { embed } from "@context-vault/core/index/embed";
 
@@ -33,9 +46,9 @@ const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const dataDir = resolve(
   args.find((_, i) => args[i - 1] === "--data-dir") ||
-  process.env.CONTEXT_VAULT_DATA_DIR ||
-  process.env.CONTEXT_MCP_DATA_DIR ||
-  "/data"
+    process.env.CONTEXT_VAULT_DATA_DIR ||
+    process.env.CONTEXT_MCP_DATA_DIR ||
+    "/data",
 );
 
 const sharedDbPath = join(dataDir, "vault.db");
@@ -66,13 +79,19 @@ async function main() {
   const sharedDb = new Database(sharedDbPath, { readonly: true });
 
   // Get distinct users
-  const users = sharedDb.prepare("SELECT DISTINCT user_id FROM vault WHERE user_id IS NOT NULL").all();
+  const users = sharedDb
+    .prepare("SELECT DISTINCT user_id FROM vault WHERE user_id IS NOT NULL")
+    .all();
   log(`Found ${users.length} users to migrate`);
 
   // Also count entries without user_id (orphans)
-  const orphanCount = sharedDb.prepare("SELECT COUNT(*) as c FROM vault WHERE user_id IS NULL").get().c;
+  const orphanCount = sharedDb
+    .prepare("SELECT COUNT(*) as c FROM vault WHERE user_id IS NULL")
+    .get().c;
   if (orphanCount > 0) {
-    log(`WARNING: ${orphanCount} entries have no user_id — these will NOT be migrated`);
+    log(
+      `WARNING: ${orphanCount} entries have no user_id — these will NOT be migrated`,
+    );
   }
 
   if (!DRY_RUN) {
@@ -96,11 +115,15 @@ async function main() {
     }
 
     // Count entries for this user
-    const entryCount = sharedDb.prepare("SELECT COUNT(*) as c FROM vault WHERE user_id = ?").get(userId).c;
+    const entryCount = sharedDb
+      .prepare("SELECT COUNT(*) as c FROM vault WHERE user_id = ?")
+      .get(userId).c;
     log(`  Entries: ${entryCount}`);
 
     if (DRY_RUN) {
-      log(`  DRY RUN: would create ${userDir} and migrate ${entryCount} entries`);
+      log(
+        `  DRY RUN: would create ${userDir} and migrate ${entryCount} entries`,
+      );
       totalMigrated += entryCount;
       continue;
     }
@@ -114,7 +137,9 @@ async function main() {
     const userStmts = prepareStatements(userDb);
 
     // Copy entries from shared DB to per-user DB
-    const entries = sharedDb.prepare("SELECT * FROM vault WHERE user_id = ?").all(userId);
+    const entries = sharedDb
+      .prepare("SELECT * FROM vault WHERE user_id = ?")
+      .all(userId);
 
     const insertTxn = userDb.transaction((rows) => {
       for (const row of rows) {
@@ -133,19 +158,39 @@ async function main() {
         // Insert into per-user DB
         if (row.body_encrypted) {
           userStmts.insertEntryEncrypted.run(
-            row.id, row.user_id, row.kind, row.category,
-            row.title, row.body, row.meta, row.tags,
-            row.source, newFilePath, row.identity_key,
-            row.expires_at, row.created_at,
-            row.body_encrypted, row.title_encrypted,
-            row.meta_encrypted, row.iv
+            row.id,
+            row.user_id,
+            row.kind,
+            row.category,
+            row.title,
+            row.body,
+            row.meta,
+            row.tags,
+            row.source,
+            newFilePath,
+            row.identity_key,
+            row.expires_at,
+            row.created_at,
+            row.body_encrypted,
+            row.title_encrypted,
+            row.meta_encrypted,
+            row.iv,
           );
         } else {
           userStmts.insertEntry.run(
-            row.id, row.user_id, row.kind, row.category,
-            row.title, row.body, row.meta, row.tags,
-            row.source, newFilePath, row.identity_key,
-            row.expires_at, row.created_at
+            row.id,
+            row.user_id,
+            row.kind,
+            row.category,
+            row.title,
+            row.body,
+            row.meta,
+            row.tags,
+            row.source,
+            newFilePath,
+            row.identity_key,
+            row.expires_at,
+            row.created_at,
           );
         }
       }
@@ -179,7 +224,9 @@ async function main() {
     }
 
     // WAL checkpoint and close
-    try { userDb.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
+    try {
+      userDb.pragma("wal_checkpoint(TRUNCATE)");
+    } catch {}
     userDb.close();
 
     log(`  Done: ${userDir}`);
@@ -196,8 +243,12 @@ async function main() {
       renameSync(sharedDbPath, preDbPath);
       log(`\nRenamed vault.db → vault.db.pre-migration`);
       // Also rename WAL/SHM files
-      try { renameSync(sharedDbPath + "-wal", preDbPath + "-wal"); } catch {}
-      try { renameSync(sharedDbPath + "-shm", preDbPath + "-shm"); } catch {}
+      try {
+        renameSync(sharedDbPath + "-wal", preDbPath + "-wal");
+      } catch {}
+      try {
+        renameSync(sharedDbPath + "-shm", preDbPath + "-shm");
+      } catch {}
     }
 
     if (existsSync(sharedVaultDir) && !existsSync(preVaultDir)) {

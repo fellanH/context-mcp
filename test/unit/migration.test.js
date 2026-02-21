@@ -5,12 +5,22 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { parseFrontmatter, formatFrontmatter } from "@context-vault/core/core/frontmatter";
+import {
+  parseFrontmatter,
+  formatFrontmatter,
+} from "@context-vault/core/core/frontmatter";
 import { formatBody } from "@context-vault/core/capture/formatters";
 
 describe("migration: extractCustomMeta", () => {
   const RESERVED_FM_KEYS = new Set([
-    "id", "tags", "source", "created", "identity_key", "expires_at", "kind", "title",
+    "id",
+    "tags",
+    "source",
+    "created",
+    "identity_key",
+    "expires_at",
+    "kind",
+    "title",
   ]);
 
   function extractCustomMeta(meta) {
@@ -22,13 +32,23 @@ describe("migration: extractCustomMeta", () => {
   }
 
   it("extracts non-reserved keys as custom meta", () => {
-    const meta = { id: "abc", tags: ["x"], language: "python", status: "accepted" };
+    const meta = {
+      id: "abc",
+      tags: ["x"],
+      language: "python",
+      status: "accepted",
+    };
     const custom = extractCustomMeta(meta);
     expect(custom).toEqual({ language: "python", status: "accepted" });
   });
 
   it("returns undefined when no custom keys", () => {
-    const meta = { id: "abc", tags: ["x"], source: "test", created: "2026-01-01" };
+    const meta = {
+      id: "abc",
+      tags: ["x"],
+      source: "test",
+      created: "2026-01-01",
+    };
     expect(extractCustomMeta(meta)).toBeUndefined();
   });
 
@@ -49,12 +69,18 @@ describe("migration: guessKindFromPath", () => {
   }
 
   it("extracts kind from directory name", () => {
-    expect(guessKindFromPath("/vault/knowledge/decisions/my-decision.md", "/vault")).toBe("decision");
-    expect(guessKindFromPath("/vault/knowledge/insights/my-insight.md", "/vault")).toBe("insight");
+    expect(
+      guessKindFromPath("/vault/knowledge/decisions/my-decision.md", "/vault"),
+    ).toBe("decision");
+    expect(
+      guessKindFromPath("/vault/knowledge/insights/my-insight.md", "/vault"),
+    ).toBe("insight");
   });
 
   it("removes plural 's' from directory name", () => {
-    expect(guessKindFromPath("/vault/decisions/foo.md", "/vault")).toBe("decision");
+    expect(guessKindFromPath("/vault/decisions/foo.md", "/vault")).toBe(
+      "decision",
+    );
     expect(guessKindFromPath("/vault/notes/bar.md", "/vault")).toBe("note");
   });
 
@@ -72,7 +98,9 @@ describe("migration: roundtrip frontmatter for migrate-to-local", () => {
       created: "2026-01-15T10:00:00Z",
     };
     const formatted = formatFrontmatter(fm);
-    const { meta, body } = parseFrontmatter(formatted + "\nMigrated body content");
+    const { meta, body } = parseFrontmatter(
+      formatted + "\nMigrated body content",
+    );
 
     expect(meta.id).toBe("01ABC");
     expect(meta.tags).toEqual(["test", "migration"]);
@@ -116,15 +144,18 @@ describe("migration: roundtrip frontmatter for migrate-to-local", () => {
 
 describe("migration: slug generation", () => {
   function generateSlug(title, body, id) {
-    const slug = (title || body || "").slice(0, 40)
-      .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const slug = (title || body || "")
+      .slice(0, 40)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
     const shortId = (id || "").slice(-8).toLowerCase();
     return slug ? `${slug}-${shortId}.md` : `${shortId}.md`;
   }
 
   it("generates filename from title", () => {
     expect(generateSlug("My Decision About SQLite", "", "01ABCDEFGH")).toBe(
-      "my-decision-about-sqlite-abcdefgh.md"
+      "my-decision-about-sqlite-abcdefgh.md",
     );
   });
 
@@ -141,7 +172,7 @@ describe("migration: slug generation", () => {
 
   it("strips special characters from slugs", () => {
     expect(generateSlug("Hello, World! @#$%", "", "01ABCDEFGH")).toBe(
-      "hello-world-abcdefgh.md"
+      "hello-world-abcdefgh.md",
     );
   });
 });

@@ -2,7 +2,8 @@ import { injectContentEditable, extractTextContent } from "./types";
 import type { PlatformAdapter } from "./types";
 import type { ChatMessage } from "@/shared/types";
 
-const log = (...args: unknown[]) => console.debug("[context-vault:generic]", ...args);
+const log = (...args: unknown[]) =>
+  console.debug("[context-vault:generic]", ...args);
 
 export const genericAdapter: PlatformAdapter = {
   name: "Generic",
@@ -27,7 +28,10 @@ export const genericAdapter: PlatformAdapter = {
     input.focus();
 
     // For textarea/input elements — direct value manipulation
-    if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
+    if (
+      input instanceof HTMLTextAreaElement ||
+      input instanceof HTMLInputElement
+    ) {
       const start = input.selectionStart ?? input.value.length;
       const end = input.selectionEnd ?? input.value.length;
       input.value = input.value.slice(0, start) + text + input.value.slice(end);
@@ -44,7 +48,7 @@ export const genericAdapter: PlatformAdapter = {
     try {
       // Strategy 1: elements with explicit role attributes (data-role, data-message-role, etc.)
       const roleMarked = document.querySelectorAll<HTMLElement>(
-        "[data-role], [data-message-role], [data-author], [data-message-author-role]"
+        "[data-role], [data-message-role], [data-author], [data-message-author-role]",
       );
       if (roleMarked.length > 0) {
         const messages: ChatMessage[] = [];
@@ -55,10 +59,17 @@ export const genericAdapter: PlatformAdapter = {
             el.getAttribute("data-author") ||
             el.getAttribute("data-message-author-role") ||
             "";
-          const role: "user" | "assistant" = /user|human/i.test(rawRole) ? "user" : "assistant";
+          const role: "user" | "assistant" = /user|human/i.test(rawRole)
+            ? "user"
+            : "assistant";
           const content = extractTextContent(el);
           if (content) {
-            messages.push({ index: messages.length, role, content, platform: this.name });
+            messages.push({
+              index: messages.length,
+              role,
+              content,
+              platform: this.name,
+            });
           }
         });
         if (messages.length > 0) {
@@ -69,12 +80,14 @@ export const genericAdapter: PlatformAdapter = {
 
       // Strategy 2: elements with chat/message class patterns
       const chatEls = document.querySelectorAll<HTMLElement>(
-        '[class*="message"]:not(input):not(textarea), [class*="chat-bubble"], [class*="chat-message"]'
+        '[class*="message"]:not(input):not(textarea), [class*="chat-bubble"], [class*="chat-message"]',
       );
       if (chatEls.length > 0) {
         // Filter to leaf-ish elements (skip wrappers that contain other matches)
         const filtered = Array.from(chatEls).filter(
-          (el) => el.querySelector('[class*="message"]') === null && extractTextContent(el).length > 5
+          (el) =>
+            el.querySelector('[class*="message"]') === null &&
+            extractTextContent(el).length > 5,
         );
         if (filtered.length > 1) {
           const messages: ChatMessage[] = [];
@@ -85,9 +98,15 @@ export const genericAdapter: PlatformAdapter = {
               const cls = el.className.toLowerCase();
               let role: "user" | "assistant";
               if (/user|human|sent|outgoing/.test(cls)) role = "user";
-              else if (/assistant|bot|ai|received|incoming|response/.test(cls)) role = "assistant";
+              else if (/assistant|bot|ai|received|incoming|response/.test(cls))
+                role = "assistant";
               else role = i % 2 === 0 ? "user" : "assistant";
-              messages.push({ index: messages.length, role, content, platform: this.name });
+              messages.push({
+                index: messages.length,
+                role,
+                content,
+                platform: this.name,
+              });
             }
           });
           if (messages.length > 0) {
@@ -98,7 +117,8 @@ export const genericAdapter: PlatformAdapter = {
       }
 
       // Strategy 3: article elements within main or role="main"
-      const main = document.querySelector<HTMLElement>('[role="main"]') ||
+      const main =
+        document.querySelector<HTMLElement>('[role="main"]') ||
         document.querySelector<HTMLElement>("main");
       if (main) {
         const articles = main.querySelectorAll<HTMLElement>("article");

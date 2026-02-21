@@ -7,7 +7,12 @@ export type BlogPost = {
   slug: string;
   title: string;
   description: string;
-  category: "Integration" | "Playbook" | "Architecture" | "Education" | "Comparison";
+  category:
+    | "Integration"
+    | "Playbook"
+    | "Architecture"
+    | "Education"
+    | "Comparison";
   publishedAt: string;
   readTimeMinutes: number;
   ctaLabel: string;
@@ -50,7 +55,7 @@ export const posts: BlogPost[] = [
           "Tags are free-form strings attached to any entry regardless of kind. They enable queries that cut across the kind hierarchy. A tag like auth might appear on decisions about authentication architecture, patterns for token refresh logic, and references to OAuth documentation. Searching by that tag returns all three, which is exactly what you want when starting a session focused on the auth system.",
           "Design tags around domains and features, not around time or process stages. Tags like billing, onboarding, api-v2, or postgres are durable and useful for retrieval months later. Tags like sprint-12, tuesday-standup, or wip are ephemeral and quickly become noise. If you need temporal filtering, use the since and until parameters on get_context instead of encoding dates into tags.",
           "Keep your tag vocabulary small and consistent. A vault with 200 unique tags across 500 entries is harder to query than one with 30 well-chosen tags. Before creating a new tag, check whether an existing one covers the same ground. Use list_context with a tags filter to see what is already in use. Singular forms are easier to keep consistent than plurals — use api rather than apis, test rather than tests.",
-          "Tags also serve as the primary filter for the list_context tool, which browses entries without a search query. When an agent calls list_context with tags set to [\"payments\"], it gets every entry tagged with payments regardless of kind. This makes tags the most flexible retrieval dimension in the system.",
+          'Tags also serve as the primary filter for the list_context tool, which browses entries without a search query. When an agent calls list_context with tags set to ["payments"], it gets every entry tagged with payments regardless of kind. This makes tags the most flexible retrieval dimension in the system.',
         ],
       },
       {

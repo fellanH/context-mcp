@@ -21,8 +21,8 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 12;      // GCM standard nonce size
-const TAG_LENGTH = 16;     // Auth tag length in bytes
+const IV_LENGTH = 12; // GCM standard nonce size
+const TAG_LENGTH = 16; // Auth tag length in bytes
 
 /**
  * Encrypt plaintext with AES-256-GCM.
@@ -103,7 +103,12 @@ export function encryptEntry(entry, key) {
     ]);
   }
 
-  return { body_encrypted: bodyEncrypted, title_encrypted: titleEncrypted, meta_encrypted: metaEncrypted, iv };
+  return {
+    body_encrypted: bodyEncrypted,
+    title_encrypted: titleEncrypted,
+    meta_encrypted: metaEncrypted,
+    iv,
+  };
 }
 
 /**

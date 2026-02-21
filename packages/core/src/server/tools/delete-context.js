@@ -19,7 +19,8 @@ export const inputSchema = {
 export async function handler({ id }, ctx, { ensureIndexed }) {
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
 
-  if (!id?.trim()) return err("Required: id (non-empty string)", "INVALID_INPUT");
+  if (!id?.trim())
+    return err("Required: id (non-empty string)", "INVALID_INPUT");
   await ensureIndexed();
 
   const entry = ctx.stmts.getEntryById.get(id);
@@ -32,13 +33,17 @@ export async function handler({ id }, ctx, { ensureIndexed }) {
 
   // Delete file from disk first (source of truth)
   if (entry.file_path) {
-    try { unlinkSync(entry.file_path); } catch {}
+    try {
+      unlinkSync(entry.file_path);
+    } catch {}
   }
 
   // Delete vector embedding
   const rowidResult = ctx.stmts.getRowid.get(id);
   if (rowidResult?.rowid) {
-    try { ctx.deleteVec(Number(rowidResult.rowid)); } catch {}
+    try {
+      ctx.deleteVec(Number(rowidResult.rowid));
+    } catch {}
   }
 
   // Delete DB row (FTS trigger handles FTS cleanup)

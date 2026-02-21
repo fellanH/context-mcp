@@ -18,7 +18,7 @@ export function handler(_args, ctx) {
 
   const status = gatherVaultStatus(ctx, { userId });
 
-  const hasIssues = status.stalePaths || (status.embeddingStatus?.missing > 0);
+  const hasIssues = status.stalePaths || status.embeddingStatus?.missing > 0;
   const healthIcon = hasIssues ? "⚠" : "✓";
 
   const lines = [
@@ -39,13 +39,17 @@ export function handler(_args, ctx) {
     lines.push(`Embeddings: ${indexed}/${total} (${pct}%)`);
   }
   if (status.embedModelAvailable === false) {
-    lines.push(`Embed model: unavailable (semantic search disabled, FTS still works)`);
+    lines.push(
+      `Embed model: unavailable (semantic search disabled, FTS still works)`,
+    );
   } else if (status.embedModelAvailable === true) {
     lines.push(`Embed model: loaded`);
   }
   lines.push(`Decay:     ${config.eventDecayDays} days (event recency window)`);
   if (status.expiredCount > 0) {
-    lines.push(`Expired:   ${status.expiredCount} entries (pruned on next reindex)`);
+    lines.push(
+      `Expired:   ${status.expiredCount} entries (pruned on next reindex)`,
+    );
   }
 
   lines.push(``, `### Indexed`);
@@ -59,28 +63,38 @@ export function handler(_args, ctx) {
   if (status.categoryCounts.length) {
     lines.push(``);
     lines.push(`### Categories`);
-    for (const { category, c } of status.categoryCounts) lines.push(`- ${category}: ${c}`);
+    for (const { category, c } of status.categoryCounts)
+      lines.push(`- ${category}: ${c}`);
   }
 
   if (status.subdirs.length) {
     lines.push(``);
     lines.push(`### Disk Directories`);
-    for (const { name, count } of status.subdirs) lines.push(`- ${name}/: ${count} files`);
+    for (const { name, count } of status.subdirs)
+      lines.push(`- ${name}/: ${count} files`);
   }
 
   if (status.stalePaths) {
     lines.push(``);
     lines.push(`### ⚠ Stale Paths`);
-    lines.push(`DB contains ${status.staleCount} paths not matching current vault dir.`);
+    lines.push(
+      `DB contains ${status.staleCount} paths not matching current vault dir.`,
+    );
     lines.push(`Auto-reindex will fix this on next search or save.`);
   }
 
   // Suggested actions
   const actions = [];
-  if (status.stalePaths) actions.push("- Run `context-vault reindex` to fix stale paths");
-  if (status.embeddingStatus?.missing > 0) actions.push("- Run `context-vault reindex` to generate missing embeddings");
-  if (!config.vaultDirExists) actions.push("- Run `context-vault setup` to create the vault directory");
-  if (status.kindCounts.length === 0 && config.vaultDirExists) actions.push("- Use `save_context` to add your first entry");
+  if (status.stalePaths)
+    actions.push("- Run `context-vault reindex` to fix stale paths");
+  if (status.embeddingStatus?.missing > 0)
+    actions.push(
+      "- Run `context-vault reindex` to generate missing embeddings",
+    );
+  if (!config.vaultDirExists)
+    actions.push("- Run `context-vault setup` to create the vault directory");
+  if (status.kindCounts.length === 0 && config.vaultDirExists)
+    actions.push("- Use `save_context` to add your first entry");
 
   if (actions.length) {
     lines.push("", "### Suggested Actions", ...actions);

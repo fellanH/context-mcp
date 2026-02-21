@@ -6,11 +6,11 @@ Internal reference for contributors working on the context-vault monorepo.
 
 Three layers, no overlap:
 
-| Layer | Tells you | Examples |
-|-------|-----------|---------|
-| **Code** | What & How | Types, naming, structure, logic |
-| **Tests** | Expected behavior | Edge cases, contracts, invariants |
-| **Docs** | Why & Where | Business decisions, external URLs, deployment, gotchas |
+| Layer     | Tells you         | Examples                                               |
+| --------- | ----------------- | ------------------------------------------------------ |
+| **Code**  | What & How        | Types, naming, structure, logic                        |
+| **Tests** | Expected behavior | Edge cases, contracts, invariants                      |
+| **Docs**  | Why & Where       | Business decisions, external URLs, deployment, gotchas |
 
 **Rule:** If an agent can answer the question by reading source files, the doc line is redundant. Pointers over prose.
 
@@ -20,21 +20,21 @@ Three layers, no overlap:
 
 These replace detailed sections — read the source for specifics:
 
-| Topic | Start here |
-|-------|-----------|
-| Monorepo layout | `ls packages/` + each `package.json` |
-| Core architecture | `packages/core/src/` — capture → index → retrieve layers |
-| ctx object shape | `packages/core/src/server/types.js` |
-| Categories & kinds | `packages/core/src/core/categories.js` |
-| Config resolution | `packages/core/src/core/config.js` (header comment) |
-| Embedding system | `packages/core/src/index/embed.js` |
-| DB schema & migrations | `packages/core/src/index/db.js` |
-| MCP tool handlers | `packages/core/src/server/tools.js` |
-| Local server entry | `packages/local/src/server/index.js` |
-| Hosted server entry | `packages/hosted/src/index.js` |
-| Sync protocol | `packages/core/src/sync/sync.js` |
-| Scripts | root `package.json` scripts section |
-| Tests | `test/unit/`, `test/integration/`, `test/helpers/ctx.js` |
+| Topic                  | Start here                                               |
+| ---------------------- | -------------------------------------------------------- |
+| Monorepo layout        | `ls packages/` + each `package.json`                     |
+| Core architecture      | `packages/core/src/` — capture → index → retrieve layers |
+| ctx object shape       | `packages/core/src/server/types.js`                      |
+| Categories & kinds     | `packages/core/src/core/categories.js`                   |
+| Config resolution      | `packages/core/src/core/config.js` (header comment)      |
+| Embedding system       | `packages/core/src/index/embed.js`                       |
+| DB schema & migrations | `packages/core/src/index/db.js`                          |
+| MCP tool handlers      | `packages/core/src/server/tools.js`                      |
+| Local server entry     | `packages/local/src/server/index.js`                     |
+| Hosted server entry    | `packages/hosted/src/index.js`                           |
+| Sync protocol          | `packages/core/src/sync/sync.js`                         |
+| Scripts                | root `package.json` scripts section                      |
+| Tests                  | `test/unit/`, `test/integration/`, `test/helpers/ctx.js` |
 
 ---
 
@@ -42,16 +42,16 @@ These replace detailed sections — read the source for specifics:
 
 This is the most important architectural distinction.
 
-| | Local (`packages/local`) | Hosted (`packages/hosted`) |
-|---|---|---|
-| Transport | stdio (MCP subprocess) | HTTP (Hono server) |
-| Auth | None — local machine | Google OAuth + API keys |
-| Encryption | None — plaintext | AES-256-GCM per-user |
-| Billing | Free / open source | Stripe (Free: 50 entries, Pro: unlimited) |
-| Multi-tenancy | Single user | Per-user DB isolation (LRU pool) |
-| Data location | `~/vault/` + `~/.context-mcp/` | Fly.io volume `/data/` |
-| Consumers | Claude Code, Cursor, Windsurf, Cline | Extension, web app, remote MCP clients |
-| Published | npm (`context-vault`) | Fly.io (`context-vault` app) |
+|               | Local (`packages/local`)             | Hosted (`packages/hosted`)                |
+| ------------- | ------------------------------------ | ----------------------------------------- |
+| Transport     | stdio (MCP subprocess)               | HTTP (Hono server)                        |
+| Auth          | None — local machine                 | Google OAuth + API keys                   |
+| Encryption    | None — plaintext                     | AES-256-GCM per-user                      |
+| Billing       | Free / open source                   | Stripe (Free: 50 entries, Pro: unlimited) |
+| Multi-tenancy | Single user                          | Per-user DB isolation (LRU pool)          |
+| Data location | `~/vault/` + `~/.context-mcp/`       | Fly.io volume `/data/`                    |
+| Consumers     | Claude Code, Cursor, Windsurf, Cline | Extension, web app, remote MCP clients    |
+| Published     | npm (`context-vault`)                | Fly.io (`context-vault` app)              |
 
 Both consume `@context-vault/core` and register the same 7 tools. The hosted server adds per-request `userCtx` with encryption and tier limits.
 
@@ -68,19 +68,19 @@ Frontend routing uses hostname inspection on the `Host` header — see `packages
 
 ## Hosted Environment Variables
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `AUTH_REQUIRED` | Yes | `"true"` in production |
-| `VAULT_MASTER_SECRET` | Yes (prod) | Encryption master key (>=16 chars) |
-| `STRIPE_SECRET_KEY` | Yes (prod) | Stripe API key |
-| `STRIPE_WEBHOOK_SECRET` | Yes (prod) | Stripe webhook verification |
-| `STRIPE_PRICE_PRO` | Yes (prod) | Stripe price ID for Pro tier |
-| `SENTRY_DSN` | No | Error tracking |
-| `PUBLIC_URL` | Yes | Public server URL |
-| `APP_HOSTS` | Yes | Hostname(s) for app frontend |
-| `MARKETING_HOSTS` | Yes | Hostname(s) for marketing frontend |
-| `CONTEXT_MCP_DATA_DIR` | Yes | Data directory inside container |
-| `CONTEXT_MCP_VAULT_DIR` | Yes | Vault directory inside container |
+| Variable                | Required   | Purpose                            |
+| ----------------------- | ---------- | ---------------------------------- |
+| `AUTH_REQUIRED`         | Yes        | `"true"` in production             |
+| `VAULT_MASTER_SECRET`   | Yes (prod) | Encryption master key (>=16 chars) |
+| `STRIPE_SECRET_KEY`     | Yes (prod) | Stripe API key                     |
+| `STRIPE_WEBHOOK_SECRET` | Yes (prod) | Stripe webhook verification        |
+| `STRIPE_PRICE_PRO`      | Yes (prod) | Stripe price ID for Pro tier       |
+| `SENTRY_DSN`            | No         | Error tracking                     |
+| `PUBLIC_URL`            | Yes        | Public server URL                  |
+| `APP_HOSTS`             | Yes        | Hostname(s) for app frontend       |
+| `MARKETING_HOSTS`       | Yes        | Hostname(s) for marketing frontend |
+| `CONTEXT_MCP_DATA_DIR`  | Yes        | Data directory inside container    |
+| `CONTEXT_MCP_VAULT_DIR` | Yes        | Vault directory inside container   |
 
 ---
 

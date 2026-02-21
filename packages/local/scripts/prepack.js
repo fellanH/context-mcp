@@ -7,7 +7,14 @@
  * Replaces the Unix shell script in package.json "prepack".
  */
 
-import { cpSync, rmSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import {
+  cpSync,
+  rmSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+} from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,7 +54,9 @@ console.log("[prepack] Bundled @context-vault/core into node_modules");
 
 // Copy pre-built web dashboard into app-dist/
 if (!existsSync(join(APP_SRC, "index.html"))) {
-  console.error("[prepack] ERROR: Web dashboard not built. Run: npm run build --workspace=packages/app");
+  console.error(
+    "[prepack] ERROR: Web dashboard not built. Run: npm run build --workspace=packages/app",
+  );
   process.exit(1);
 }
 

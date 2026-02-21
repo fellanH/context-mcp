@@ -2,13 +2,21 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/mcp", "destination": "https://api.context-vault.com/mcp" },
-    { "source": "/api/:path*", "destination": "https://api.context-vault.com/api/:path*" },
+    {
+      "source": "/api/:path*",
+      "destination": "https://api.context-vault.com/api/:path*"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
     {
       "source": "/assets/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
   ]
 }

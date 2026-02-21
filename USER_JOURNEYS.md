@@ -124,6 +124,7 @@ Revenue conversion triggered by usage limits on the free cloud tier.
 7. Cancellation available anytime — reverts to free tier limits, existing entries preserved
 
 **Conversion triggers:**
+
 - Dashboard usage meters approaching limits (amber/red)
 - API 429 responses with upgrade prompt
 - Export 403 with upgrade prompt
@@ -137,27 +138,27 @@ Revenue conversion triggered by usage limits on the free cloud tier.
 
 ## Tier Summary
 
-| | Free | Pro ($9/mo) | Team (contact sales) |
-|---|---|---|---|
-| Entries | 500 | Unlimited | Unlimited |
-| Storage | 10 MB | 1 GB | 5 GB |
-| Requests/day | 200 | Unlimited | Unlimited |
-| API Keys | 1 | Unlimited | Unlimited |
-| Export | No | Yes | Yes |
-| Support | Community | Priority | Dedicated |
+|              | Free      | Pro ($9/mo) | Team (contact sales) |
+| ------------ | --------- | ----------- | -------------------- |
+| Entries      | 500       | Unlimited   | Unlimited            |
+| Storage      | 10 MB     | 1 GB        | 5 GB                 |
+| Requests/day | 200       | Unlimited   | Unlimited            |
+| API Keys     | 1         | Unlimited   | Unlimited            |
+| Export       | No        | Yes         | Yes                  |
+| Support      | Community | Priority    | Dedicated            |
 
 ---
 
 ## Product Surfaces
 
-| Surface | Purpose | Auth |
-|---|---|---|
-| Landing page (`www.context-vault.com`) | Discovery, education, CTAs | None |
-| Dashboard (`app.context-vault.com`) | Onboarding, browse, search, settings | Google OAuth / API key |
-| CLI (`context-vault`) | Setup, serve, migrate, sync, manage | None (local) or API key (hosted) |
-| Chrome Extension | Search + inject + capture context in AI chats | API key (hosted) or none (local) |
-| MCP Endpoint (`/mcp`) | AI tool integration (save/search/list) | Optional Bearer token |
-| REST API (`/api/vault/*`) | Programmatic CRUD + search | Bearer token |
+| Surface                                | Purpose                                       | Auth                             |
+| -------------------------------------- | --------------------------------------------- | -------------------------------- |
+| Landing page (`www.context-vault.com`) | Discovery, education, CTAs                    | None                             |
+| Dashboard (`app.context-vault.com`)    | Onboarding, browse, search, settings          | Google OAuth / API key           |
+| CLI (`context-vault`)                  | Setup, serve, migrate, sync, manage           | None (local) or API key (hosted) |
+| Chrome Extension                       | Search + inject + capture context in AI chats | API key (hosted) or none (local) |
+| MCP Endpoint (`/mcp`)                  | AI tool integration (save/search/list)        | Optional Bearer token            |
+| REST API (`/api/vault/*`)              | Programmatic CRUD + search                    | Bearer token                     |
 
 ---
 

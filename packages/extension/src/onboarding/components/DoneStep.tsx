@@ -17,8 +17,14 @@ export function DoneStep() {
         <ul className="space-y-2 text-sm text-muted-foreground">
           <li>
             Press{" "}
-            <kbd className="bg-secondary px-1.5 py-0.5 rounded text-xs text-foreground">Ctrl+Shift+Space</kbd>{" "}
-            (or <kbd className="bg-secondary px-1.5 py-0.5 rounded text-xs text-foreground">⌘+Shift+Space</kbd>) to open the popup
+            <kbd className="bg-secondary px-1.5 py-0.5 rounded text-xs text-foreground">
+              Ctrl+Shift+Space
+            </kbd>{" "}
+            (or{" "}
+            <kbd className="bg-secondary px-1.5 py-0.5 rounded text-xs text-foreground">
+              ⌘+Shift+Space
+            </kbd>
+            ) to open the popup
           </li>
           <li>Right-click selected text to save it to your vault</li>
           <li>Search results can be injected directly into any AI chat</li>

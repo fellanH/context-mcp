@@ -8,12 +8,30 @@ export const description =
   "Browse vault entries without a search query. Returns id, title, kind, category, tags, created_at. Use get_context with a query for semantic search. Use this to browse by tags or find recent entries.";
 
 export const inputSchema = {
-  kind: z.string().optional().describe("Filter by kind (e.g. 'insight', 'decision', 'pattern')"),
-  category: z.enum(["knowledge", "entity", "event"]).optional().describe("Filter by category"),
-  tags: z.array(z.string()).optional().describe("Filter by tags (entries must match at least one)"),
-  since: z.string().optional().describe("ISO date, return entries created after this"),
-  until: z.string().optional().describe("ISO date, return entries created before this"),
-  limit: z.number().optional().describe("Max results to return (default 20, max 100)"),
+  kind: z
+    .string()
+    .optional()
+    .describe("Filter by kind (e.g. 'insight', 'decision', 'pattern')"),
+  category: z
+    .enum(["knowledge", "entity", "event"])
+    .optional()
+    .describe("Filter by category"),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe("Filter by tags (entries must match at least one)"),
+  since: z
+    .string()
+    .optional()
+    .describe("ISO date, return entries created after this"),
+  until: z
+    .string()
+    .optional()
+    .describe("ISO date, return entries created before this"),
+  limit: z
+    .number()
+    .optional()
+    .describe("Max results to return (default 20, max 100)"),
   offset: z.number().optional().describe("Skip first N results for pagination"),
 };
 
@@ -22,7 +40,11 @@ export const inputSchema = {
  * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
  * @param {import('../types.js').ToolShared} shared
  */
-export async function handler({ kind, category, tags, since, until, limit, offset }, ctx, { ensureIndexed, reindexFailed }) {
+export async function handler(
+  { kind, category, tags, since, until, limit, offset },
+  ctx,
+  { ensureIndexed, reindexFailed },
+) {
   const { config } = ctx;
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
 
@@ -60,33 +82,52 @@ export async function handler({ kind, category, tags, since, until, limit, offse
   const fetchLimit = tags?.length ? effectiveLimit * 10 : effectiveLimit;
 
   const countParams = [...params];
-  const total = ctx.db.prepare(`SELECT COUNT(*) as c FROM vault ${where}`).get(...countParams).c;
+  const total = ctx.db
+    .prepare(`SELECT COUNT(*) as c FROM vault ${where}`)
+    .get(...countParams).c;
 
   params.push(fetchLimit, effectiveOffset);
-  const rows = ctx.db.prepare(`SELECT id, title, kind, category, tags, created_at, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params);
+  const rows = ctx.db
+    .prepare(
+      `SELECT id, title, kind, category, tags, created_at, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    )
+    .all(...params);
 
   // Post-filter by tags if provided, then apply requested limit
   const filtered = tags?.length
-    ? rows.filter((r) => {
-        const entryTags = r.tags ? JSON.parse(r.tags) : [];
-        return tags.some((t) => entryTags.includes(t));
-      }).slice(0, effectiveLimit)
+    ? rows
+        .filter((r) => {
+          const entryTags = r.tags ? JSON.parse(r.tags) : [];
+          return tags.some((t) => entryTags.includes(t));
+        })
+        .slice(0, effectiveLimit)
     : rows;
 
-  if (!filtered.length) return ok("No entries found matching the given filters.");
+  if (!filtered.length)
+    return ok("No entries found matching the given filters.");
 
   const lines = [];
-  if (reindexFailed) lines.push(`> **Warning:** Auto-reindex failed. Results may be stale. Run \`context-vault reindex\` to fix.\n`);
+  if (reindexFailed)
+    lines.push(
+      `> **Warning:** Auto-reindex failed. Results may be stale. Run \`context-vault reindex\` to fix.\n`,
+    );
   lines.push(`## Vault Entries (${filtered.length} shown, ${total} total)\n`);
   for (const r of filtered) {
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
     const tagStr = entryTags.length ? entryTags.join(", ") : "none";
-    lines.push(`- **${r.title || "(untitled)"}** [${r.kind}/${r.category}] — ${tagStr} — ${r.created_at} — \`${r.id}\``);
-    if (r.preview) lines.push(`  ${r.preview.replace(/\n+/g, " ").trim()}${r.preview.length >= 120 ? "…" : ""}`);
+    lines.push(
+      `- **${r.title || "(untitled)"}** [${r.kind}/${r.category}] — ${tagStr} — ${r.created_at} — \`${r.id}\``,
+    );
+    if (r.preview)
+      lines.push(
+        `  ${r.preview.replace(/\n+/g, " ").trim()}${r.preview.length >= 120 ? "…" : ""}`,
+      );
   }
 
   if (effectiveOffset + effectiveLimit < total) {
-    lines.push(`\n_Page ${Math.floor(effectiveOffset / effectiveLimit) + 1}. Use offset: ${effectiveOffset + effectiveLimit} for next page._`);
+    lines.push(
+      `\n_Page ${Math.floor(effectiveOffset / effectiveLimit) + 1}. Use offset: ${effectiveOffset + effectiveLimit} for next page._`,
+    );
   }
 
   return ok(lines.join("\n"));

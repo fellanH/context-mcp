@@ -30,7 +30,7 @@ describe("Turso storage adapter", () => {
 
   it("creates the vault table", async () => {
     const rows = await adapter.query(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='vault'"
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='vault'",
     );
     expect(rows.length).toBe(1);
     expect(rows[0].name).toBe("vault");
@@ -38,7 +38,7 @@ describe("Turso storage adapter", () => {
 
   it("creates the FTS5 table", async () => {
     const rows = await adapter.query(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='vault_fts'"
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='vault_fts'",
     );
     expect(rows.length).toBe(1);
   });
@@ -46,10 +46,21 @@ describe("Turso storage adapter", () => {
   it("inserts and queries entries", async () => {
     await adapter.execute(
       "INSERT INTO vault (id, kind, category, title, body, tags, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      ["test-1", "insight", "knowledge", "Test Insight", "This is a test body", '["test"]', "test", new Date().toISOString()]
+      [
+        "test-1",
+        "insight",
+        "knowledge",
+        "Test Insight",
+        "This is a test body",
+        '["test"]',
+        "test",
+        new Date().toISOString(),
+      ],
     );
 
-    const rows = await adapter.query("SELECT * FROM vault WHERE id = ?", ["test-1"]);
+    const rows = await adapter.query("SELECT * FROM vault WHERE id = ?", [
+      "test-1",
+    ]);
     expect(rows.length).toBe(1);
     expect(rows[0].title).toBe("Test Insight");
     expect(rows[0].kind).toBe("insight");
@@ -58,7 +69,7 @@ describe("Turso storage adapter", () => {
   it("FTS triggers populate vault_fts", async () => {
     const ftsRows = await adapter.query(
       "SELECT * FROM vault_fts WHERE vault_fts MATCH ?",
-      ['"Test Insight"']
+      ['"Test Insight"'],
     );
     expect(ftsRows.length).toBe(1);
   });
@@ -71,7 +82,14 @@ describe("Turso storage adapter", () => {
   it("execute returns changes count", async () => {
     const result = await adapter.execute(
       "INSERT INTO vault (id, kind, category, title, body, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-      ["test-2", "decision", "knowledge", "Test Decision", "Decision body", new Date().toISOString()]
+      [
+        "test-2",
+        "decision",
+        "knowledge",
+        "Test Decision",
+        "Decision body",
+        new Date().toISOString(),
+      ],
     );
     expect(result.changes).toBe(1);
   });
@@ -82,10 +100,13 @@ describe("Turso storage adapter", () => {
 
     await adapter.execute(
       "UPDATE vault SET body_encrypted = ?, iv = ?, version = 1 WHERE id = ?",
-      [fakeEncrypted, fakeIv, "test-1"]
+      [fakeEncrypted, fakeIv, "test-1"],
     );
 
-    const row = await adapter.queryOne("SELECT body_encrypted, iv FROM vault WHERE id = ?", ["test-1"]);
+    const row = await adapter.queryOne(
+      "SELECT body_encrypted, iv FROM vault WHERE id = ?",
+      ["test-1"],
+    );
     expect(row.body_encrypted).toBeTruthy();
     expect(row.iv).toBeTruthy();
   });
@@ -93,14 +114,30 @@ describe("Turso storage adapter", () => {
   it("supports identity_key unique constraint", async () => {
     await adapter.execute(
       "INSERT INTO vault (id, kind, category, title, body, identity_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ["entity-1", "contact", "entity", "John", "Contact info", "john@example.com", new Date().toISOString()]
+      [
+        "entity-1",
+        "contact",
+        "entity",
+        "John",
+        "Contact info",
+        "john@example.com",
+        new Date().toISOString(),
+      ],
     );
 
     // Duplicate identity_key for same kind should fail
     try {
       await adapter.execute(
         "INSERT INTO vault (id, kind, category, title, body, identity_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ["entity-2", "contact", "entity", "John 2", "More info", "john@example.com", new Date().toISOString()]
+        [
+          "entity-2",
+          "contact",
+          "entity",
+          "John 2",
+          "More info",
+          "john@example.com",
+          new Date().toISOString(),
+        ],
       );
       expect.fail("Should have thrown unique constraint error");
     } catch (e) {
@@ -110,13 +147,15 @@ describe("Turso storage adapter", () => {
 
   it("deletes entries and cleans up FTS", async () => {
     await adapter.execute("DELETE FROM vault WHERE id = ?", ["test-2"]);
-    const rows = await adapter.query("SELECT * FROM vault WHERE id = ?", ["test-2"]);
+    const rows = await adapter.query("SELECT * FROM vault WHERE id = ?", [
+      "test-2",
+    ]);
     expect(rows.length).toBe(0);
 
     // FTS should also be cleaned up via trigger
     const ftsRows = await adapter.query(
       "SELECT * FROM vault_fts WHERE vault_fts MATCH ?",
-      ['"Decision body"']
+      ['"Decision body"'],
     );
     expect(ftsRows.length).toBe(0);
   });

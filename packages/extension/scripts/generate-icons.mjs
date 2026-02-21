@@ -1,12 +1,12 @@
-import sharp from 'sharp';
-import { readFileSync, mkdirSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import sharp from "sharp";
+import { readFileSync, mkdirSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '..');
-const svgPath = resolve(root, 'assets/icon.svg');
-const outDir = resolve(root, 'icons');
+const root = resolve(__dirname, "..");
+const svgPath = resolve(root, "assets/icon.svg");
+const outDir = resolve(root, "icons");
 
 mkdirSync(outDir, { recursive: true });
 
@@ -22,4 +22,4 @@ for (const size of sizes) {
   console.log(`Generated icons/icon-${size}.png`);
 }
 
-console.log('Done — all icons generated.');
+console.log("Done — all icons generated.");

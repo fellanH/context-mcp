@@ -1,10 +1,23 @@
 import { useState, useEffect } from "react";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Badge } from "../../components/ui/badge";
-import { Loader2, Link2, Unlink, RefreshCw, Cloud, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  Loader2,
+  Link2,
+  Unlink,
+  RefreshCw,
+  Cloud,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface LinkStatus {
@@ -29,7 +42,10 @@ function useApi() {
       const res = await fetch(`${base}/api/local/link`);
       return res.json();
     },
-    async link(apiKey: string, hostedUrl?: string): Promise<LinkStatus & { error?: string }> {
+    async link(
+      apiKey: string,
+      hostedUrl?: string,
+    ): Promise<LinkStatus & { error?: string }> {
       const res = await fetch(`${base}/api/local/link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -55,7 +71,8 @@ export function Sync() {
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
 
   useEffect(() => {
-    api.getLinkStatus()
+    api
+      .getLinkStatus()
       .then(setStatus)
       .catch(() => setStatus({ linked: false }))
       .finally(() => setLoading(false));
@@ -65,11 +82,20 @@ export function Sync() {
     if (!apiKey.trim()) return;
     setLinking(true);
     try {
-      const result = await api.link(apiKey.trim(), hostedUrl.trim() || undefined);
+      const result = await api.link(
+        apiKey.trim(),
+        hostedUrl.trim() || undefined,
+      );
       if (result.error) {
         toast.error(result.error);
       } else {
-        setStatus({ linked: true, email: result.email, tier: result.tier, hostedUrl: hostedUrl.trim() || undefined, linkedAt: new Date().toISOString() });
+        setStatus({
+          linked: true,
+          email: result.email,
+          tier: result.tier,
+          hostedUrl: hostedUrl.trim() || undefined,
+          linkedAt: new Date().toISOString(),
+        });
         setApiKey("");
         toast.success(`Linked to ${result.email}`);
       }
@@ -98,7 +124,9 @@ export function Sync() {
         toast.error(result.error);
       } else {
         setLastSync(result);
-        toast.success(`Synced: ${result.pushed} pushed, ${result.pulled} pulled`);
+        toast.success(
+          `Synced: ${result.pushed} pushed, ${result.pulled} pulled`,
+        );
       }
     } catch {
       toast.error("Sync failed");
@@ -131,9 +159,13 @@ export function Sync() {
             <Cloud className="size-4" />
             <CardTitle className="text-base">Account Link</CardTitle>
             {status?.linked ? (
-              <Badge variant="default" className="ml-auto">Linked</Badge>
+              <Badge variant="default" className="ml-auto">
+                Linked
+              </Badge>
             ) : (
-              <Badge variant="secondary" className="ml-auto">Not linked</Badge>
+              <Badge variant="secondary" className="ml-auto">
+                Not linked
+              </Badge>
             )}
           </div>
         </CardHeader>
@@ -148,13 +180,17 @@ export function Sync() {
                 {status.hostedUrl && (
                   <>
                     <span className="text-muted-foreground">Server</span>
-                    <span className="text-xs font-mono">{status.hostedUrl}</span>
+                    <span className="text-xs font-mono">
+                      {status.hostedUrl}
+                    </span>
                   </>
                 )}
                 {status.linkedAt && (
                   <>
                     <span className="text-muted-foreground">Linked</span>
-                    <span>{new Date(status.linkedAt).toLocaleDateString()}</span>
+                    <span>
+                      {new Date(status.linkedAt).toLocaleDateString()}
+                    </span>
                   </>
                 )}
               </div>
@@ -177,7 +213,10 @@ export function Sync() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="hostedUrl">
-                  Server URL <span className="text-muted-foreground text-xs">(optional)</span>
+                  Server URL{" "}
+                  <span className="text-muted-foreground text-xs">
+                    (optional)
+                  </span>
                 </Label>
                 <Input
                   id="hostedUrl"
@@ -186,7 +225,11 @@ export function Sync() {
                   placeholder="https://api.context-vault.com"
                 />
               </div>
-              <Button size="sm" onClick={handleLink} disabled={linking || !apiKey.trim()}>
+              <Button
+                size="sm"
+                onClick={handleLink}
+                disabled={linking || !apiKey.trim()}
+              >
                 {linking ? (
                   <Loader2 className="size-3.5 animate-spin mr-1.5" />
                 ) : (
@@ -211,7 +254,8 @@ export function Sync() {
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Sync entries between your local vault and hosted account.
-              Local-only entries are pushed up, remote-only entries are pulled down.
+              Local-only entries are pushed up, remote-only entries are pulled
+              down.
             </p>
 
             <Button size="sm" onClick={handleSync} disabled={syncing}>

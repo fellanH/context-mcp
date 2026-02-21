@@ -2,12 +2,7 @@ import { useState } from "react";
 import type { Entry } from "../lib/types";
 import { useDeleteEntry } from "../lib/hooks";
 import { ApiError } from "../lib/api";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "./ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -44,15 +39,21 @@ interface EntryInspectorProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function EntryInspector({ entry, open, onOpenChange }: EntryInspectorProps) {
+export function EntryInspector({
+  entry,
+  open,
+  onOpenChange,
+}: EntryInspectorProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const deleteEntry = useDeleteEntry();
 
   if (!entry) return null;
 
-  const requiresConfirmation = entry.category === "knowledge" || entry.category === "entity";
-  const confirmSlug = entry.source?.split("/").pop()?.replace(".md", "") || entry.id.slice(0, 8);
+  const requiresConfirmation =
+    entry.category === "knowledge" || entry.category === "entity";
+  const confirmSlug =
+    entry.source?.split("/").pop()?.replace(".md", "") || entry.id.slice(0, 8);
 
   const handleCopyJson = () => {
     navigator.clipboard.writeText(JSON.stringify(entry, null, 2));
@@ -94,7 +95,13 @@ export function EntryInspector({ entry, open, onOpenChange }: EntryInspectorProp
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 {breadcrumbs.map((crumb, i) => (
                   <div key={i} className="flex items-center gap-1.5">
-                    <span className={i === breadcrumbs.length - 1 ? "text-foreground font-medium" : ""}>
+                    <span
+                      className={
+                        i === breadcrumbs.length - 1
+                          ? "text-foreground font-medium"
+                          : ""
+                      }
+                    >
                       {crumb}
                     </span>
                     {i < breadcrumbs.length - 1 && <span>/</span>}
@@ -204,7 +211,9 @@ export function EntryInspector({ entry, open, onOpenChange }: EntryInspectorProp
                         <Calendar className="size-3" />
                         Created
                       </Label>
-                      <div className="text-sm">{entry.created.toLocaleString()}</div>
+                      <div className="text-sm">
+                        {entry.created.toLocaleString()}
+                      </div>
                     </div>
 
                     <div className="space-y-1.5 rounded-md border border-border/60 p-3">
@@ -212,7 +221,9 @@ export function EntryInspector({ entry, open, onOpenChange }: EntryInspectorProp
                         <Calendar className="size-3" />
                         Updated
                       </Label>
-                      <div className="text-sm">{entry.updated.toLocaleString()}</div>
+                      <div className="text-sm">
+                        {entry.updated.toLocaleString()}
+                      </div>
                     </div>
 
                     <div className="space-y-1.5 rounded-md border border-border/60 p-3 sm:col-span-2">
@@ -223,12 +234,18 @@ export function EntryInspector({ entry, open, onOpenChange }: EntryInspectorProp
                       <div className="flex flex-wrap gap-1">
                         {entry.tags.length > 0 ? (
                           entry.tags.map((tag) => (
-                            <Badge key={tag} variant="outline" className="text-xs">
+                            <Badge
+                              key={tag}
+                              variant="outline"
+                              className="text-xs"
+                            >
                               {tag}
                             </Badge>
                           ))
                         ) : (
-                          <span className="text-xs text-muted-foreground">No tags</span>
+                          <span className="text-xs text-muted-foreground">
+                            No tags
+                          </span>
                         )}
                       </div>
                     </div>
@@ -245,14 +262,17 @@ export function EntryInspector({ entry, open, onOpenChange }: EntryInspectorProp
                       </div>
                     )}
 
-                    {entry.metadata && Object.keys(entry.metadata).length > 0 && (
-                      <div className="space-y-1.5 rounded-md border border-border/60 p-3 sm:col-span-2">
-                        <Label className="text-xs text-muted-foreground">Metadata</Label>
-                        <pre className="bg-muted rounded px-2.5 py-2 text-xs font-mono overflow-x-auto">
-                          {JSON.stringify(entry.metadata, null, 2)}
-                        </pre>
-                      </div>
-                    )}
+                    {entry.metadata &&
+                      Object.keys(entry.metadata).length > 0 && (
+                        <div className="space-y-1.5 rounded-md border border-border/60 p-3 sm:col-span-2">
+                          <Label className="text-xs text-muted-foreground">
+                            Metadata
+                          </Label>
+                          <pre className="bg-muted rounded px-2.5 py-2 text-xs font-mono overflow-x-auto">
+                            {JSON.stringify(entry.metadata, null, 2)}
+                          </pre>
+                        </div>
+                      )}
                   </div>
                 </ScrollArea>
               </TabsContent>
@@ -285,8 +305,8 @@ export function EntryInspector({ entry, open, onOpenChange }: EntryInspectorProp
                 </div>
               ) : (
                 <p>
-                  This event entry will be permanently deleted. This action cannot be
-                  undone.
+                  This event entry will be permanently deleted. This action
+                  cannot be undone.
                 </p>
               )}
             </AlertDialogDescription>
@@ -295,8 +315,13 @@ export function EntryInspector({ entry, open, onOpenChange }: EntryInspectorProp
             <AlertDialogCancel onClick={() => setDeleteConfirmText("")}>
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleteEntry.isPending}>
-              {deleteEntry.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleteEntry.isPending}
+            >
+              {deleteEntry.isPending && (
+                <Loader2 className="size-4 mr-2 animate-spin" />
+              )}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

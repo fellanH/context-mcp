@@ -28,15 +28,15 @@ Read this file when working on marketing, sales, or content tasks. Not loaded au
 
 All go-to-market strategy and tracking docs live in `docs/gtm/`:
 
-| File | Purpose |
-|------|---------|
-| `GTM-BACKLOG.md` | Prioritized GTM tasks (Now/Next/Later) with ICE scoring — start here for GTM sessions |
-| `marketing-plan.md` | Landing page architecture, SEO, events, CRO backlog |
-| `content-tracker.md` | Status of all 32 content pieces (blog, video, BIP) |
-| `weekly-log.md` | Execution journal and weekly scorecard |
-| `pipeline.md` | Founder-led sales CRM |
-| `sales-playbook.md` | Core pitch, pipeline targets, objection handling |
-| `sales-assets.md` | Campaign materials, demo scripts, collateral status |
-| `funnel-metrics.md` | Funnel stages and 90-day numeric targets |
-| `assets/` | Campaign drafts (X threads, Reddit posts, HN posts, BIP posts) |
-| `demos/` | Demo video scripts |
+| File                 | Purpose                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------- |
+| `GTM-BACKLOG.md`     | Prioritized GTM tasks (Now/Next/Later) with ICE scoring — start here for GTM sessions |
+| `marketing-plan.md`  | Landing page architecture, SEO, events, CRO backlog                                   |
+| `content-tracker.md` | Status of all 32 content pieces (blog, video, BIP)                                    |
+| `weekly-log.md`      | Execution journal and weekly scorecard                                                |
+| `pipeline.md`        | Founder-led sales CRM                                                                 |
+| `sales-playbook.md`  | Core pitch, pipeline targets, objection handling                                      |
+| `sales-assets.md`    | Campaign materials, demo scripts, collateral status                                   |
+| `funnel-metrics.md`  | Funnel stages and 90-day numeric targets                                              |
+| `assets/`            | Campaign drafts (X threads, Reddit posts, HN posts, BIP posts)                        |
+| `demos/`             | Demo video scripts                                                                    |

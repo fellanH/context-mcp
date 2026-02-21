@@ -16,14 +16,20 @@ export function err(text, code = "UNKNOWN") {
 
 export function ensureVaultExists(config) {
   if (!config.vaultDirExists) {
-    return err(`Vault directory not found: ${config.vaultDir}. Run context_status for diagnostics.`, "VAULT_NOT_FOUND");
+    return err(
+      `Vault directory not found: ${config.vaultDir}. Run context_status for diagnostics.`,
+      "VAULT_NOT_FOUND",
+    );
   }
   return null;
 }
 
 export function ensureValidKind(kind) {
   if (!/^[a-z][a-z0-9_-]*$/.test(kind)) {
-    return err("Required: kind (lowercase alphanumeric, e.g. 'insight', 'reference')", "INVALID_KIND");
+    return err(
+      "Required: kind (lowercase alphanumeric, e.g. 'insight', 'reference')",
+      "INVALID_KIND",
+    );
   }
   return null;
 }

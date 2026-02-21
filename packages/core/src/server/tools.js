@@ -49,12 +49,18 @@ export function registerTools(server, ctx) {
         return await Promise.race([
           Promise.resolve(handler(...args)),
           new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error("TOOL_TIMEOUT")), TOOL_TIMEOUT_MS);
+            timer = setTimeout(
+              () => reject(new Error("TOOL_TIMEOUT")),
+              TOOL_TIMEOUT_MS,
+            );
           }),
         ]);
       } catch (e) {
         if (e.message === "TOOL_TIMEOUT") {
-          return err("Tool timed out after 60s. Try a simpler query or run `context-vault reindex` first.", "TIMEOUT");
+          return err(
+            "Tool timed out after 60s. Try a simpler query or run `context-vault reindex` first.",
+            "TIMEOUT",
+          );
         }
         throw e;
       } finally {
@@ -82,14 +88,20 @@ export function registerTools(server, ctx) {
         reindexDone = true;
         const total = stats.added + stats.updated + stats.removed;
         if (total > 0) {
-          console.error(`[context-vault] Auto-reindex: +${stats.added} ~${stats.updated} -${stats.removed} (${stats.unchanged} unchanged)`);
+          console.error(
+            `[context-vault] Auto-reindex: +${stats.added} ~${stats.updated} -${stats.removed} (${stats.unchanged} unchanged)`,
+          );
         }
       })
       .catch((e) => {
         reindexAttempts++;
-        console.error(`[context-vault] Auto-reindex failed (attempt ${reindexAttempts}/${MAX_REINDEX_ATTEMPTS}): ${e.message}`);
+        console.error(
+          `[context-vault] Auto-reindex failed (attempt ${reindexAttempts}/${MAX_REINDEX_ATTEMPTS}): ${e.message}`,
+        );
         if (reindexAttempts >= MAX_REINDEX_ATTEMPTS) {
-          console.error(`[context-vault] Giving up on auto-reindex. Run \`context-vault reindex\` manually to diagnose.`);
+          console.error(
+            `[context-vault] Giving up on auto-reindex. Run \`context-vault reindex\` manually to diagnose.`,
+          );
           reindexDone = true;
           reindexFailed = true;
         } else {
@@ -102,14 +114,19 @@ export function registerTools(server, ctx) {
 
   // ─── Register all tool handlers ─────────────────────────────────────────────
 
-  const shared = { ensureIndexed, get reindexFailed() { return reindexFailed; } };
+  const shared = {
+    ensureIndexed,
+    get reindexFailed() {
+      return reindexFailed;
+    },
+  };
 
   for (const mod of toolModules) {
     server.tool(
       mod.name,
       mod.description,
       mod.inputSchema,
-      tracked((args) => mod.handler(args, ctx, shared))
+      tracked((args) => mod.handler(args, ctx, shared)),
     );
   }
 }

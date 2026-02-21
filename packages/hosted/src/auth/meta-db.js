@@ -111,7 +111,10 @@ export function initMetaDb(dbPath) {
   metaDb.exec(META_SCHEMA);
 
   // Add DEK columns for at-rest encryption (idempotent)
-  const cols = metaDb.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  const cols = metaDb
+    .prepare("PRAGMA table_info(users)")
+    .all()
+    .map((c) => c.name);
   if (!cols.includes("encrypted_dek")) {
     metaDb.exec(`ALTER TABLE users ADD COLUMN encrypted_dek BLOB`);
   }
@@ -120,10 +123,14 @@ export function initMetaDb(dbPath) {
   }
   if (!cols.includes("google_id")) {
     metaDb.exec(`ALTER TABLE users ADD COLUMN google_id TEXT`);
-    metaDb.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL`);
+    metaDb.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL`,
+    );
   }
   if (!cols.includes("encryption_mode")) {
-    metaDb.exec(`ALTER TABLE users ADD COLUMN encryption_mode TEXT NOT NULL DEFAULT 'legacy'`);
+    metaDb.exec(
+      `ALTER TABLE users ADD COLUMN encryption_mode TEXT NOT NULL DEFAULT 'legacy'`,
+    );
   }
   if (!cols.includes("client_key_share_hash")) {
     metaDb.exec(`ALTER TABLE users ADD COLUMN client_key_share_hash TEXT`);
@@ -136,7 +143,8 @@ export function initMetaDb(dbPath) {
  * Get the meta database instance.
  */
 export function getMetaDb() {
-  if (!metaDb) throw new Error("Meta DB not initialized. Call initMetaDb first.");
+  if (!metaDb)
+    throw new Error("Meta DB not initialized. Call initMetaDb first.");
   return metaDb;
 }
 
@@ -166,32 +174,64 @@ export function prepareMetaStatements(db) {
   if (stmts) return stmts;
   stmts = {
     // Users
-    createUser: db.prepare(`INSERT INTO users (id, email, name, tier) VALUES (?, ?, ?, ?)`),
+    createUser: db.prepare(
+      `INSERT INTO users (id, email, name, tier) VALUES (?, ?, ?, ?)`,
+    ),
     getUserById: db.prepare(`SELECT * FROM users WHERE id = ?`),
     getUserByEmail: db.prepare(`SELECT * FROM users WHERE email = ?`),
-    updateUserTier: db.prepare(`UPDATE users SET tier = ?, updated_at = datetime('now') WHERE id = ?`),
-    getUserByStripeCustomerId: db.prepare(`SELECT * FROM users WHERE stripe_customer_id = ?`),
-    updateUserStripeId: db.prepare(`UPDATE users SET stripe_customer_id = ?, updated_at = datetime('now') WHERE id = ?`),
+    updateUserTier: db.prepare(
+      `UPDATE users SET tier = ?, updated_at = datetime('now') WHERE id = ?`,
+    ),
+    getUserByStripeCustomerId: db.prepare(
+      `SELECT * FROM users WHERE stripe_customer_id = ?`,
+    ),
+    updateUserStripeId: db.prepare(
+      `UPDATE users SET stripe_customer_id = ?, updated_at = datetime('now') WHERE id = ?`,
+    ),
 
     getUserByGoogleId: db.prepare(`SELECT * FROM users WHERE google_id = ?`),
-    createUserWithGoogle: db.prepare(`INSERT INTO users (id, email, name, tier, google_id) VALUES (?, ?, ?, ?, ?)`),
+    createUserWithGoogle: db.prepare(
+      `INSERT INTO users (id, email, name, tier, google_id) VALUES (?, ?, ?, ?, ?)`,
+    ),
 
     // API Keys
-    createApiKey: db.prepare(`INSERT INTO api_keys (id, user_id, key_hash, key_prefix, name) VALUES (?, ?, ?, ?, ?)`),
-    getKeyByHash: db.prepare(`SELECT ak.*, u.tier, u.email, u.stripe_customer_id FROM api_keys ak JOIN users u ON ak.user_id = u.id WHERE ak.key_hash = ?`),
-    updateKeyLastUsed: db.prepare(`UPDATE api_keys SET last_used = datetime('now') WHERE id = ?`),
-    listUserKeys: db.prepare(`SELECT id, key_prefix, name, scopes, last_used, expires_at, created_at FROM api_keys WHERE user_id = ? ORDER BY created_at DESC`),
-    deleteApiKey: db.prepare(`DELETE FROM api_keys WHERE id = ? AND user_id = ?`),
+    createApiKey: db.prepare(
+      `INSERT INTO api_keys (id, user_id, key_hash, key_prefix, name) VALUES (?, ?, ?, ?, ?)`,
+    ),
+    getKeyByHash: db.prepare(
+      `SELECT ak.*, u.tier, u.email, u.stripe_customer_id FROM api_keys ak JOIN users u ON ak.user_id = u.id WHERE ak.key_hash = ?`,
+    ),
+    updateKeyLastUsed: db.prepare(
+      `UPDATE api_keys SET last_used = datetime('now') WHERE id = ?`,
+    ),
+    listUserKeys: db.prepare(
+      `SELECT id, key_prefix, name, scopes, last_used, expires_at, created_at FROM api_keys WHERE user_id = ? ORDER BY created_at DESC`,
+    ),
+    deleteApiKey: db.prepare(
+      `DELETE FROM api_keys WHERE id = ? AND user_id = ?`,
+    ),
 
     // Usage
-    logUsage: db.prepare(`INSERT INTO usage_log (user_id, operation) VALUES (?, ?)`),
-    countUsageToday: db.prepare(`SELECT COUNT(*) as c FROM usage_log WHERE user_id = ? AND operation = ? AND timestamp >= date('now')`),
-    countEntries: db.prepare(`SELECT COUNT(*) as c FROM usage_log WHERE user_id = ? AND operation = 'save_context'`),
+    logUsage: db.prepare(
+      `INSERT INTO usage_log (user_id, operation) VALUES (?, ?)`,
+    ),
+    countUsageToday: db.prepare(
+      `SELECT COUNT(*) as c FROM usage_log WHERE user_id = ? AND operation = ? AND timestamp >= date('now')`,
+    ),
+    countEntries: db.prepare(
+      `SELECT COUNT(*) as c FROM usage_log WHERE user_id = ? AND operation = 'save_context'`,
+    ),
 
     // DEK (encryption)
-    updateUserDek: db.prepare(`UPDATE users SET encrypted_dek = ?, dek_salt = ?, updated_at = datetime('now') WHERE id = ?`),
-    updateUserDekSplitAuthority: db.prepare(`UPDATE users SET encrypted_dek = ?, dek_salt = ?, encryption_mode = 'split-authority', client_key_share_hash = ?, updated_at = datetime('now') WHERE id = ?`),
-    getUserDekData: db.prepare(`SELECT encrypted_dek, dek_salt, encryption_mode FROM users WHERE id = ?`),
+    updateUserDek: db.prepare(
+      `UPDATE users SET encrypted_dek = ?, dek_salt = ?, updated_at = datetime('now') WHERE id = ?`,
+    ),
+    updateUserDekSplitAuthority: db.prepare(
+      `UPDATE users SET encrypted_dek = ?, dek_salt = ?, encryption_mode = 'split-authority', client_key_share_hash = ?, updated_at = datetime('now') WHERE id = ?`,
+    ),
+    getUserDekData: db.prepare(
+      `SELECT encrypted_dek, dek_salt, encryption_mode FROM users WHERE id = ?`,
+    ),
 
     // Account deletion
     deleteUserKeys: db.prepare(`DELETE FROM api_keys WHERE user_id = ?`),
@@ -199,12 +239,20 @@ export function prepareMetaStatements(db) {
     deleteUser: db.prepare(`DELETE FROM users WHERE id = ?`),
 
     // Webhook idempotency
-    getProcessedWebhook: db.prepare(`SELECT event_id FROM processed_webhooks WHERE event_id = ?`),
-    insertProcessedWebhook: db.prepare(`INSERT INTO processed_webhooks (event_id, event_type) VALUES (?, ?)`),
-    pruneOldWebhooks: db.prepare(`DELETE FROM processed_webhooks WHERE processed_at < datetime('now', '-7 days')`),
+    getProcessedWebhook: db.prepare(
+      `SELECT event_id FROM processed_webhooks WHERE event_id = ?`,
+    ),
+    insertProcessedWebhook: db.prepare(
+      `INSERT INTO processed_webhooks (event_id, event_type) VALUES (?, ?)`,
+    ),
+    pruneOldWebhooks: db.prepare(
+      `DELETE FROM processed_webhooks WHERE processed_at < datetime('now', '-7 days')`,
+    ),
 
     // Rate limiting (persistent across restarts)
-    checkRateLimit: db.prepare(`SELECT count, window_start FROM rate_limits WHERE key = ?`),
+    checkRateLimit: db.prepare(
+      `SELECT count, window_start FROM rate_limits WHERE key = ?`,
+    ),
     upsertRateLimit: db.prepare(`
       INSERT INTO rate_limits (key, count, window_start)
       VALUES (?, 1, datetime('now'))
@@ -220,10 +268,14 @@ export function prepareMetaStatements(db) {
           ELSE window_start
         END
     `),
-    pruneRateLimits: db.prepare(`DELETE FROM rate_limits WHERE datetime(window_start, '+1 hour') < datetime('now')`),
+    pruneRateLimits: db.prepare(
+      `DELETE FROM rate_limits WHERE datetime(window_start, '+1 hour') < datetime('now')`,
+    ),
 
     // Teams
-    createTeam: db.prepare(`INSERT INTO teams (id, name, owner_id, tier, stripe_customer_id) VALUES (?, ?, ?, ?, ?)`),
+    createTeam: db.prepare(
+      `INSERT INTO teams (id, name, owner_id, tier, stripe_customer_id) VALUES (?, ?, ?, ?, ?)`,
+    ),
     getTeamById: db.prepare(`SELECT * FROM teams WHERE id = ?`),
     getTeamsByUserId: db.prepare(`
       SELECT t.*, tm.role FROM teams t
@@ -233,28 +285,52 @@ export function prepareMetaStatements(db) {
     `),
     updateTeam: db.prepare(`UPDATE teams SET name = ? WHERE id = ?`),
     deleteTeam: db.prepare(`DELETE FROM teams WHERE id = ?`),
-    updateTeamStripeId: db.prepare(`UPDATE teams SET stripe_customer_id = ? WHERE id = ?`),
+    updateTeamStripeId: db.prepare(
+      `UPDATE teams SET stripe_customer_id = ? WHERE id = ?`,
+    ),
 
     // Team Members
-    addTeamMember: db.prepare(`INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, ?)`),
-    getTeamMember: db.prepare(`SELECT * FROM team_members WHERE team_id = ? AND user_id = ?`),
+    addTeamMember: db.prepare(
+      `INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, ?)`,
+    ),
+    getTeamMember: db.prepare(
+      `SELECT * FROM team_members WHERE team_id = ? AND user_id = ?`,
+    ),
     getTeamMembers: db.prepare(`
       SELECT tm.*, u.email, u.name FROM team_members tm
       JOIN users u ON tm.user_id = u.id
       WHERE tm.team_id = ?
       ORDER BY tm.joined_at ASC
     `),
-    updateMemberRole: db.prepare(`UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ?`),
-    removeTeamMember: db.prepare(`DELETE FROM team_members WHERE team_id = ? AND user_id = ?`),
-    countTeamMembers: db.prepare(`SELECT COUNT(*) as c FROM team_members WHERE team_id = ?`),
+    updateMemberRole: db.prepare(
+      `UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ?`,
+    ),
+    removeTeamMember: db.prepare(
+      `DELETE FROM team_members WHERE team_id = ? AND user_id = ?`,
+    ),
+    countTeamMembers: db.prepare(
+      `SELECT COUNT(*) as c FROM team_members WHERE team_id = ?`,
+    ),
 
     // Team Invites
-    createTeamInvite: db.prepare(`INSERT INTO team_invites (id, team_id, email, invited_by, token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`),
-    getInviteByToken: db.prepare(`SELECT * FROM team_invites WHERE token = ? AND status = 'pending'`),
-    getInvitesByTeam: db.prepare(`SELECT * FROM team_invites WHERE team_id = ? ORDER BY created_at DESC`),
-    getPendingInviteByEmail: db.prepare(`SELECT * FROM team_invites WHERE team_id = ? AND email = ? AND status = 'pending'`),
-    updateInviteStatus: db.prepare(`UPDATE team_invites SET status = ? WHERE id = ?`),
-    expireOldInvites: db.prepare(`UPDATE team_invites SET status = 'expired' WHERE status = 'pending' AND expires_at < datetime('now')`),
+    createTeamInvite: db.prepare(
+      `INSERT INTO team_invites (id, team_id, email, invited_by, token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    ),
+    getInviteByToken: db.prepare(
+      `SELECT * FROM team_invites WHERE token = ? AND status = 'pending'`,
+    ),
+    getInvitesByTeam: db.prepare(
+      `SELECT * FROM team_invites WHERE team_id = ? ORDER BY created_at DESC`,
+    ),
+    getPendingInviteByEmail: db.prepare(
+      `SELECT * FROM team_invites WHERE team_id = ? AND email = ? AND status = 'pending'`,
+    ),
+    updateInviteStatus: db.prepare(
+      `UPDATE team_invites SET status = ? WHERE id = ?`,
+    ),
+    expireOldInvites: db.prepare(
+      `UPDATE team_invites SET status = 'expired' WHERE status = 'pending' AND expires_at < datetime('now')`,
+    ),
   };
   return stmts;
 }
@@ -274,7 +350,9 @@ export function validateApiKey(key) {
   if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
 
   // Update last used (fire-and-forget)
-  try { s.updateKeyLastUsed.run(row.id); } catch {}
+  try {
+    s.updateKeyLastUsed.run(row.id);
+  } catch {}
 
   return {
     keyId: row.id,

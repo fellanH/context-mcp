@@ -6,11 +6,11 @@ Context Vault encrypts entry data at rest in hosted mode using AES-256-GCM. This
 
 In hosted mode, when `VAULT_MASTER_SECRET` is set, every entry's sensitive fields are encrypted before being written to the database:
 
-| Field | Encrypted | Notes |
-|-------|-----------|-------|
-| `body` | Yes | Primary content — always encrypted |
-| `title` | Yes (copy) | An encrypted copy is stored in `title_encrypted`. The plaintext title is also kept (see below) |
-| `meta` | Yes (if present) | Encrypted copy in `meta_encrypted`. Plaintext kept for structural queries |
+| Field   | Encrypted        | Notes                                                                                          |
+| ------- | ---------------- | ---------------------------------------------------------------------------------------------- |
+| `body`  | Yes              | Primary content — always encrypted                                                             |
+| `title` | Yes (copy)       | An encrypted copy is stored in `title_encrypted`. The plaintext title is also kept (see below) |
+| `meta`  | Yes (if present) | Encrypted copy in `meta_encrypted`. Plaintext kept for structural queries                      |
 
 Each entry gets a unique 12-byte IV (nonce). The auth tag is appended to the ciphertext, providing authenticated encryption — tampering is detected on decryption.
 
@@ -18,17 +18,17 @@ Each entry gets a unique 12-byte IV (nonce). The auth tag is appended to the cip
 
 These fields remain in plaintext in the SQLite database:
 
-| Field | Why plaintext |
-|-------|---------------|
-| `title` | Required by the FTS5 full-text search index. Without it, `get_context` queries can't match on titles |
-| `body` (FTS preview) | The FTS index tokenizes body text for search. FTS5 stores its own copy of indexed content |
-| `kind` | Structural metadata used for filtering (`kind = 'insight'`) |
-| `category` | Derived from kind (`knowledge`, `entity`, `event`) — used for filtering |
-| `tags` | Stored as JSON string — used for tag-based filtering |
-| `source` | Provenance tracking |
-| `identity_key` | Entity deduplication key |
-| `created_at`, `expires_at` | Temporal queries and TTL expiry |
-| Embeddings | Vector embeddings are not reversible to plaintext, but they leak semantic similarity. An attacker with access to embeddings could determine that two entries are about similar topics |
+| Field                      | Why plaintext                                                                                                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`                    | Required by the FTS5 full-text search index. Without it, `get_context` queries can't match on titles                                                                                  |
+| `body` (FTS preview)       | The FTS index tokenizes body text for search. FTS5 stores its own copy of indexed content                                                                                             |
+| `kind`                     | Structural metadata used for filtering (`kind = 'insight'`)                                                                                                                           |
+| `category`                 | Derived from kind (`knowledge`, `entity`, `event`) — used for filtering                                                                                                               |
+| `tags`                     | Stored as JSON string — used for tag-based filtering                                                                                                                                  |
+| `source`                   | Provenance tracking                                                                                                                                                                   |
+| `identity_key`             | Entity deduplication key                                                                                                                                                              |
+| `created_at`, `expires_at` | Temporal queries and TTL expiry                                                                                                                                                       |
+| Embeddings                 | Vector embeddings are not reversible to plaintext, but they leak semantic similarity. An attacker with access to embeddings could determine that two entries are about similar topics |
 
 ## Split-authority encryption model
 
@@ -76,13 +76,13 @@ This is an intentional trade-off: search functionality requires some plaintext e
 
 ## Threat model
 
-| Threat | Protected? | Notes |
-|--------|-----------|-------|
-| Database file stolen (disk/backup) | Partial | Bodies encrypted, but titles and FTS index readable |
-| Server compromise (split-authority) | Yes | Attacker needs client key share from every user |
-| Server compromise (legacy) | No | Server holds all keys needed to decrypt |
-| Man-in-the-middle | Yes | HTTPS required; API keys and vault secrets transmitted over TLS |
-| Insider with DB access | Partial | Same as "database file stolen" |
+| Threat                              | Protected? | Notes                                                           |
+| ----------------------------------- | ---------- | --------------------------------------------------------------- |
+| Database file stolen (disk/backup)  | Partial    | Bodies encrypted, but titles and FTS index readable             |
+| Server compromise (split-authority) | Yes        | Attacker needs client key share from every user                 |
+| Server compromise (legacy)          | No         | Server holds all keys needed to decrypt                         |
+| Man-in-the-middle                   | Yes        | HTTPS required; API keys and vault secrets transmitted over TLS |
+| Insider with DB access              | Partial    | Same as "database file stolen"                                  |
 
 ## Recommendations for sensitive data
 
@@ -98,9 +98,9 @@ This is an intentional trade-off: search functionality requires some plaintext e
 
 ## Implementation files
 
-| File | Role |
-|------|------|
-| `packages/hosted/src/encryption/crypto.js` | AES-256-GCM encrypt/decrypt primitives |
-| `packages/hosted/src/encryption/keys.js` | DEK generation, scrypt derivation, split-authority |
-| `packages/hosted/src/encryption/vault-crypto.js` | Bridge between vault entries and crypto layer |
-| `packages/hosted/src/server/user-ctx.js` | Builds per-request decrypt function from user credentials |
+| File                                             | Role                                                      |
+| ------------------------------------------------ | --------------------------------------------------------- |
+| `packages/hosted/src/encryption/crypto.js`       | AES-256-GCM encrypt/decrypt primitives                    |
+| `packages/hosted/src/encryption/keys.js`         | DEK generation, scrypt derivation, split-authority        |
+| `packages/hosted/src/encryption/vault-crypto.js` | Bridge between vault entries and crypto layer             |
+| `packages/hosted/src/server/user-ctx.js`         | Builds per-request decrypt function from user credentials |

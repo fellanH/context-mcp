@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useJoinTeam } from "../../lib/hooks";
@@ -13,11 +18,11 @@ export function TeamInvite() {
   const token = searchParams.get("token") || "";
   const teamId = searchParams.get("team") || "";
   const isMissingParams = !token || !teamId;
-  const [status, setStatus] = useState<"idle" | "joining" | "success" | "error">(
-    isMissingParams ? "error" : "idle"
-  );
+  const [status, setStatus] = useState<
+    "idle" | "joining" | "success" | "error"
+  >(isMissingParams ? "error" : "idle");
   const [errorMsg, setErrorMsg] = useState(
-    isMissingParams ? "Invalid invite link. Missing token or team ID." : ""
+    isMissingParams ? "Invalid invite link. Missing token or team ID." : "",
   );
 
   const handleJoin = () => {
@@ -35,7 +40,7 @@ export function TeamInvite() {
           setStatus("error");
           setErrorMsg(err.message || "Failed to join team");
         },
-      }
+      },
     );
   };
 
@@ -68,7 +73,9 @@ export function TeamInvite() {
             <div className="flex flex-col items-center gap-3 py-4">
               <CheckCircle className="size-8 text-emerald-500" />
               <p className="text-sm font-medium">You've joined the team!</p>
-              <p className="text-xs text-muted-foreground">Redirecting to team dashboard...</p>
+              <p className="text-xs text-muted-foreground">
+                Redirecting to team dashboard...
+              </p>
             </div>
           )}
 
@@ -77,7 +84,11 @@ export function TeamInvite() {
               <XCircle className="size-8 text-red-500" />
               <p className="text-sm font-medium">Could not join team</p>
               <p className="text-xs text-muted-foreground">{errorMsg}</p>
-              <Button variant="outline" onClick={() => navigate("/")} className="mt-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate("/")}
+                className="mt-2"
+              >
                 Go to Dashboard
               </Button>
             </div>

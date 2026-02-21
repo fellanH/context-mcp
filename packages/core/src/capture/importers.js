@@ -10,7 +10,10 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname, basename } from "node:path";
-import { parseFrontmatter, parseEntryFromMarkdown } from "../core/frontmatter.js";
+import {
+  parseFrontmatter,
+  parseEntryFromMarkdown,
+} from "../core/frontmatter.js";
 import { dirToKind } from "../core/files.js";
 
 // ─── Format Detection ────────────────────────────────────────────────────────
@@ -81,8 +84,13 @@ function parseCsvLine(line, delimiter) {
 // ─── Recognized CSV columns ─────────────────────────────────────────────────
 
 const KNOWN_COLUMNS = new Set([
-  "kind", "title", "body", "tags", "source",
-  "identity_key", "expires_at",
+  "kind",
+  "title",
+  "body",
+  "tags",
+  "source",
+  "identity_key",
+  "expires_at",
 ]);
 
 // ─── Parsers ─────────────────────────────────────────────────────────────────
@@ -102,16 +110,18 @@ export function parseMarkdown(content, opts = {}) {
   const kind = fmMeta.kind || opts.kind || "insight";
   const parsed = parseEntryFromMarkdown(kind, rawBody, fmMeta);
 
-  return [{
-    kind,
-    title: parsed.title || fmMeta.title || null,
-    body: parsed.body || rawBody,
-    tags: Array.isArray(fmMeta.tags) ? fmMeta.tags : undefined,
-    meta: parsed.meta || undefined,
-    source: fmMeta.source || opts.source || "import",
-    identity_key: fmMeta.identity_key || undefined,
-    expires_at: fmMeta.expires_at || undefined,
-  }];
+  return [
+    {
+      kind,
+      title: parsed.title || fmMeta.title || null,
+      body: parsed.body || rawBody,
+      tags: Array.isArray(fmMeta.tags) ? fmMeta.tags : undefined,
+      meta: parsed.meta || undefined,
+      source: fmMeta.source || opts.source || "import",
+      identity_key: fmMeta.identity_key || undefined,
+      expires_at: fmMeta.expires_at || undefined,
+    },
+  ];
 }
 
 /**
@@ -128,7 +138,9 @@ export function parseCsv(content, delimiter, opts = {}) {
   const lines = content.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
 
-  const headers = parseCsvLine(lines[0], delimiter).map((h) => h.toLowerCase().trim());
+  const headers = parseCsvLine(lines[0], delimiter).map((h) =>
+    h.toLowerCase().trim(),
+  );
   const entries = [];
 
   for (let i = 1; i < lines.length; i++) {
@@ -153,7 +165,10 @@ export function parseCsv(content, delimiter, opts = {}) {
       } else if (col === "body" && val) {
         entry.body = val;
       } else if (col === "tags" && val) {
-        entry.tags = val.split(",").map((t) => t.trim()).filter(Boolean);
+        entry.tags = val
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
       } else if (col === "source" && val) {
         entry.source = val;
       } else if (col === "identity_key" && val) {
@@ -194,7 +209,11 @@ export function parseJson(content, opts = {}) {
 
   if (Array.isArray(data)) {
     // Array-of-entries OR ChatGPT export format
-    if (data.length > 0 && data[0].mapping && data[0].create_time !== undefined) {
+    if (
+      data.length > 0 &&
+      data[0].mapping &&
+      data[0].create_time !== undefined
+    ) {
       return parseChatGptExport(data, opts);
     }
     rawEntries = data;
@@ -230,7 +249,11 @@ function parseChatGptExport(conversations, opts = {}) {
 
     // Extract all assistant messages from the mapping
     const messages = Object.values(conv.mapping)
-      .filter((m) => m.message?.author?.role === "assistant" && m.message.content?.parts?.length)
+      .filter(
+        (m) =>
+          m.message?.author?.role === "assistant" &&
+          m.message.content?.parts?.length,
+      )
       .map((m) => m.message.content.parts.join("\n"))
       .filter(Boolean);
 
@@ -267,14 +290,18 @@ export function parseText(content, filePath, opts = {}) {
   if (!trimmed) return [];
 
   const name = basename(filePath, extname(filePath));
-  const title = name.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const title = name
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
-  return [{
-    kind: opts.kind || "insight",
-    title,
-    body: trimmed,
-    source: opts.source || "text-import",
-  }];
+  return [
+    {
+      kind: opts.kind || "insight",
+      title,
+      body: trimmed,
+      source: opts.source || "text-import",
+    },
+  ];
 }
 
 /**
@@ -313,7 +340,14 @@ export function parseFile(filePath, content, opts = {}) {
  * @returns {import("./import-pipeline.js").EntryData[]}
  */
 export function parseDirectory(dirPath, opts = {}) {
-  const extensions = opts.extensions || [".md", ".markdown", ".csv", ".tsv", ".json", ".txt"];
+  const extensions = opts.extensions || [
+    ".md",
+    ".markdown",
+    ".csv",
+    ".tsv",
+    ".json",
+    ".txt",
+  ];
   const entries = [];
 
   function walk(dir, inferredKind) {
@@ -331,9 +365,10 @@ export function parseDirectory(dirPath, opts = {}) {
 
       if (item.isDirectory()) {
         // Try to infer kind from directory name
-        const kind = dirToKind(item.name) !== item.name
-          ? dirToKind(item.name)
-          : inferredKind;
+        const kind =
+          dirToKind(item.name) !== item.name
+            ? dirToKind(item.name)
+            : inferredKind;
         walk(fullPath, kind);
       } else if (item.isFile()) {
         const ext = extname(item.name).toLowerCase();

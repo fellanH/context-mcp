@@ -30,23 +30,33 @@ export function CaptureView({ connected, serverOffline }: Props) {
         return;
       }
 
-      chrome.tabs.sendMessage(tabs[0].id, { type: "get_messages" } satisfies MessageType, (response: MessageType) => {
-        if (chrome.runtime.lastError) {
-          setExtractError("Make sure you're on a supported AI chat site.");
-          setState("idle");
-          return;
-        }
-        if (response?.type === "messages_result") {
-          setMessages(response.messages);
-          setPlatform(response.platform);
-          // Default: select all assistant messages
-          setSelected(new Set(response.messages.filter((m) => m.role === "assistant").map((m) => m.index)));
-          setState("idle");
-        } else {
-          setExtractError("Unexpected response from content script.");
-          setState("idle");
-        }
-      });
+      chrome.tabs.sendMessage(
+        tabs[0].id,
+        { type: "get_messages" } satisfies MessageType,
+        (response: MessageType) => {
+          if (chrome.runtime.lastError) {
+            setExtractError("Make sure you're on a supported AI chat site.");
+            setState("idle");
+            return;
+          }
+          if (response?.type === "messages_result") {
+            setMessages(response.messages);
+            setPlatform(response.platform);
+            // Default: select all assistant messages
+            setSelected(
+              new Set(
+                response.messages
+                  .filter((m) => m.role === "assistant")
+                  .map((m) => m.index),
+              ),
+            );
+            setState("idle");
+          } else {
+            setExtractError("Unexpected response from content script.");
+            setState("idle");
+          }
+        },
+      );
     });
   }, []);
 
@@ -89,7 +99,9 @@ export function CaptureView({ connected, serverOffline }: Props) {
             {
               type: "capture",
               kind: "reference",
-              title: msg.content.slice(0, 80) + (msg.content.length > 80 ? "..." : ""),
+              title:
+                msg.content.slice(0, 80) +
+                (msg.content.length > 80 ? "..." : ""),
               body: msg.content,
               tags: ["captured", "ai-chat", platform.toLowerCase()],
               source: "browser-extension",
@@ -104,11 +116,13 @@ export function CaptureView({ connected, serverOffline }: Props) {
                 return;
               }
               resolve();
-            }
+            },
           );
         });
       } catch (err) {
-        errors.push(`Message ${msg.index + 1}: ${err instanceof Error ? err.message : "Failed"}`);
+        errors.push(
+          `Message ${msg.index + 1}: ${err instanceof Error ? err.message : "Failed"}`,
+        );
       }
       setSaveProgress({ done: i + 1, total: toSave.length });
     }
@@ -180,7 +194,9 @@ export function CaptureView({ connected, serverOffline }: Props) {
     return (
       <div className="p-4">
         <div className="border border-border rounded-xl p-4 bg-card">
-          <div className="text-sm text-muted-foreground mb-3">{extractError}</div>
+          <div className="text-sm text-muted-foreground mb-3">
+            {extractError}
+          </div>
           <button
             onClick={extract}
             className="w-full py-2 px-3 rounded-lg text-sm font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer"
@@ -217,7 +233,8 @@ export function CaptureView({ connected, serverOffline }: Props) {
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border">
         <span className="text-xs text-muted-foreground">
-          {messages.length} message{messages.length !== 1 ? "s" : ""} from {platform}
+          {messages.length} message{messages.length !== 1 ? "s" : ""} from{" "}
+          {platform}
         </span>
         <button
           onClick={extract}
@@ -264,7 +281,9 @@ export function CaptureView({ connected, serverOffline }: Props) {
                 {msg.role === "user" ? "You" : "Assistant"}
               </span>
               <div className="text-xs text-foreground/80 leading-snug line-clamp-3">
-                {msg.content.length > 120 ? msg.content.slice(0, 120) + "..." : msg.content}
+                {msg.content.length > 120
+                  ? msg.content.slice(0, 120) + "..."
+                  : msg.content}
               </div>
             </div>
           </label>

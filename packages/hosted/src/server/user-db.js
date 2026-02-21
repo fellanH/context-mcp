@@ -14,14 +14,22 @@
 
 import { mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { initDatabase, prepareStatements, insertVec, deleteVec } from "@context-vault/core/index/db";
+import {
+  initDatabase,
+  prepareStatements,
+  insertVec,
+  deleteVec,
+} from "@context-vault/core/index/db";
 
 const MAX_POOL_SIZE = parseInt(process.env.USER_DB_POOL_SIZE || "100", 10);
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const SWEEP_INTERVAL_MS = 60 * 1000; // check every minute
 
 /** Base directory for per-user data. */
-const DATA_DIR = process.env.CONTEXT_VAULT_DATA_DIR || process.env.CONTEXT_MCP_DATA_DIR || "/data";
+const DATA_DIR =
+  process.env.CONTEXT_VAULT_DATA_DIR ||
+  process.env.CONTEXT_MCP_DATA_DIR ||
+  "/data";
 
 /** Get the directory for a specific user's data. */
 export function getUserDir(userId) {
@@ -112,8 +120,12 @@ class UserDbPool {
     const entry = this.#pool.get(userId);
     if (!entry) return;
 
-    try { entry.db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
-    try { entry.db.close(); } catch {}
+    try {
+      entry.db.pragma("wal_checkpoint(TRUNCATE)");
+    } catch {}
+    try {
+      entry.db.close();
+    } catch {}
     this.#pool.delete(userId);
   }
 

@@ -79,12 +79,12 @@ The CWS API can only update an existing item — you must do the first upload ma
 
 In the GitHub repository settings (Settings → Secrets → Actions), add:
 
-| Secret | Value |
-|--------|-------|
-| `CWS_CLIENT_ID` | Google OAuth2 Client ID |
+| Secret              | Value                       |
+| ------------------- | --------------------------- |
+| `CWS_CLIENT_ID`     | Google OAuth2 Client ID     |
 | `CWS_CLIENT_SECRET` | Google OAuth2 Client Secret |
-| `CWS_REFRESH_TOKEN` | Refresh token from step 4 |
-| `CWS_EXTENSION_ID` | Extension ID from step 5 |
+| `CWS_REFRESH_TOKEN` | Refresh token from step 4   |
+| `CWS_EXTENSION_ID`  | Extension ID from step 5    |
 
 ## 7. Verify Automated Publishing
 

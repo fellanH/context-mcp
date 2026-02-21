@@ -3,11 +3,13 @@ Start a new working session.
 1. Read `NORTH-STAR.md` — hold this as the product direction for the session.
 
 2. Derive live state — run these commands:
+
    ```bash
    git status && git log --oneline -5
    npm view context-vault version
    gh run list --workflow=deploy.yml --limit=3
    ```
+
    Read `BACKLOG.md`, `FEEDBACK.md`, `INBOX.md`. Surface a brief summary: what's shipped recently, what's pending, highest-priority next item.
 
    If not on `main` — flag it and ask why before proceeding.

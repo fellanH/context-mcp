@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { UsageMeter } from "../components/UsageMeter";
@@ -61,7 +66,9 @@ const STEP_ICONS: Record<string, React.ElementType> = {
 export function Dashboard() {
   const { user, isAuthenticated, vaultMode } = useAuth();
   const navigate = useNavigate();
-  const { data: entriesData, isLoading: entriesLoading } = useEntries({ limit: 10 });
+  const { data: entriesData, isLoading: entriesLoading } = useEntries({
+    limit: 10,
+  });
   const { data: usage, isLoading: usageLoading } = useUsage();
   const { data: apiKeys } = useApiKeys();
 
@@ -76,14 +83,18 @@ export function Dashboard() {
     hasApiKey,
     hasMcpActivity,
   });
-  const [showOnboarding, setShowOnboarding] = useState(() => !isOnboardingDismissed());
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !isOnboardingDismissed(),
+  );
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [uploadDismissed, setUploadDismissed] = useState(
-    () => localStorage.getItem("context-vault-upload-dismissed") === "true"
+    () => localStorage.getItem("context-vault-upload-dismissed") === "true",
   );
   const [uploading, setUploading] = useState(false);
 
-  const allComplete = steps.filter((s) => s.id !== "go-hosted").every((s) => s.completed);
+  const allComplete = steps
+    .filter((s) => s.id !== "go-hosted")
+    .every((s) => s.completed);
   const completedCount = steps.filter((s) => s.completed).length;
   const totalRequired = steps.filter((s) => s.id !== "go-hosted").length;
 
@@ -107,7 +118,10 @@ export function Dashboard() {
     if (step.action === "copy-connect-command") {
       copyConnectCommand();
     } else if (step.action === "chrome-web-store-link") {
-      window.open("https://chromewebstore.google.com/detail/context-vault", "_blank");
+      window.open(
+        "https://chromewebstore.google.com/detail/context-vault",
+        "_blank",
+      );
     } else if (step.action?.startsWith("/")) {
       navigate(step.action);
     }
@@ -123,7 +137,9 @@ export function Dashboard() {
           used: usage.entries.used,
           limit: usage.entries.limit,
           display: `${usage.entries.used}`,
-          sub: isUnlimited(usage.entries.limit) ? null : `of ${usage.entries.limit}`,
+          sub: isUnlimited(usage.entries.limit)
+            ? null
+            : `of ${usage.entries.limit}`,
         },
         {
           label: "Storage",
@@ -131,7 +147,9 @@ export function Dashboard() {
           used: usage.storage.usedMb,
           limit: usage.storage.limitMb,
           display: `${formatMegabytes(usage.storage.usedMb)} MB`,
-          sub: isUnlimited(usage.storage.limitMb) ? null : `of ${formatMegabytes(usage.storage.limitMb)} MB`,
+          sub: isUnlimited(usage.storage.limitMb)
+            ? null
+            : `of ${formatMegabytes(usage.storage.limitMb)} MB`,
         },
         {
           label: "Requests Today",
@@ -139,7 +157,9 @@ export function Dashboard() {
           used: usage.requestsToday.used,
           limit: usage.requestsToday.limit,
           display: `${usage.requestsToday.used}`,
-          sub: isUnlimited(usage.requestsToday.limit) ? null : `of ${usage.requestsToday.limit}`,
+          sub: isUnlimited(usage.requestsToday.limit)
+            ? null
+            : `of ${usage.requestsToday.limit}`,
         },
         {
           label: "API Keys",
@@ -202,9 +222,13 @@ export function Dashboard() {
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <div className={`rounded-full p-2 ${
-                        step.completed ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                      }`}>
+                      <div
+                        className={`rounded-full p-2 ${
+                          step.completed
+                            ? "bg-primary/10 text-primary"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
                         {step.completed ? (
                           <CircleCheck className="size-4" />
                         ) : (
@@ -212,15 +236,21 @@ export function Dashboard() {
                         )}
                       </div>
                       {isOptional && (
-                        <Badge variant="outline" className="text-[10px]">Optional</Badge>
+                        <Badge variant="outline" className="text-[10px]">
+                          Optional
+                        </Badge>
                       )}
                     </div>
                     <div>
-                      <p className={`text-sm font-medium ${step.completed ? "text-muted-foreground line-through" : ""}`}>
+                      <p
+                        className={`text-sm font-medium ${step.completed ? "text-muted-foreground line-through" : ""}`}
+                      >
                         {step.label}
                       </p>
                       {step.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {step.description}
+                        </p>
                       )}
                     </div>
                     {!step.completed && step.action && (
@@ -230,9 +260,12 @@ export function Dashboard() {
                         className="w-full gap-1.5 text-xs"
                         onClick={() => handleStepAction(step)}
                       >
-                        {step.action === "copy-connect-command" && (
-                          copiedCmd ? <Check className="size-3" /> : <Copy className="size-3" />
-                        )}
+                        {step.action === "copy-connect-command" &&
+                          (copiedCmd ? (
+                            <Check className="size-3" />
+                          ) : (
+                            <Copy className="size-3" />
+                          ))}
                         {step.actionLabel || "Go"}
                       </Button>
                     )}
@@ -254,7 +287,9 @@ export function Dashboard() {
         <div className="flex items-center justify-between p-3 rounded-lg border border-primary/20 bg-primary/5">
           <div className="flex items-center gap-2">
             <CircleCheck className="size-4 text-primary" />
-            <span className="text-sm text-primary font-medium">Setup complete</span>
+            <span className="text-sm text-primary font-medium">
+              Setup complete
+            </span>
           </div>
           <Button
             variant="ghost"
@@ -277,9 +312,12 @@ export function Dashboard() {
             <div className="flex items-center gap-3">
               <Cloud className="size-5 text-primary shrink-0" />
               <div>
-                <p className="text-sm font-medium">Upload your local vault to the cloud?</p>
+                <p className="text-sm font-medium">
+                  Upload your local vault to the cloud?
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Sync {entriesUsed} {entriesUsed === 1 ? "entry" : "entries"} to your hosted vault for backup and cross-device access.
+                  Sync {entriesUsed} {entriesUsed === 1 ? "entry" : "entries"}{" "}
+                  to your hosted vault for backup and cross-device access.
                 </p>
               </div>
             </div>
@@ -289,19 +327,28 @@ export function Dashboard() {
                 size="sm"
                 disabled={uploading}
                 onClick={async () => {
-                  const key = window.prompt("Enter your hosted API key (cv_...):");
+                  const key = window.prompt(
+                    "Enter your hosted API key (cv_...):",
+                  );
                   if (!key?.startsWith("cv_")) return;
                   setUploading(true);
                   try {
                     const result = await uploadLocalVault(key);
                     toast.success(`Uploaded ${result.imported} entries`);
                     if (result.failed > 0) {
-                      toast.warning(`${result.failed} entries failed to upload`);
+                      toast.warning(
+                        `${result.failed} entries failed to upload`,
+                      );
                     }
                     setUploadDismissed(true);
-                    localStorage.setItem("context-vault-upload-dismissed", "true");
+                    localStorage.setItem(
+                      "context-vault-upload-dismissed",
+                      "true",
+                    );
                   } catch {
-                    toast.error("Upload failed. Check your API key and try again.");
+                    toast.error(
+                      "Upload failed. Check your API key and try again.",
+                    );
                   } finally {
                     setUploading(false);
                   }
@@ -325,7 +372,10 @@ export function Dashboard() {
                 className="size-7"
                 onClick={() => {
                   setUploadDismissed(true);
-                  localStorage.setItem("context-vault-upload-dismissed", "true");
+                  localStorage.setItem(
+                    "context-vault-upload-dismissed",
+                    "true",
+                  );
                 }}
               >
                 <X className="size-3.5" />
@@ -355,7 +405,8 @@ export function Dashboard() {
           {usageCards.map((card) => {
             const Icon = card.icon;
             const unlimited = isUnlimited(card.limit);
-            const pct = !unlimited && card.limit > 0 ? (card.used / card.limit) * 100 : 0;
+            const pct =
+              !unlimited && card.limit > 0 ? (card.used / card.limit) * 100 : 0;
             const isWarning = !unlimited && pct >= 80;
             const isCritical = !unlimited && pct >= 100;
 
@@ -371,16 +422,25 @@ export function Dashboard() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <div className="flex items-baseline gap-1.5">
-                    <span className={`text-2xl font-semibold ${isCritical ? "text-red-500" : isWarning ? "text-amber-500" : ""}`}>
+                    <span
+                      className={`text-2xl font-semibold ${isCritical ? "text-red-500" : isWarning ? "text-amber-500" : ""}`}
+                    >
                       {card.display}
                     </span>
                     {card.sub && (
-                      <span className="text-xs text-muted-foreground">{card.sub}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {card.sub}
+                      </span>
                     )}
                   </div>
-                  {!unlimited && <UsageMeter used={card.used} limit={card.limit} />}
+                  {!unlimited && (
+                    <UsageMeter used={card.used} limit={card.limit} />
+                  )}
                   {isCritical && (
-                    <Link to="/settings/billing" className="text-xs text-red-500 hover:underline">
+                    <Link
+                      to="/settings/billing"
+                      className="text-xs text-red-500 hover:underline"
+                    >
                       Upgrade to increase limit
                     </Link>
                   )}
@@ -425,20 +485,25 @@ export function Dashboard() {
                     className="flex items-center justify-between py-2 border-b border-border last:border-0"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-sm font-medium truncate">{entry.title}</span>
+                      <span className="text-sm font-medium truncate">
+                        {entry.title}
+                      </span>
                       <Badge
                         variant={
                           entry.category === "knowledge"
                             ? "default"
                             : entry.category === "entity"
-                            ? "outline"
-                            : "secondary"
+                              ? "outline"
+                              : "secondary"
                         }
                         className="text-[10px] shrink-0"
                       >
                         {entry.category}
                       </Badge>
-                      <Badge variant="secondary" className="text-[10px] shrink-0">
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] shrink-0"
+                      >
                         {entry.kind}
                       </Badge>
                     </div>

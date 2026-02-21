@@ -16,8 +16,10 @@ export function bearerAuth() {
     const header = c.req.header("Authorization");
     if (!header || !header.startsWith("Bearer ")) {
       return c.json(
-        { error: "Missing or invalid Authorization header. Use: Bearer cv_..." },
-        401
+        {
+          error: "Missing or invalid Authorization header. Use: Bearer cv_...",
+        },
+        401,
       );
     }
 

@@ -46,7 +46,11 @@ export function gatherVaultStatus(ctx, opts = {}) {
   // Count DB rows by kind
   let kindCounts = [];
   try {
-    kindCounts = db.prepare(`SELECT kind, COUNT(*) as c FROM vault ${userWhere} GROUP BY kind`).all(...userParams);
+    kindCounts = db
+      .prepare(
+        `SELECT kind, COUNT(*) as c FROM vault ${userWhere} GROUP BY kind`,
+      )
+      .all(...userParams);
   } catch (e) {
     errors.push(`Kind count query failed: ${e.message}`);
   }
@@ -54,7 +58,11 @@ export function gatherVaultStatus(ctx, opts = {}) {
   // Count DB rows by category
   let categoryCounts = [];
   try {
-    categoryCounts = db.prepare(`SELECT category, COUNT(*) as c FROM vault ${userWhere} GROUP BY category`).all(...userParams);
+    categoryCounts = db
+      .prepare(
+        `SELECT category, COUNT(*) as c FROM vault ${userWhere} GROUP BY category`,
+      )
+      .all(...userParams);
   } catch (e) {
     errors.push(`Category count query failed: ${e.message}`);
   }
@@ -65,9 +73,10 @@ export function gatherVaultStatus(ctx, opts = {}) {
   try {
     if (existsSync(config.dbPath)) {
       dbSizeBytes = statSync(config.dbPath).size;
-      dbSize = dbSizeBytes > 1024 * 1024
-        ? `${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB`
-        : `${(dbSizeBytes / 1024).toFixed(1)}KB`;
+      dbSize =
+        dbSizeBytes > 1024 * 1024
+          ? `${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB`
+          : `${(dbSizeBytes / 1024).toFixed(1)}KB`;
     }
   } catch (e) {
     errors.push(`DB size check failed: ${e.message}`);
@@ -77,9 +86,11 @@ export function gatherVaultStatus(ctx, opts = {}) {
   let stalePaths = false;
   let staleCount = 0;
   try {
-    const result = db.prepare(
-      `SELECT COUNT(*) as c FROM vault WHERE file_path NOT LIKE ? || '%' ${userAnd}`
-    ).get(config.vaultDir, ...userParams);
+    const result = db
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE file_path NOT LIKE ? || '%' ${userAnd}`,
+      )
+      .get(config.vaultDir, ...userParams);
     staleCount = result.c;
     stalePaths = staleCount > 0;
   } catch (e) {
@@ -89,9 +100,11 @@ export function gatherVaultStatus(ctx, opts = {}) {
   // Count expired entries pending pruning
   let expiredCount = 0;
   try {
-    expiredCount = db.prepare(
-      `SELECT COUNT(*) as c FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now') ${userAnd}`
-    ).get(...userParams).c;
+    expiredCount = db
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now') ${userAnd}`,
+      )
+      .get(...userParams).c;
   } catch (e) {
     errors.push(`Expired count failed: ${e.message}`);
   }
@@ -99,10 +112,14 @@ export function gatherVaultStatus(ctx, opts = {}) {
   // Embedding/vector status
   let embeddingStatus = null;
   try {
-    const total = db.prepare(`SELECT COUNT(*) as c FROM vault ${userWhere}`).get(...userParams).c;
-    const indexed = db.prepare(
-      `SELECT COUNT(*) as c FROM vault WHERE rowid IN (SELECT rowid FROM vault_vec) ${userAnd}`
-    ).get(...userParams).c;
+    const total = db
+      .prepare(`SELECT COUNT(*) as c FROM vault ${userWhere}`)
+      .get(...userParams).c;
+    const indexed = db
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE rowid IN (SELECT rowid FROM vault_vec) ${userAnd}`,
+      )
+      .get(...userParams).c;
     embeddingStatus = { indexed, total, missing: total - indexed };
   } catch (e) {
     errors.push(`Embedding status check failed: ${e.message}`);

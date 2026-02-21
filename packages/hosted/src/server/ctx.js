@@ -11,7 +11,12 @@
  * When PER_USER_DB is disabled (legacy mode), falls back to a shared vault.db.
  */
 
-import { initDatabase, prepareStatements, insertVec, deleteVec } from "@context-vault/core/index/db";
+import {
+  initDatabase,
+  prepareStatements,
+  insertVec,
+  deleteVec,
+} from "@context-vault/core/index/db";
 import { embed } from "@context-vault/core/index/embed";
 import { resolveConfig } from "@context-vault/core/core/config";
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
@@ -44,9 +49,15 @@ export async function createCtx() {
     try {
       await initDatabase(warmupPath);
     } catch {}
-    try { unlinkSync(warmupPath); } catch {}
-    try { unlinkSync(warmupPath + "-wal"); } catch {}
-    try { unlinkSync(warmupPath + "-shm"); } catch {}
+    try {
+      unlinkSync(warmupPath);
+    } catch {}
+    try {
+      unlinkSync(warmupPath + "-wal");
+    } catch {}
+    try {
+      unlinkSync(warmupPath + "-shm");
+    } catch {}
 
     return { config, embed };
   }

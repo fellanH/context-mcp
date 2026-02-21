@@ -28,10 +28,10 @@ Copy the contents of `system-prompt.md` into the **Instructions** field.
 
 ### 4. Configure Settings
 
-| Setting | Value |
-|---------|-------|
-| Name | Context Vault |
-| Description | Your personal knowledge assistant with long-term memory |
+| Setting               | Value                                                                     |
+| --------------------- | ------------------------------------------------------------------------- |
+| Name                  | Context Vault                                                             |
+| Description           | Your personal knowledge assistant with long-term memory                   |
 | Conversation starters | "What do I know about...", "Save this insight:", "Search my vault for..." |
 
 ### 5. Privacy Policy
@@ -41,6 +41,7 @@ Set the privacy policy URL to: `https://YOUR_SERVER/privacy`
 ### 6. Test
 
 Try these prompts:
+
 - "Search my vault for recent decisions"
 - "Save this as an insight: Hybrid search outperforms pure FTS for knowledge retrieval"
 - "What projects am I working on?"

@@ -27,7 +27,8 @@ export async function getStripe() {
   if (!key) return null;
 
   try {
-    const Stripe = globalThis._stripe_constructor || (await import("stripe")).default;
+    const Stripe =
+      globalThis._stripe_constructor || (await import("stripe")).default;
     stripe = new Stripe(key);
     return stripe;
   } catch {
@@ -46,7 +47,13 @@ export async function getStripe() {
  * @param {string} opts.cancelUrl - Redirect URL after cancel
  * @returns {Promise<{ url: string, sessionId: string } | null>}
  */
-export async function createCheckoutSession({ userId, email, customerId, successUrl, cancelUrl }) {
+export async function createCheckoutSession({
+  userId,
+  email,
+  customerId,
+  successUrl,
+  cancelUrl,
+}) {
   const s = await getStripe();
   if (!s) return null;
 
@@ -56,8 +63,14 @@ export async function createCheckoutSession({ userId, email, customerId, success
   const params = {
     mode: "subscription",
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: successUrl || process.env.STRIPE_SUCCESS_URL || `https://${process.env.FLY_APP_NAME || "localhost:3000"}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: cancelUrl || process.env.STRIPE_CANCEL_URL || `https://${process.env.FLY_APP_NAME || "localhost:3000"}/billing/cancel`,
+    success_url:
+      successUrl ||
+      process.env.STRIPE_SUCCESS_URL ||
+      `https://${process.env.FLY_APP_NAME || "localhost:3000"}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url:
+      cancelUrl ||
+      process.env.STRIPE_CANCEL_URL ||
+      `https://${process.env.FLY_APP_NAME || "localhost:3000"}/billing/cancel`,
     metadata: { userId },
   };
 

@@ -39,7 +39,9 @@ export function WelcomeStep({ onNext }: Props) {
             </div>
             <div>
               <div className="font-semibold mb-0.5">{title}</div>
-              <div className="text-sm text-muted-foreground leading-snug">{desc}</div>
+              <div className="text-sm text-muted-foreground leading-snug">
+                {desc}
+              </div>
             </div>
           </li>
         ))}

@@ -133,7 +133,10 @@ export function createTursoAdapter(client) {
      */
     async execute(sql, params = []) {
       const result = await client.execute({ sql, args: params });
-      return { changes: result.rowsAffected, lastInsertRowid: result.lastInsertRowid };
+      return {
+        changes: result.rowsAffected,
+        lastInsertRowid: result.lastInsertRowid,
+      };
     },
 
     /**
@@ -142,7 +145,7 @@ export function createTursoAdapter(client) {
     async batch(statements) {
       return client.batch(
         statements.map((s) => ({ sql: s.sql, args: s.params || [] })),
-        "write"
+        "write",
       );
     },
 

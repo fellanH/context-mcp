@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { slugify, normalizeKind, kindToDir, dirToKind, kindToPath } from "@context-vault/core/core/files";
+import {
+  slugify,
+  normalizeKind,
+  kindToDir,
+  dirToKind,
+  kindToPath,
+} from "@context-vault/core/core/files";
 
 describe("slugify", () => {
   it("lowercases and replaces non-alphanumeric with dashes", () => {
@@ -11,7 +17,8 @@ describe("slugify", () => {
   });
 
   it("truncates to maxLen and breaks at dash boundary", () => {
-    const long = "this-is-a-very-long-string-that-should-be-truncated-at-some-point-here";
+    const long =
+      "this-is-a-very-long-string-that-should-be-truncated-at-some-point-here";
     const result = slugify(long, 30);
     expect(result.length).toBeLessThanOrEqual(30);
     expect(result).not.toMatch(/-$/);

@@ -13,7 +13,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const PORT = 3457;
-const SERVER_ENTRY = resolve(import.meta.dirname, "../../packages/hosted/src/index.js");
+const SERVER_ENTRY = resolve(
+  import.meta.dirname,
+  "../../packages/hosted/src/index.js",
+);
 
 describe("hosted MCP server", () => {
   let serverProcess;
@@ -37,7 +40,10 @@ describe("hosted MCP server", () => {
 
     // Wait for server to be ready (listening message goes to stdout)
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Server start timeout")), 15000);
+      const timeout = setTimeout(
+        () => reject(new Error("Server start timeout")),
+        15000,
+      );
       const check = (data) => {
         if (data.toString().includes("listening")) {
           clearTimeout(timeout);
@@ -54,14 +60,16 @@ describe("hosted MCP server", () => {
 
     // Connect MCP client
     const transport = new StreamableHTTPClientTransport(
-      new URL(`http://localhost:${PORT}/mcp`)
+      new URL(`http://localhost:${PORT}/mcp`),
     );
     client = new Client({ name: "test-client", version: "1.0.0" });
     await client.connect(transport);
   }, 30000);
 
   afterAll(async () => {
-    try { await client?.close(); } catch {}
+    try {
+      await client?.close();
+    } catch {}
     if (serverProcess) {
       serverProcess.kill("SIGTERM");
       await new Promise((res) => serverProcess.on("exit", res));
@@ -84,7 +92,10 @@ describe("hosted MCP server", () => {
   });
 
   it("calls context_status", async () => {
-    const result = await client.callTool({ name: "context_status", arguments: {} });
+    const result = await client.callTool({
+      name: "context_status",
+      arguments: {},
+    });
     expect(result.content).toBeDefined();
     expect(result.content[0].text).toContain("Vault Status");
   });

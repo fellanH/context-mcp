@@ -19,7 +19,8 @@ export function parseArgs(argv) {
     else if (argv[i] === "--data-dir" && argv[i + 1]) args.dataDir = argv[++i];
     else if (argv[i] === "--db-path" && argv[i + 1]) args.dbPath = argv[++i];
     else if (argv[i] === "--dev-dir" && argv[i + 1]) args.devDir = argv[++i];
-    else if (argv[i] === "--event-decay-days" && argv[i + 1]) args.eventDecayDays = Number(argv[++i]);
+    else if (argv[i] === "--event-decay-days" && argv[i + 1])
+      args.eventDecayDays = Number(argv[++i]);
   }
   return args;
 }
@@ -29,7 +30,12 @@ export function resolveConfig() {
   const cliArgs = parseArgs(process.argv);
 
   // 1. Convention defaults
-  const dataDir = resolve(cliArgs.dataDir || process.env.CONTEXT_VAULT_DATA_DIR || process.env.CONTEXT_MCP_DATA_DIR || join(HOME, ".context-mcp"));
+  const dataDir = resolve(
+    cliArgs.dataDir ||
+      process.env.CONTEXT_VAULT_DATA_DIR ||
+      process.env.CONTEXT_MCP_DATA_DIR ||
+      join(HOME, ".context-mcp"),
+  );
   const config = {
     vaultDir: join(HOME, "vault"),
     dataDir,
@@ -45,7 +51,10 @@ export function resolveConfig() {
     try {
       const fc = JSON.parse(readFileSync(configPath, "utf-8"));
       if (fc.vaultDir) config.vaultDir = fc.vaultDir;
-      if (fc.dataDir) { config.dataDir = fc.dataDir; config.dbPath = join(resolve(fc.dataDir), "vault.db"); }
+      if (fc.dataDir) {
+        config.dataDir = fc.dataDir;
+        config.dbPath = join(resolve(fc.dataDir), "vault.db");
+      }
       if (fc.dbPath) config.dbPath = fc.dbPath;
       if (fc.devDir) config.devDir = fc.devDir;
       if (fc.eventDecayDays != null) config.eventDecayDays = fc.eventDecayDays;
@@ -57,26 +66,68 @@ export function resolveConfig() {
       if (fc.linkedAt) config.linkedAt = fc.linkedAt;
       config.resolvedFrom = "config file";
     } catch (e) {
-      throw new Error(`[context-vault] Invalid config at ${configPath}: ${e.message}`);
+      throw new Error(
+        `[context-vault] Invalid config at ${configPath}: ${e.message}`,
+      );
     }
   }
   config.configPath = configPath;
 
   // 3. Environment variable overrides (CONTEXT_VAULT_* takes priority over CONTEXT_MCP_*)
-  if (process.env.CONTEXT_VAULT_VAULT_DIR || process.env.CONTEXT_MCP_VAULT_DIR) { config.vaultDir = process.env.CONTEXT_VAULT_VAULT_DIR || process.env.CONTEXT_MCP_VAULT_DIR; config.resolvedFrom = "env"; }
-  if (process.env.CONTEXT_VAULT_DB_PATH || process.env.CONTEXT_MCP_DB_PATH) { config.dbPath = process.env.CONTEXT_VAULT_DB_PATH || process.env.CONTEXT_MCP_DB_PATH; config.resolvedFrom = "env"; }
-  if (process.env.CONTEXT_VAULT_DEV_DIR || process.env.CONTEXT_MCP_DEV_DIR) { config.devDir = process.env.CONTEXT_VAULT_DEV_DIR || process.env.CONTEXT_MCP_DEV_DIR; config.resolvedFrom = "env"; }
-  if (process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS != null || process.env.CONTEXT_MCP_EVENT_DECAY_DAYS != null) { config.eventDecayDays = Number(process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS ?? process.env.CONTEXT_MCP_EVENT_DECAY_DAYS); config.resolvedFrom = "env"; }
+  if (
+    process.env.CONTEXT_VAULT_VAULT_DIR ||
+    process.env.CONTEXT_MCP_VAULT_DIR
+  ) {
+    config.vaultDir =
+      process.env.CONTEXT_VAULT_VAULT_DIR || process.env.CONTEXT_MCP_VAULT_DIR;
+    config.resolvedFrom = "env";
+  }
+  if (process.env.CONTEXT_VAULT_DB_PATH || process.env.CONTEXT_MCP_DB_PATH) {
+    config.dbPath =
+      process.env.CONTEXT_VAULT_DB_PATH || process.env.CONTEXT_MCP_DB_PATH;
+    config.resolvedFrom = "env";
+  }
+  if (process.env.CONTEXT_VAULT_DEV_DIR || process.env.CONTEXT_MCP_DEV_DIR) {
+    config.devDir =
+      process.env.CONTEXT_VAULT_DEV_DIR || process.env.CONTEXT_MCP_DEV_DIR;
+    config.resolvedFrom = "env";
+  }
+  if (
+    process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS != null ||
+    process.env.CONTEXT_MCP_EVENT_DECAY_DAYS != null
+  ) {
+    config.eventDecayDays = Number(
+      process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS ??
+        process.env.CONTEXT_MCP_EVENT_DECAY_DAYS,
+    );
+    config.resolvedFrom = "env";
+  }
 
   // 3b. Hosted account env overrides
-  if (process.env.CONTEXT_VAULT_API_KEY) { config.apiKey = process.env.CONTEXT_VAULT_API_KEY; }
-  if (process.env.CONTEXT_VAULT_HOSTED_URL) { config.hostedUrl = process.env.CONTEXT_VAULT_HOSTED_URL; }
+  if (process.env.CONTEXT_VAULT_API_KEY) {
+    config.apiKey = process.env.CONTEXT_VAULT_API_KEY;
+  }
+  if (process.env.CONTEXT_VAULT_HOSTED_URL) {
+    config.hostedUrl = process.env.CONTEXT_VAULT_HOSTED_URL;
+  }
 
   // 4. CLI arg overrides (highest priority)
-  if (cliArgs.vaultDir) { config.vaultDir = cliArgs.vaultDir; config.resolvedFrom = "CLI args"; }
-  if (cliArgs.dbPath) { config.dbPath = cliArgs.dbPath; config.resolvedFrom = "CLI args"; }
-  if (cliArgs.devDir) { config.devDir = cliArgs.devDir; config.resolvedFrom = "CLI args"; }
-  if (cliArgs.eventDecayDays != null) { config.eventDecayDays = cliArgs.eventDecayDays; config.resolvedFrom = "CLI args"; }
+  if (cliArgs.vaultDir) {
+    config.vaultDir = cliArgs.vaultDir;
+    config.resolvedFrom = "CLI args";
+  }
+  if (cliArgs.dbPath) {
+    config.dbPath = cliArgs.dbPath;
+    config.resolvedFrom = "CLI args";
+  }
+  if (cliArgs.devDir) {
+    config.devDir = cliArgs.devDir;
+    config.resolvedFrom = "CLI args";
+  }
+  if (cliArgs.eventDecayDays != null) {
+    config.eventDecayDays = cliArgs.eventDecayDays;
+    config.resolvedFrom = "CLI args";
+  }
 
   // Resolve all paths to absolute
   config.vaultDir = resolve(config.vaultDir);

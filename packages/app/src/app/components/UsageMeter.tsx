@@ -10,7 +10,14 @@ interface UsageMeterProps {
   formatValue?: (value: number) => string;
 }
 
-export function UsageMeter({ used, limit, label, unit, className, formatValue }: UsageMeterProps) {
+export function UsageMeter({
+  used,
+  limit,
+  label,
+  unit,
+  className,
+  formatValue,
+}: UsageMeterProps) {
   const pct = limit > 0 ? (used / limit) * 100 : 0;
   const isWarning = pct >= 80;
   const isCritical = pct >= 100;
@@ -21,12 +28,16 @@ export function UsageMeter({ used, limit, label, unit, className, formatValue }:
       {label && (
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">{label}</span>
-          <span className={cn(
-            "font-mono",
-            isCritical && "text-red-500",
-            isWarning && !isCritical && "text-amber-500",
-          )}>
-            {format(used)}{unit ? ` ${unit}` : ""} / {format(limit)}{unit ? ` ${unit}` : ""}
+          <span
+            className={cn(
+              "font-mono",
+              isCritical && "text-red-500",
+              isWarning && !isCritical && "text-amber-500",
+            )}
+          >
+            {format(used)}
+            {unit ? ` ${unit}` : ""} / {format(limit)}
+            {unit ? ` ${unit}` : ""}
           </span>
         </div>
       )}

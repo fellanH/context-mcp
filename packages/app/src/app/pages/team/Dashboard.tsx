@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -15,7 +20,12 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-import { useTeam, useTeamUsage, useInviteMember, useRemoveMember } from "../../lib/hooks";
+import {
+  useTeam,
+  useTeamUsage,
+  useInviteMember,
+  useRemoveMember,
+} from "../../lib/hooks";
 import { useAuth } from "../../lib/auth";
 import { formatMegabytes } from "../../lib/format";
 import { toast } from "sonner";
@@ -51,7 +61,7 @@ export function TeamDashboard() {
         onError: (err) => {
           toast.error(err.message || "Failed to send invite");
         },
-      }
+      },
     );
   };
 
@@ -64,7 +74,7 @@ export function TeamDashboard() {
       {
         onSuccess: () => toast.success(`${email} removed from team`),
         onError: (err) => toast.error(err.message || "Failed to remove member"),
-      }
+      },
     );
   };
 
@@ -88,7 +98,10 @@ export function TeamDashboard() {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Team not found</p>
-        <Link to="/" className="text-sm text-primary hover:underline mt-2 inline-block">
+        <Link
+          to="/"
+          className="text-sm text-primary hover:underline mt-2 inline-block"
+        >
           Back to Dashboard
         </Link>
       </div>
@@ -101,11 +114,18 @@ export function TeamDashboard() {
         <div>
           <h1 className="text-2xl font-semibold">{team.name}</h1>
           <p className="text-sm text-muted-foreground">
-            Your role: <Badge variant="outline" className="ml-1">{team.role}</Badge>
+            Your role:{" "}
+            <Badge variant="outline" className="ml-1">
+              {team.role}
+            </Badge>
           </p>
         </div>
         {isOwnerOrAdmin && (
-          <Button variant="outline" size="sm" onClick={() => setShowInvite(!showInvite)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowInvite(!showInvite)}
+          >
             <UserPlus className="size-4 mr-1.5" />
             Invite
           </Button>
@@ -133,7 +153,11 @@ export function TeamDashboard() {
               </div>
               <Button
                 type="submit"
-                disabled={!inviteEmail.trim() || !EMAIL_REGEX.test(inviteEmail) || inviteMember.isPending}
+                disabled={
+                  !inviteEmail.trim() ||
+                  !EMAIL_REGEX.test(inviteEmail) ||
+                  inviteMember.isPending
+                }
               >
                 {inviteMember.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -157,7 +181,11 @@ export function TeamDashboard() {
                     className="size-7 shrink-0"
                     onClick={() => copyInviteLink(copiedToken)}
                   >
-                    {copiedToken ? <Check className="size-3" /> : <Copy className="size-3" />}
+                    {copiedToken ? (
+                      <Check className="size-3" />
+                    ) : (
+                      <Copy className="size-3" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -172,7 +200,9 @@ export function TeamDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-medium text-muted-foreground">Members</CardTitle>
+                <CardTitle className="text-xs font-medium text-muted-foreground">
+                  Members
+                </CardTitle>
                 <Users className="size-4 text-muted-foreground" />
               </div>
             </CardHeader>
@@ -183,23 +213,31 @@ export function TeamDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-medium text-muted-foreground">Entries</CardTitle>
+                <CardTitle className="text-xs font-medium text-muted-foreground">
+                  Entries
+                </CardTitle>
                 <FileText className="size-4 text-muted-foreground" />
               </div>
             </CardHeader>
             <CardContent>
-              <span className="text-2xl font-semibold">{usage.usage.entries}</span>
+              <span className="text-2xl font-semibold">
+                {usage.usage.entries}
+              </span>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-medium text-muted-foreground">Storage</CardTitle>
+                <CardTitle className="text-xs font-medium text-muted-foreground">
+                  Storage
+                </CardTitle>
                 <HardDrive className="size-4 text-muted-foreground" />
               </div>
             </CardHeader>
             <CardContent>
-              <span className="text-2xl font-semibold">{formatMegabytes(usage.usage.storageMb)} MB</span>
+              <span className="text-2xl font-semibold">
+                {formatMegabytes(usage.usage.storageMb)} MB
+              </span>
             </CardContent>
           </Card>
         </div>
@@ -208,7 +246,9 @@ export function TeamDashboard() {
       {/* Members List */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Members ({team.members.length})</CardTitle>
+          <CardTitle className="text-base">
+            Members ({team.members.length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -225,26 +265,32 @@ export function TeamDashboard() {
                     <p className="text-sm font-medium truncate">
                       {member.name || member.email}
                       {member.userId === user?.id && (
-                        <span className="text-xs text-muted-foreground ml-1">(you)</span>
+                        <span className="text-xs text-muted-foreground ml-1">
+                          (you)
+                        </span>
                       )}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {member.email}
+                    </p>
                   </div>
                   <Badge variant="outline" className="text-[10px] shrink-0">
                     {member.role}
                   </Badge>
                 </div>
-                {isOwnerOrAdmin && member.role !== "owner" && member.userId !== user?.id && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleRemove(member.userId, member.email)}
-                    disabled={removeMember.isPending}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                )}
+                {isOwnerOrAdmin &&
+                  member.role !== "owner" &&
+                  member.userId !== user?.id && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRemove(member.userId, member.email)}
+                      disabled={removeMember.isPending}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  )}
               </div>
             ))}
           </div>
@@ -269,7 +315,8 @@ export function TeamDashboard() {
                     <div>
                       <p className="text-sm">{invite.email}</p>
                       <p className="text-xs text-muted-foreground">
-                        Expires {new Date(invite.expiresAt).toLocaleDateString()}
+                        Expires{" "}
+                        {new Date(invite.expiresAt).toLocaleDateString()}
                       </p>
                     </div>
                     <Badge variant="secondary" className="text-[10px]">

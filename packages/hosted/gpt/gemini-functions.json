@@ -6,10 +6,23 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "query": { "type": "string", "description": "Natural language search query" },
-          "kind": { "type": "string", "description": "Filter by entry kind (e.g. insight, decision, pattern)" },
-          "category": { "type": "string", "enum": ["knowledge", "entity", "event"], "description": "Filter by category" },
-          "limit": { "type": "integer", "description": "Max results (default 20)" }
+          "query": {
+            "type": "string",
+            "description": "Natural language search query"
+          },
+          "kind": {
+            "type": "string",
+            "description": "Filter by entry kind (e.g. insight, decision, pattern)"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["knowledge", "entity", "event"],
+            "description": "Filter by category"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max results (default 20)"
+          }
         },
         "required": ["query"]
       }
@@ -20,11 +33,21 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "kind": { "type": "string", "description": "Entry kind (insight, decision, pattern, contact, project, etc.)" },
+          "kind": {
+            "type": "string",
+            "description": "Entry kind (insight, decision, pattern, contact, project, etc.)"
+          },
           "body": { "type": "string", "description": "Main content" },
           "title": { "type": "string", "description": "Optional title" },
-          "tags": { "type": "array", "items": { "type": "string" }, "description": "Tags for categorization" },
-          "identity_key": { "type": "string", "description": "Required for entity kinds — unique identifier" }
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Tags for categorization"
+          },
+          "identity_key": {
+            "type": "string",
+            "description": "Required for entity kinds — unique identifier"
+          }
         },
         "required": ["kind", "body"]
       }
@@ -36,8 +59,14 @@
         "type": "object",
         "properties": {
           "kind": { "type": "string", "description": "Filter by kind" },
-          "category": { "type": "string", "enum": ["knowledge", "entity", "event"] },
-          "limit": { "type": "integer", "description": "Max entries (default 20)" },
+          "category": {
+            "type": "string",
+            "enum": ["knowledge", "entity", "event"]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max entries (default 20)"
+          },
           "offset": { "type": "integer", "description": "Pagination offset" }
         }
       }

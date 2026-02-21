@@ -43,12 +43,14 @@ export function ModeSelectStep({ mode, onSelect, onNext }: Props) {
               "flex flex-col items-start p-4 rounded-xl border bg-card text-left transition-all cursor-pointer",
               mode === value
                 ? "border-foreground/40 ring-1 ring-foreground/20"
-                : "border-border hover:border-foreground/20"
+                : "border-border hover:border-foreground/20",
             )}
           >
             <Icon className="w-6 h-6 mb-3 text-foreground" />
             <div className="font-semibold mb-1">{title}</div>
-            <div className="text-sm text-muted-foreground leading-snug mb-2">{desc}</div>
+            <div className="text-sm text-muted-foreground leading-snug mb-2">
+              {desc}
+            </div>
             <div className="text-xs text-muted-foreground/70">{sub}</div>
           </button>
         ))}

@@ -13,7 +13,12 @@ let cachedSettings: ExtensionSettings | null = null;
 
 async function getSettings(): Promise<ExtensionSettings> {
   if (cachedSettings) return cachedSettings;
-  const result = await chrome.storage.local.get(["serverUrl", "apiKey", "mode", "encryptionSecret"]);
+  const result = await chrome.storage.local.get([
+    "serverUrl",
+    "apiKey",
+    "mode",
+    "encryptionSecret",
+  ]);
   cachedSettings = {
     serverUrl: result.serverUrl || "",
     apiKey: result.apiKey || "",
@@ -45,14 +50,16 @@ function friendlyError(err: unknown, mode: string): Error {
 
   if (isNetworkError && mode === "local") {
     const friendly = new Error(
-      "Local server is not running. Start it with: context-vault ui"
+      "Local server is not running. Start it with: context-vault ui",
     );
     (friendly as any).code = "SERVER_NOT_RUNNING";
     return friendly;
   }
 
   if (isNetworkError) {
-    return new Error("Could not reach the server. Check your connection and server URL.");
+    return new Error(
+      "Could not reach the server. Check your connection and server URL.",
+    );
   }
 
   return err instanceof Error ? err : new Error(msg);
@@ -65,9 +72,12 @@ export async function probeServer(timeoutMs = 3000): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(`${serverUrl.replace(/\/$/, "")}/api/vault/status`, {
-      signal: controller.signal,
-    });
+    const res = await fetch(
+      `${serverUrl.replace(/\/$/, "")}/api/vault/status`,
+      {
+        signal: controller.signal,
+      },
+    );
     clearTimeout(timer);
     return res.ok;
   } catch {
@@ -75,11 +85,16 @@ export async function probeServer(timeoutMs = 3000): Promise<boolean> {
   }
 }
 
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
   const { serverUrl, apiKey, mode } = await getSettings();
 
-  if (!serverUrl) throw new Error("Not configured — set server URL in extension settings");
-  if (mode === "hosted" && !apiKey) throw new Error("Not configured — set API key in extension settings");
+  if (!serverUrl)
+    throw new Error("Not configured — set server URL in extension settings");
+  if (mode === "hosted" && !apiKey)
+    throw new Error("Not configured — set API key in extension settings");
 
   const url = `${serverUrl.replace(/\/$/, "")}${path}`;
   const headers: Record<string, string> = {
@@ -105,7 +120,11 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-      const res = await fetch(url, { ...options, headers, signal: controller.signal });
+      const res = await fetch(url, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
       clearTimeout(timeout);
 
       if (!res.ok) {
@@ -146,11 +165,15 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
       }
 
       // Non-retryable errors (including 401/429 rethrown above)
-      if ((err as any).status && NO_RETRY_STATUSES.has((err as any).status)) throw err;
+      if ((err as any).status && NO_RETRY_STATUSES.has((err as any).status))
+        throw err;
 
       // Don't retry connection-refused in local mode — server clearly isn't running
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (mode === "local" && (err instanceof TypeError || errMsg === "Failed to fetch")) {
+      if (
+        mode === "local" &&
+        (err instanceof TypeError || errMsg === "Failed to fetch")
+      ) {
         throw friendlyError(err, mode);
       }
 
@@ -162,13 +185,15 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     }
   }
 
-  throw friendlyError(lastError, mode) || new Error("apiFetch failed after retries");
+  throw (
+    friendlyError(lastError, mode) || new Error("apiFetch failed after retries")
+  );
 }
 
 /** Search the vault with hybrid semantic + full-text search */
 export async function searchVault(
   query: string,
-  opts: { kind?: string; category?: string; limit?: number } = {}
+  opts: { kind?: string; category?: string; limit?: number } = {},
 ): Promise<{ results: SearchResult[]; count: number; query: string }> {
   return apiFetch("/api/vault/search", {
     method: "POST",
@@ -187,11 +212,17 @@ export async function createEntry(data: {
 }): Promise<Entry> {
   return apiFetch("/api/vault/entries", {
     method: "POST",
-    body: JSON.stringify({ ...data, source: data.source || "browser-extension" }),
+    body: JSON.stringify({
+      ...data,
+      source: data.source || "browser-extension",
+    }),
   });
 }
 
 /** Get vault status (doubles as connection test) */
-export async function getVaultStatus(): Promise<{ health: string; entries: { total: number } }> {
+export async function getVaultStatus(): Promise<{
+  health: string;
+  entries: { total: number };
+}> {
   return apiFetch("/api/vault/status");
 }

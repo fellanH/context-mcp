@@ -39,7 +39,13 @@ export function ResultList({ results, query, onInject }: Props) {
   );
 }
 
-function ResultCard({ result, onInject }: { result: SearchResult; onInject: (text: string) => void }) {
+function ResultCard({
+  result,
+  onInject,
+}: {
+  result: SearchResult;
+  onInject: (text: string) => void;
+}) {
   const preview = result.body?.slice(0, 150) || "";
   const title = result.title || result.kind;
 
@@ -59,7 +65,8 @@ function ResultCard({ result, onInject }: { result: SearchResult; onInject: (tex
       </div>
 
       <div className="text-sm text-muted-foreground leading-snug mb-2">
-        {preview}{preview.length >= 150 ? "..." : ""}
+        {preview}
+        {preview.length >= 150 ? "..." : ""}
       </div>
 
       <button

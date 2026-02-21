@@ -212,7 +212,9 @@ export function transformTeam(raw: ApiTeamListResponse["teams"][0]): Team {
   };
 }
 
-export function transformTeamMember(raw: ApiTeamDetailResponse["members"][0]): TeamMember {
+export function transformTeamMember(
+  raw: ApiTeamDetailResponse["members"][0],
+): TeamMember {
   return {
     userId: raw.userId,
     email: raw.email,
@@ -222,7 +224,9 @@ export function transformTeamMember(raw: ApiTeamDetailResponse["members"][0]): T
   };
 }
 
-export function transformTeamInvite(raw: ApiTeamDetailResponse["invites"][0]): TeamInvite {
+export function transformTeamInvite(
+  raw: ApiTeamDetailResponse["invites"][0],
+): TeamInvite {
   return {
     id: raw.id,
     email: raw.email,
@@ -265,7 +269,8 @@ export function transformEntry(raw: ApiEntry): Entry {
     source: raw.source || undefined,
     created: new Date(raw.created_at),
     updated: new Date(raw.created_at), // backend doesn't track updated separately
-    metadata: raw.meta && Object.keys(raw.meta).length > 0 ? raw.meta : undefined,
+    metadata:
+      raw.meta && Object.keys(raw.meta).length > 0 ? raw.meta : undefined,
   };
 }
 
@@ -288,7 +293,7 @@ export function transformApiKey(raw: ApiKeyListItem): ApiKey {
 
 export function transformUsage(
   raw: ApiUsageResponse,
-  apiKeyCount: number
+  apiKeyCount: number,
 ): UsageResponse {
   const numOrMax = (v: number | "unlimited") =>
     v === "unlimited" ? Infinity : v;

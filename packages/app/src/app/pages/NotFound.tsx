@@ -14,7 +14,8 @@ export function NotFound() {
         <div className="space-y-2">
           <h1 className="text-4xl font-bold tracking-tight">404</h1>
           <p className="text-muted-foreground">
-            This page doesn't exist. It may have been moved or the URL might be incorrect.
+            This page doesn't exist. It may have been moved or the URL might be
+            incorrect.
           </p>
         </div>
         <Link to="/">
@@ -44,7 +45,9 @@ export function RootErrorBoundary() {
           </div>
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold tracking-tight">Something went wrong</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Something went wrong
+          </h1>
           <p className="text-muted-foreground">
             An unexpected error occurred. Try refreshing the page.
           </p>

@@ -48,8 +48,13 @@ const bodyCipher = createCipheriv(ALGORITHM, key, iv); // uses same iv
 ```js
 // Legacy mode deletion
 for (const entry of entries) {
-  if (entry.file_path) try { unlinkSync(entry.file_path); } catch {}
-  try { ctx.deleteVec(entry.id); } catch {} // BUG: entry.id is a ULID string, not a rowid
+  if (entry.file_path)
+    try {
+      unlinkSync(entry.file_path);
+    } catch {}
+  try {
+    ctx.deleteVec(entry.id);
+  } catch {} // BUG: entry.id is a ULID string, not a rowid
 }
 ```
 
@@ -70,9 +75,9 @@ In both `get_context` and `list_context`, tags are filtered in JS after the DB q
 ```js
 const rows = ctx.db.prepare(`... LIMIT ?`).all(...params); // e.g. 20 rows
 const filtered = tags?.length
-  ? rows.filter(r => {
+  ? rows.filter((r) => {
       const entryTags = r.tags ? JSON.parse(r.tags) : [];
-      return tags.some(t => entryTags.includes(t));
+      return tags.some((t) => entryTags.includes(t));
     })
   : rows;
 ```
@@ -161,8 +166,8 @@ The DDL comment in `db.js:72` says `v7 — teams` and migrations go up to v7. Us
 **File:** `packages/hosted/src/index.js:95-96`
 
 ```js
-initMetaDb(metaDbPath);                        // return value discarded
-prepareMetaStatements(initMetaDb(metaDbPath));  // called again
+initMetaDb(metaDbPath); // return value discarded
+prepareMetaStatements(initMetaDb(metaDbPath)); // called again
 ```
 
 First call is wasted. The second call re-initializes and returns the DB to `prepareMetaStatements`. This works because init is idempotent, but it's sloppy and confusing.
@@ -226,6 +231,7 @@ const entry = await captureAndIndex(ctx, data, indexEntry);
 Uses `db.exec("BEGIN")` / `db.exec("COMMIT")` instead of better-sqlite3's `db.transaction()` because the function is async (embedding calls await). This works, but if any code path throws between BEGIN and COMMIT without hitting the catch block, the transaction stays open.
 
 The async-in-sync-transaction tension is a known pain point with better-sqlite3. Currently safe because:
+
 - Local mode: single-threaded stdio transport, no concurrent requests
 - Hosted mode: per-user DB isolation, reindex is skipped
 
@@ -241,10 +247,10 @@ But if either assumption changes, this becomes a real problem.
 
 Both files define import/export endpoints:
 
-| Route | vault-api.js | management.js |
-|-------|-------------|---------------|
+| Route  | vault-api.js                  | management.js            |
+| ------ | ----------------------------- | ------------------------ |
 | Import | `POST /api/vault/import/bulk` | `POST /api/vault/import` |
-| Export | `GET /api/vault/export` | `GET /api/vault/export` |
+| Export | `GET /api/vault/export`       | `GET /api/vault/export`  |
 
 Two export endpoints with different authorization and formatting logic. The management version checks tier limits for export; the vault-api version doesn't. Both are mounted under the same Hono app — Hono matches the first registered route for identical paths.
 
@@ -257,6 +263,7 @@ Two export endpoints with different authorization and formatting logic. The mana
 **File:** `packages/hosted/src/routes/vault-api.js` (every endpoint)
 
 Every REST endpoint calls `await buildUserCtx(ctx, user, masterSecret)`. In per-user DB mode, this hits the pool (fast if cached), but also:
+
 - Allocates new closure objects for `encrypt`, `decrypt`, `checkLimits` each time
 - Calls `prepareMetaStatements(getMetaDb())` on every DEK lookup via `vault-crypto.js:64`
 
@@ -299,7 +306,11 @@ Multi-line YAML values, nested objects, and block scalars are silently dropped o
 **File:** `packages/core/src/index/index.js:160`
 
 ```js
-const dbRows = ctx.db.prepare("SELECT id, file_path, body, title, tags, meta FROM vault WHERE kind = ?").all(kind);
+const dbRows = ctx.db
+  .prepare(
+    "SELECT id, file_path, body, title, tags, meta FROM vault WHERE kind = ?",
+  )
+  .all(kind);
 ```
 
 For each discovered kind directory, it does a full scan filtered by kind. With N kinds, this is N scans. A single query grouping by kind or indexed by `file_path` would be more efficient. Irrelevant at current scale but will matter if vaults grow to thousands of entries.
@@ -323,6 +334,7 @@ The entire reindex state machine (5 variables, retry logic, promise tracking) is
 ## Appendix: Files Reviewed
 
 ### packages/core/src/ (19 files)
+
 - `index.js` — barrel exports
 - `core/config.js` — CLI arg parsing, config resolution
 - `core/files.js` — ULID, slugify, kind/dir mapping, walkDir, safeJoin
@@ -344,9 +356,11 @@ The entire reindex state machine (5 variables, retry logic, promise tracking) is
 - `sync/sync.js` — bidirectional sync protocol
 
 ### packages/local/src/ (1 file)
+
 - `server/index.js` — stdio MCP server entry point
 
 ### packages/hosted/src/ (14 files)
+
 - `index.js` — Hono HTTP server, MCP over Streamable HTTP
 - `server/ctx.js` — shared context construction
 - `server/user-ctx.js` — per-user context builder

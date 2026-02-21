@@ -29,7 +29,9 @@ export function GetStartedPage() {
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
             Get Started with Context Vault
           </h1>
-          <p className="text-muted-foreground">Choose how you want to run it.</p>
+          <p className="text-muted-foreground">
+            Choose how you want to run it.
+          </p>
         </div>
 
         {/* Mode selector */}

@@ -28,7 +28,11 @@ const SCRYPT_P = 1;
  * @returns {Buffer} - 32-byte derived key
  */
 export function deriveKey(secret, salt) {
-  return scryptSync(secret, salt, KEY_LENGTH, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  return scryptSync(secret, salt, KEY_LENGTH, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+  });
 }
 
 /**
@@ -132,7 +136,12 @@ export function generateDekSplitAuthority(masterSecret) {
  * @param {string} clientKeyShare - User's encryption secret (cvs_...)
  * @returns {Buffer} - 32-byte DEK
  */
-export function decryptDekSplitAuthority(encryptedDek, dekSalt, masterSecret, clientKeyShare) {
+export function decryptDekSplitAuthority(
+  encryptedDek,
+  dekSalt,
+  masterSecret,
+  clientKeyShare,
+) {
   const iv = encryptedDek.subarray(0, 12);
   const encrypted = encryptedDek.subarray(12);
   const combinedSecret = masterSecret + clientKeyShare;
@@ -154,7 +163,14 @@ export function decryptDekSplitAuthority(encryptedDek, dekSalt, masterSecret, cl
  * @param {string} encryptionMode - 'legacy' or 'split-authority'
  * @returns {Buffer} - 32-byte DEK
  */
-export function getUserDekAuto(userId, encryptedDek, dekSalt, masterSecret, clientKeyShare, encryptionMode) {
+export function getUserDekAuto(
+  userId,
+  encryptedDek,
+  dekSalt,
+  masterSecret,
+  clientKeyShare,
+  encryptionMode,
+) {
   // Cache key includes mode to prevent cross-contamination during migration
   const cacheKey = `${userId}:${encryptionMode}`;
   if (dekCache.has(cacheKey)) return dekCache.get(cacheKey);
@@ -162,9 +178,16 @@ export function getUserDekAuto(userId, encryptedDek, dekSalt, masterSecret, clie
   let dek;
   if (encryptionMode === "split-authority") {
     if (!clientKeyShare) {
-      throw new Error("Split-authority encryption requires X-Vault-Secret header. Include your encryption secret.");
+      throw new Error(
+        "Split-authority encryption requires X-Vault-Secret header. Include your encryption secret.",
+      );
     }
-    dek = decryptDekSplitAuthority(encryptedDek, dekSalt, masterSecret, clientKeyShare);
+    dek = decryptDekSplitAuthority(
+      encryptedDek,
+      dekSalt,
+      masterSecret,
+      clientKeyShare,
+    );
   } else {
     dek = decryptDek(encryptedDek, dekSalt, masterSecret);
   }

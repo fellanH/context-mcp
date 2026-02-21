@@ -20,7 +20,10 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { walkDir } from "@context-vault/core/core/files";
-import { parseFrontmatter, formatFrontmatter } from "@context-vault/core/core/frontmatter";
+import {
+  parseFrontmatter,
+  formatFrontmatter,
+} from "@context-vault/core/core/frontmatter";
 import { kindToPath } from "@context-vault/core/core/files";
 import { formatBody } from "@context-vault/core/capture/formatters";
 
@@ -34,7 +37,12 @@ import { formatBody } from "@context-vault/core/capture/formatters";
  * @param {(msg: string) => void} [opts.log] - Logger function
  * @returns {Promise<{ uploaded: number, failed: number, errors: string[] }>}
  */
-export async function migrateToHosted({ vaultDir, hostedUrl, apiKey, log = console.log }) {
+export async function migrateToHosted({
+  vaultDir,
+  hostedUrl,
+  apiKey,
+  log = console.log,
+}) {
   const baseUrl = hostedUrl.replace(/\/$/, "");
   const results = { uploaded: 0, failed: 0, errors: [] };
 
@@ -97,7 +105,12 @@ export async function migrateToHosted({ vaultDir, hostedUrl, apiKey, log = conso
  * @param {(msg: string) => void} [opts.log] - Logger function
  * @returns {Promise<{ downloaded: number, failed: number, errors: string[] }>}
  */
-export async function migrateToLocal({ vaultDir, hostedUrl, apiKey, log = console.log }) {
+export async function migrateToLocal({
+  vaultDir,
+  hostedUrl,
+  apiKey,
+  log = console.log,
+}) {
   const baseUrl = hostedUrl.replace(/\/$/, "");
   const results = { downloaded: 0, failed: 0, errors: [] };
 
@@ -129,18 +142,34 @@ export async function migrateToLocal({ vaultDir, hostedUrl, apiKey, log = consol
       // Add custom meta fields
       if (entry.meta && typeof entry.meta === "object") {
         for (const [k, v] of Object.entries(entry.meta)) {
-          if (!["id", "tags", "source", "created", "identity_key", "expires_at"].includes(k)) {
+          if (
+            ![
+              "id",
+              "tags",
+              "source",
+              "created",
+              "identity_key",
+              "expires_at",
+            ].includes(k)
+          ) {
             fm[k] = v;
           }
         }
       }
 
-      const mdBody = formatBody(kind, { title: entry.title, body: entry.body, meta: entry.meta });
+      const mdBody = formatBody(kind, {
+        title: entry.title,
+        body: entry.body,
+        meta: entry.meta,
+      });
       const md = formatFrontmatter(fm) + mdBody;
 
       // Determine filename
-      const slug = (entry.title || entry.body || "").slice(0, 40)
-        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const slug = (entry.title || entry.body || "")
+        .slice(0, 40)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
       const shortId = (entry.id || "").slice(-8).toLowerCase();
       const filename = slug ? `${slug}-${shortId}.md` : `${shortId}.md`;
 
@@ -157,7 +186,16 @@ export async function migrateToLocal({ vaultDir, hostedUrl, apiKey, log = consol
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-const RESERVED_FM_KEYS = new Set(["id", "tags", "source", "created", "identity_key", "expires_at", "kind", "title"]);
+const RESERVED_FM_KEYS = new Set([
+  "id",
+  "tags",
+  "source",
+  "created",
+  "identity_key",
+  "expires_at",
+  "kind",
+  "title",
+]);
 
 function extractCustomMeta(meta) {
   const custom = {};

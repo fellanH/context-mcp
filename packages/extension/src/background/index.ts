@@ -3,16 +3,42 @@
  * context menus, and message routing between popup and content scripts.
  */
 
-import { searchVault, createEntry, getVaultStatus, clearSettingsCache, probeServer } from "./api-client";
+import {
+  searchVault,
+  createEntry,
+  getVaultStatus,
+  clearSettingsCache,
+  probeServer,
+} from "./api-client";
 import type { MessageType, VaultMode } from "@/shared/types";
 import { DEFAULT_SETTINGS } from "@/shared/types";
 
 const CONTEXT_MENU_PARENT_ID = "save-to-vault";
 const CONTEXT_MENU_VARIANTS = [
-  { id: "save-as-insight", title: "Save as Insight", kind: "insight", tags: ["captured", "insight"] },
-  { id: "save-as-note", title: "Save as Note", kind: "note", tags: ["captured", "note"] },
-  { id: "save-as-reference", title: "Save as Reference", kind: "reference", tags: ["captured", "reference"] },
-  { id: "save-as-snippet", title: "Save as Code Snippet", kind: "snippet", tags: ["captured", "code"] },
+  {
+    id: "save-as-insight",
+    title: "Save as Insight",
+    kind: "insight",
+    tags: ["captured", "insight"],
+  },
+  {
+    id: "save-as-note",
+    title: "Save as Note",
+    kind: "note",
+    tags: ["captured", "note"],
+  },
+  {
+    id: "save-as-reference",
+    title: "Save as Reference",
+    kind: "reference",
+    tags: ["captured", "reference"],
+  },
+  {
+    id: "save-as-snippet",
+    title: "Save as Code Snippet",
+    kind: "snippet",
+    tags: ["captured", "code"],
+  },
 ] as const;
 
 // ─── Badge ──────────────────────────────────────────────────────────────────
@@ -33,7 +59,9 @@ function originPatternFromServerUrl(serverUrl: string): string {
   try {
     parsed = new URL(serverUrl.trim());
   } catch {
-    throw new Error("Invalid server URL. Use a full URL like https://app.context-vault.com");
+    throw new Error(
+      "Invalid server URL. Use a full URL like https://app.context-vault.com",
+    );
   }
 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
@@ -46,13 +74,17 @@ function originPatternFromServerUrl(serverUrl: string): string {
 
 function containsOriginPermission(origin: string): Promise<boolean> {
   return new Promise((resolve) => {
-    chrome.permissions.contains({ origins: [origin] }, (granted) => resolve(Boolean(granted)));
+    chrome.permissions.contains({ origins: [origin] }, (granted) =>
+      resolve(Boolean(granted)),
+    );
   });
 }
 
 function requestOriginPermission(origin: string): Promise<boolean> {
   return new Promise((resolve) => {
-    chrome.permissions.request({ origins: [origin] }, (granted) => resolve(Boolean(granted)));
+    chrome.permissions.request({ origins: [origin] }, (granted) =>
+      resolve(Boolean(granted)),
+    );
   });
 }
 
@@ -63,7 +95,9 @@ async function ensureServerPermission(serverUrl: string): Promise<string> {
 
   const granted = await requestOriginPermission(origin);
   if (!granted) {
-    throw new Error(`Permission denied for ${origin}. Allow host access to connect this server.`);
+    throw new Error(
+      `Permission denied for ${origin}. Allow host access to connect this server.`,
+    );
   }
 
   return origin;
@@ -71,7 +105,12 @@ async function ensureServerPermission(serverUrl: string): Promise<string> {
 
 // ─── Connection Logic ────────────────────────────────────────────────────────
 
-function isConnected(mode: VaultMode, serverUrl: string, apiKey: string, vaultPath?: string): boolean {
+function isConnected(
+  mode: VaultMode,
+  serverUrl: string,
+  apiKey: string,
+  vaultPath?: string,
+): boolean {
   if (mode === "local") return Boolean(vaultPath);
   return Boolean(serverUrl && apiKey);
 }
@@ -100,10 +139,20 @@ function setupContextMenus(): void {
 chrome.runtime.onInstalled.addListener((details) => {
   setupContextMenus();
 
-  chrome.storage.local.get(["apiKey", "mode", "serverUrl", "vaultPath"], (stored) => {
-    const mode: VaultMode = stored.mode || DEFAULT_SETTINGS.mode;
-    updateBadge(isConnected(mode, stored.serverUrl || "", stored.apiKey || "", stored.vaultPath || ""));
-  });
+  chrome.storage.local.get(
+    ["apiKey", "mode", "serverUrl", "vaultPath"],
+    (stored) => {
+      const mode: VaultMode = stored.mode || DEFAULT_SETTINGS.mode;
+      updateBadge(
+        isConnected(
+          mode,
+          stored.serverUrl || "",
+          stored.apiKey || "",
+          stored.vaultPath || "",
+        ),
+      );
+    },
+  );
 
   if (details.reason === "install") {
     chrome.tabs.create({ url: chrome.runtime.getURL("onboarding/index.html") });
@@ -114,7 +163,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const selected = info.selectionText?.trim();
   if (!selected) return;
 
-  const variant = CONTEXT_MENU_VARIANTS.find((item) => item.id === info.menuItemId);
+  const variant = CONTEXT_MENU_VARIANTS.find(
+    (item) => item.id === info.menuItemId,
+  );
   if (!variant) return;
 
   try {
@@ -158,17 +209,26 @@ chrome.runtime.onMessage.addListener(
     handleMessage(message)
       .then(sendResponse)
       .catch((err) =>
-        sendResponse({ type: "error", message: err instanceof Error ? err.message : "Unknown error" })
+        sendResponse({
+          type: "error",
+          message: err instanceof Error ? err.message : "Unknown error",
+        }),
       );
     return true; // Keep channel open for async response
-  }
+  },
 );
 
 async function handleMessage(message: MessageType): Promise<MessageType> {
   switch (message.type) {
     case "search": {
-      const result = await searchVault(message.query, { limit: message.limit || 10 });
-      return { type: "search_result", results: result.results, query: result.query };
+      const result = await searchVault(message.query, {
+        limit: message.limit || 10,
+      });
+      return {
+        type: "search_result",
+        results: result.results,
+        query: result.query,
+      };
     }
 
     case "capture": {
@@ -183,7 +243,12 @@ async function handleMessage(message: MessageType): Promise<MessageType> {
     }
 
     case "get_settings": {
-      const stored = await chrome.storage.local.get(["serverUrl", "apiKey", "mode", "vaultPath"]);
+      const stored = await chrome.storage.local.get([
+        "serverUrl",
+        "apiKey",
+        "mode",
+        "vaultPath",
+      ]);
       const mode: VaultMode = stored.mode || DEFAULT_SETTINGS.mode;
       const serverUrl = stored.serverUrl || DEFAULT_SETTINGS.serverUrl;
       const apiKey = stored.apiKey || "";
@@ -211,7 +276,11 @@ async function handleMessage(message: MessageType): Promise<MessageType> {
         try {
           await ensureServerPermission(serverUrl);
         } catch (err) {
-          return { type: "error", message: err instanceof Error ? err.message : "Permission request failed" };
+          return {
+            type: "error",
+            message:
+              err instanceof Error ? err.message : "Permission request failed",
+          };
         }
       }
 
@@ -221,13 +290,21 @@ async function handleMessage(message: MessageType): Promise<MessageType> {
       const connected = isConnected(mode, serverUrl, apiKey, vaultPath);
       updateBadge(connected);
 
-      return { type: "settings", serverUrl, apiKey, mode, vaultPath, connected };
+      return {
+        type: "settings",
+        serverUrl,
+        apiKey,
+        mode,
+        vaultPath,
+        connected,
+      };
     }
 
     case "test_connection": {
       try {
         const status = await getVaultStatus();
-        const connected = status.health === "ok" || status.health === "degraded";
+        const connected =
+          status.health === "ok" || status.health === "degraded";
         updateBadge(connected);
         return { type: "connection_result", success: connected };
       } catch (err) {
@@ -243,7 +320,12 @@ async function handleMessage(message: MessageType): Promise<MessageType> {
     }
 
     case "check_health": {
-      const stored = await chrome.storage.local.get(["mode", "serverUrl", "apiKey", "vaultPath"]);
+      const stored = await chrome.storage.local.get([
+        "mode",
+        "serverUrl",
+        "apiKey",
+        "vaultPath",
+      ]);
       const mode: VaultMode = stored.mode || DEFAULT_SETTINGS.mode;
       const reachable = await probeServer(3000);
       updateBadge(reachable);

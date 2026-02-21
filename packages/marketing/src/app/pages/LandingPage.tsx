@@ -192,7 +192,8 @@ export function LandingPage() {
                   3. Retrieve when needed
                 </CardTitle>
                 <CardDescription>
-                  Pull relevant context with hybrid retrieval and recency-aware ranking.
+                  Pull relevant context with hybrid retrieval and recency-aware
+                  ranking.
                 </CardDescription>
               </CardHeader>
               <CardContent>

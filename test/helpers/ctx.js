@@ -5,7 +5,12 @@
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { initDatabase, prepareStatements, insertVec, deleteVec } from "@context-vault/core/index/db";
+import {
+  initDatabase,
+  prepareStatements,
+  insertVec,
+  deleteVec,
+} from "@context-vault/core/index/db";
 import { embed } from "@context-vault/core/index/embed";
 
 export async function createTestCtx() {
@@ -39,7 +44,9 @@ export async function createTestCtx() {
   return {
     ctx,
     cleanup() {
-      try { db.close(); } catch {}
+      try {
+        db.close();
+      } catch {}
       rmSync(tmp, { recursive: true, force: true });
     },
   };

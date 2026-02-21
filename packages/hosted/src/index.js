@@ -32,7 +32,11 @@ import { join } from "node:path";
 import { writeFileSync, unlinkSync, readFileSync, statfsSync } from "node:fs";
 import { registerTools } from "@context-vault/core/server/tools";
 import { createCtx, PER_USER_DB } from "./server/ctx.js";
-import { initMetaDb, prepareMetaStatements, getMetaDb } from "./auth/meta-db.js";
+import {
+  initMetaDb,
+  prepareMetaStatements,
+  getMetaDb,
+} from "./auth/meta-db.js";
 import { bearerAuth } from "./middleware/auth.js";
 import { rateLimit } from "./middleware/rate-limit.js";
 import { requestLogger } from "./middleware/logger.js";
@@ -53,20 +57,30 @@ const VAULT_MASTER_SECRET = process.env.VAULT_MASTER_SECRET || null;
 function validateEnv(config) {
   if (AUTH_REQUIRED) {
     if (!process.env.STRIPE_SECRET_KEY) {
-      console.warn("[hosted] \u26a0 STRIPE_SECRET_KEY not set — billing disabled");
+      console.warn(
+        "[hosted] \u26a0 STRIPE_SECRET_KEY not set — billing disabled",
+      );
     }
     if (!process.env.STRIPE_WEBHOOK_SECRET) {
-      console.warn("[hosted] \u26a0 STRIPE_WEBHOOK_SECRET not set — webhooks disabled");
+      console.warn(
+        "[hosted] \u26a0 STRIPE_WEBHOOK_SECRET not set — webhooks disabled",
+      );
     }
     if (!process.env.STRIPE_PRICE_PRO) {
-      console.warn("[hosted] \u26a0 STRIPE_PRICE_PRO not set — checkout disabled");
+      console.warn(
+        "[hosted] \u26a0 STRIPE_PRICE_PRO not set — checkout disabled",
+      );
     }
     if (!VAULT_MASTER_SECRET) {
-      console.error("[hosted] FATAL: VAULT_MASTER_SECRET is required when AUTH_REQUIRED=true");
+      console.error(
+        "[hosted] FATAL: VAULT_MASTER_SECRET is required when AUTH_REQUIRED=true",
+      );
       process.exit(1);
     }
     if (VAULT_MASTER_SECRET.length < 16) {
-      console.error("[hosted] FATAL: VAULT_MASTER_SECRET must be at least 16 characters");
+      console.error(
+        "[hosted] FATAL: VAULT_MASTER_SECRET must be at least 16 characters",
+      );
       process.exit(1);
     }
   }
@@ -77,14 +91,18 @@ function validateEnv(config) {
     writeFileSync(probe, "");
     unlinkSync(probe);
   } catch (err) {
-    console.error(`[hosted] \u26a0 Data dir not writable: ${config.dataDir} — ${err.message}`);
+    console.error(
+      `[hosted] \u26a0 Data dir not writable: ${config.dataDir} — ${err.message}`,
+    );
   }
 }
 
 // ─── Shared Context (initialized once at startup) ───────────────────────────
 
 const ctx = await createCtx();
-console.log(`[hosted] Mode: ${PER_USER_DB ? "per-user DB isolation" : "shared DB (legacy)"}`);
+console.log(
+  `[hosted] Mode: ${PER_USER_DB ? "per-user DB isolation" : "shared DB (legacy)"}`,
+);
 if (!PER_USER_DB) {
   console.log(`[hosted] Vault: ${ctx.config.vaultDir}`);
   console.log(`[hosted] Database: ${ctx.config.dbPath}`);
@@ -108,7 +126,9 @@ scheduleBackups(ctx, getMetaDb(), ctx.config);
 
 let pkgVersion = "0.1.0";
 try {
-  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+  const pkg = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf-8"),
+  );
   pkgVersion = pkg.version || pkgVersion;
 } catch {}
 
@@ -119,7 +139,7 @@ const MCP_REQUEST_TIMEOUT_MS = 60_000;
 async function createMcpServer(user) {
   const server = new McpServer(
     { name: "context-vault-hosted", version: pkgVersion },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {} } },
   );
   const userCtx = await getCachedUserCtx(ctx, user, VAULT_MASTER_SECRET);
   registerTools(server, userCtx);
@@ -133,14 +153,16 @@ const app = new Hono();
 // Global error handler — catches all unhandled errors, returns generic 500
 app.onError((err, c) => {
   Sentry.captureException(err);
-  console.error(JSON.stringify({
-    level: "error",
-    requestId: c.get("requestId") || null,
-    method: c.req.method,
-    path: c.req.path,
-    error: err.message,
-    ts: new Date().toISOString(),
-  }));
+  console.error(
+    JSON.stringify({
+      level: "error",
+      requestId: c.get("requestId") || null,
+      method: c.req.method,
+      path: c.req.path,
+      error: err.message,
+      ts: new Date().toISOString(),
+    }),
+  );
   return c.json({ error: "Internal server error" }, 500);
 });
 
@@ -160,21 +182,39 @@ app.use("*", requestLogger());
 // When AUTH_REQUIRED and no CORS_ORIGIN set → block browser origins (empty array)
 // When !AUTH_REQUIRED (dev) → allow all
 const corsOrigin = AUTH_REQUIRED
-  ? (process.env.CORS_ORIGIN
-      ? process.env.CORS_ORIGIN.split(",").map(s => s.trim())
-      : [])
+  ? process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
+    : []
   : "*";
 
 if (AUTH_REQUIRED && !process.env.CORS_ORIGIN) {
-  console.warn("[hosted] \u26a0 CORS_ORIGIN not set with AUTH_REQUIRED=true — browser origins blocked");
+  console.warn(
+    "[hosted] \u26a0 CORS_ORIGIN not set with AUTH_REQUIRED=true — browser origins blocked",
+  );
 }
 
-app.use("*", cors({
-  origin: corsOrigin,
-  allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowHeaders: ["Content-Type", "Authorization", "X-Vault-Secret", "mcp-session-id", "Last-Event-ID", "mcp-protocol-version"],
-  exposeHeaders: ["mcp-session-id", "mcp-protocol-version", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
-}));
+app.use(
+  "*",
+  cors({
+    origin: corsOrigin,
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Vault-Secret",
+      "mcp-session-id",
+      "Last-Event-ID",
+      "mcp-protocol-version",
+    ],
+    exposeHeaders: [
+      "mcp-session-id",
+      "mcp-protocol-version",
+      "X-RateLimit-Limit",
+      "X-RateLimit-Remaining",
+      "X-RateLimit-Reset",
+    ],
+  }),
+);
 
 // Health check (unauthenticated) — real DB checks for Fly.io
 app.get("/health", (c) => {
@@ -191,12 +231,22 @@ app.get("/health", (c) => {
     checks.user_db_pool = pool.size;
     checks.vault_db = "per-user";
   } else {
-    try { ctx.db.prepare("SELECT 1").get(); checks.vault_db = "ok"; }
-    catch { checks.vault_db = "error"; checks.status = "degraded"; }
+    try {
+      ctx.db.prepare("SELECT 1").get();
+      checks.vault_db = "ok";
+    } catch {
+      checks.vault_db = "error";
+      checks.status = "degraded";
+    }
   }
 
-  try { getMetaDb().prepare("SELECT 1").get(); checks.meta_db = "ok"; }
-  catch { checks.meta_db = "error"; checks.status = "degraded"; }
+  try {
+    getMetaDb().prepare("SELECT 1").get();
+    checks.meta_db = "ok";
+  } catch {
+    checks.meta_db = "error";
+    checks.status = "degraded";
+  }
 
   // Disk usage (Fly.io volume at /data)
   try {
@@ -234,19 +284,24 @@ async function handleMcpRequest(c, user) {
     return await Promise.race([
       transport.handleRequest(c.req.raw),
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error("MCP request timed out")), MCP_REQUEST_TIMEOUT_MS);
+        timer = setTimeout(
+          () => reject(new Error("MCP request timed out")),
+          MCP_REQUEST_TIMEOUT_MS,
+        );
       }),
     ]);
   } catch (err) {
     const isTimeout = err.message === "MCP request timed out";
-    console.error(JSON.stringify({
-      level: "error",
-      requestId: c.get("requestId") || null,
-      path: "/mcp",
-      error: err.message,
-      timeout: isTimeout,
-      ts: new Date().toISOString(),
-    }));
+    console.error(
+      JSON.stringify({
+        level: "error",
+        requestId: c.get("requestId") || null,
+        path: "/mcp",
+        error: err.message,
+        timeout: isTimeout,
+        ts: new Date().toISOString(),
+      }),
+    );
     return c.json(
       { error: isTimeout ? "Request timed out" : "Internal server error" },
       isTimeout ? 504 : 500,
@@ -288,18 +343,30 @@ function shutdown(signal) {
   console.log(`[hosted] ${signal} received, draining...`);
   httpServer.close(() => {
     // Close per-user DB pool
-    try { pool.closeAll(); } catch {}
+    try {
+      pool.closeAll();
+    } catch {}
     // WAL checkpoint + close shared DB (legacy mode)
     if (!PER_USER_DB && ctx.db) {
-      try { ctx.db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
-      try { ctx.db.close(); } catch {}
+      try {
+        ctx.db.pragma("wal_checkpoint(TRUNCATE)");
+      } catch {}
+      try {
+        ctx.db.close();
+      } catch {}
     }
-    try { getMetaDb().pragma("wal_checkpoint(TRUNCATE)"); } catch {}
-    try { getMetaDb().close(); } catch {}
+    try {
+      getMetaDb().pragma("wal_checkpoint(TRUNCATE)");
+    } catch {}
+    try {
+      getMetaDb().close();
+    } catch {}
     process.exit(0);
   });
   // Force exit after 10 seconds if drain hangs
-  setTimeout(() => { process.exit(1); }, 10_000).unref();
+  setTimeout(() => {
+    process.exit(1);
+  }, 10_000).unref();
 }
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));

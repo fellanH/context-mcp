@@ -32,7 +32,9 @@ describe("detectFormat", () => {
   });
 
   it("uses content heuristics when extension is ambiguous", () => {
-    expect(detectFormat("file.txt", "---\ntitle: test\n---\nBody")).toBe("markdown");
+    expect(detectFormat("file.txt", "---\ntitle: test\n---\nBody")).toBe(
+      "markdown",
+    );
     expect(detectFormat("file.txt", '[{"kind":"insight"}]')).toBe("json");
     expect(detectFormat("file.txt", '{"entries":[]}')).toBe("json");
   });
@@ -95,7 +97,10 @@ Test,Body text,javascript,react`;
 
     const entries = parseCsv(content, ",");
     expect(entries).toHaveLength(1);
-    expect(entries[0].meta).toEqual({ language: "javascript", framework: "react" });
+    expect(entries[0].meta).toEqual({
+      language: "javascript",
+      framework: "react",
+    });
   });
 
   it("handles quoted fields with commas", () => {

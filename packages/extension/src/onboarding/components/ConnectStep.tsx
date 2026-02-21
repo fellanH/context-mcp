@@ -15,23 +15,42 @@ interface Props {
 }
 
 export function ConnectStep({
-  mode, serverUrl, apiKey, vaultPath,
-  onServerUrlChange, onApiKeyChange, onVaultPathChange, onConnected,
+  mode,
+  serverUrl,
+  apiKey,
+  vaultPath,
+  onServerUrlChange,
+  onApiKeyChange,
+  onVaultPathChange,
+  onConnected,
 }: Props) {
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    error?: string;
+  } | null>(null);
 
   function handleTest() {
     setTesting(true);
     setTestResult(null);
 
-    const effectiveUrl = mode === "local" ? LOCAL_DEFAULTS.serverUrl : serverUrl;
+    const effectiveUrl =
+      mode === "local" ? LOCAL_DEFAULTS.serverUrl : serverUrl;
     chrome.runtime.sendMessage(
-      { type: "save_settings", serverUrl: effectiveUrl, apiKey, mode, vaultPath } satisfies MessageType,
+      {
+        type: "save_settings",
+        serverUrl: effectiveUrl,
+        apiKey,
+        mode,
+        vaultPath,
+      } satisfies MessageType,
       (saveResponse: MessageType) => {
         if (chrome.runtime.lastError) {
           setTesting(false);
-          setTestResult({ success: false, error: "Could not reach background service." });
+          setTestResult({
+            success: false,
+            error: "Could not reach background service.",
+          });
           return;
         }
         if (saveResponse?.type === "error") {
@@ -39,21 +58,27 @@ export function ConnectStep({
           setTestResult({ success: false, error: saveResponse.message });
           return;
         }
-        chrome.runtime.sendMessage({ type: "test_connection" } satisfies MessageType, (response: MessageType) => {
-          if (chrome.runtime.lastError) {
-            setTesting(false);
-            setTestResult({ success: false, error: "Could not reach background service." });
-            return;
-          }
-          setTesting(false);
-          if (response?.type === "connection_result") {
-            setTestResult(response);
-            if (response.success) {
-              setTimeout(() => onConnected(), 800);
+        chrome.runtime.sendMessage(
+          { type: "test_connection" } satisfies MessageType,
+          (response: MessageType) => {
+            if (chrome.runtime.lastError) {
+              setTesting(false);
+              setTestResult({
+                success: false,
+                error: "Could not reach background service.",
+              });
+              return;
             }
-          }
-        });
-      }
+            setTesting(false);
+            if (response?.type === "connection_result") {
+              setTestResult(response);
+              if (response.success) {
+                setTimeout(() => onConnected(), 800);
+              }
+            }
+          },
+        );
+      },
     );
   }
 
@@ -87,22 +112,36 @@ export function ConnectStep({
             <p className="font-medium text-foreground">Setup steps</p>
             <ol className="list-decimal list-inside space-y-1">
               <li>
-                Install: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">npm i -g context-vault</code>
+                Install:{" "}
+                <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">
+                  npm i -g context-vault
+                </code>
               </li>
               <li>
-                Setup: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">context-vault setup</code>
+                Setup:{" "}
+                <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">
+                  context-vault setup
+                </code>
               </li>
               <li>
-                Start server: <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">context-vault ui</code>
+                Start server:{" "}
+                <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">
+                  context-vault ui
+                </code>
               </li>
             </ol>
             <p className="text-xs text-muted-foreground/70 pt-1">
-              The extension connects to the local server at <code className="bg-secondary px-1 py-0.5 rounded text-[11px]">localhost:3141</code>.
-              Keep it running while using the extension.
+              The extension connects to the local server at{" "}
+              <code className="bg-secondary px-1 py-0.5 rounded text-[11px]">
+                localhost:3141
+              </code>
+              . Keep it running while using the extension.
             </p>
           </div>
 
-          <label className="block text-xs text-muted-foreground mb-1">Entries Folder</label>
+          <label className="block text-xs text-muted-foreground mb-1">
+            Entries Folder
+          </label>
           <div className="flex gap-2 mb-1">
             <input
               type="text"
@@ -137,7 +176,9 @@ export function ConnectStep({
             Open setup guide
           </a>
 
-          <label className="block text-xs text-muted-foreground mb-1">Server URL</label>
+          <label className="block text-xs text-muted-foreground mb-1">
+            Server URL
+          </label>
           <input
             type="url"
             value={serverUrl}
@@ -146,7 +187,9 @@ export function ConnectStep({
             className="w-full px-3.5 py-2.5 text-sm bg-input-background border border-input rounded-xl text-foreground outline-none focus:ring-1 focus:ring-ring mb-4"
           />
 
-          <label className="block text-xs text-muted-foreground mb-1">API Key</label>
+          <label className="block text-xs text-muted-foreground mb-1">
+            API Key
+          </label>
           <input
             type="password"
             value={apiKey}
@@ -171,7 +214,11 @@ export function ConnectStep({
             <div>
               <div className="font-medium mb-1">Local server not running</div>
               <div className="text-xs opacity-80">
-                Open a terminal and run <code className="bg-secondary px-1 py-0.5 rounded font-mono">context-vault ui</code> first, then try again.
+                Open a terminal and run{" "}
+                <code className="bg-secondary px-1 py-0.5 rounded font-mono">
+                  context-vault ui
+                </code>{" "}
+                first, then try again.
               </div>
             </div>
           ) : (

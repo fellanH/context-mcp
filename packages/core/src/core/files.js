@@ -35,7 +35,8 @@ export function slugify(text, maxLen = 60) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   if (slug.length > maxLen) {
-    slug = slug.slice(0, maxLen).replace(/-[^-]*$/, "") || slug.slice(0, maxLen);
+    slug =
+      slug.slice(0, maxLen).replace(/-[^-]*$/, "") || slug.slice(0, maxLen);
   }
   return slug;
 }
@@ -60,7 +61,7 @@ const PLURAL_MAP = {
 };
 
 const SINGULAR_MAP = Object.fromEntries(
-  Object.entries(PLURAL_MAP).map(([k, v]) => [v, k])
+  Object.entries(PLURAL_MAP).map(([k, v]) => [v, k]),
 );
 
 export function kindToDir(kind) {
@@ -75,9 +76,9 @@ export function dirToKind(dirName) {
 
 /** Normalize a kind input (singular or plural) to its canonical singular form. */
 export function normalizeKind(input) {
-  if (PLURAL_MAP[input]) return input;           // Already a known singular kind
+  if (PLURAL_MAP[input]) return input; // Already a known singular kind
   if (SINGULAR_MAP[input]) return SINGULAR_MAP[input]; // Known plural → singular
-  return input;                                   // Unknown — use as-is (don't strip 's')
+  return input; // Unknown — use as-is (don't strip 's')
 }
 
 /** Returns relative path from vault root → kind dir: "knowledge/insights", "events/sessions", etc. */
@@ -91,7 +92,9 @@ export function safeJoin(base, ...parts) {
   const resolvedBase = resolve(base);
   const result = resolve(join(base, ...parts));
   if (!result.startsWith(resolvedBase + sep) && result !== resolvedBase) {
-    throw new Error(`Path traversal blocked: resolved path escapes base directory`);
+    throw new Error(
+      `Path traversal blocked: resolved path escapes base directory`,
+    );
   }
   return result;
 }

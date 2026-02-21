@@ -34,13 +34,16 @@ export function rateLimit() {
         resetDate.setUTCHours(24, 0, 0, 0);
         c.header("X-RateLimit-Limit", String(limits.requestsPerDay));
         c.header("X-RateLimit-Remaining", "0");
-        c.header("X-RateLimit-Reset", String(Math.floor(resetDate.getTime() / 1000)));
+        c.header(
+          "X-RateLimit-Reset",
+          String(Math.floor(resetDate.getTime() / 1000)),
+        );
         return c.json(
           {
             error: `Daily request limit reached (${limits.requestsPerDay}/day). Upgrade to Pro for unlimited usage.`,
             code: "RATE_LIMIT_EXCEEDED",
           },
-          429
+          429,
         );
       }
 
@@ -49,13 +52,17 @@ export function rateLimit() {
       resetDate.setUTCHours(24, 0, 0, 0);
       c.header("X-RateLimit-Limit", String(limits.requestsPerDay));
       c.header("X-RateLimit-Remaining", String(remaining - 1));
-      c.header("X-RateLimit-Reset", String(Math.floor(resetDate.getTime() / 1000)));
+      c.header(
+        "X-RateLimit-Reset",
+        String(Math.floor(resetDate.getTime() / 1000)),
+      );
     }
 
     // Log usage (before processing — count the attempt)
-    try { stmts.logUsage.run(user.userId, "mcp_request"); } catch {}
+    try {
+      stmts.logUsage.run(user.userId, "mcp_request");
+    } catch {}
 
     await next();
   };
 }
-

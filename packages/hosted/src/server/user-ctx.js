@@ -14,7 +14,10 @@
  * pool.get() / getTierLimits() on every HTTP request from the same user.
  */
 
-import { encryptForStorage, decryptFromStorage } from "../encryption/vault-crypto.js";
+import {
+  encryptForStorage,
+  decryptFromStorage,
+} from "../encryption/vault-crypto.js";
 import { getTierLimits } from "../billing/stripe.js";
 import { pool, getUserVaultDir, getUserDbPath } from "./user-db.js";
 import { PER_USER_DB } from "./ctx.js";
@@ -125,8 +128,10 @@ async function buildIsolatedUserCtx(ctx, user, masterSecret, teamScope) {
   // Add encryption/decryption when master secret is configured
   if (masterSecret) {
     const clientKeyShare = user.clientKeyShare || null;
-    userCtx.encrypt = (entry) => encryptForStorage(entry, userId, masterSecret, clientKeyShare);
-    userCtx.decrypt = (row) => decryptFromStorage(row, userId, masterSecret, clientKeyShare);
+    userCtx.encrypt = (entry) =>
+      encryptForStorage(entry, userId, masterSecret, clientKeyShare);
+    userCtx.decrypt = (row) =>
+      decryptFromStorage(row, userId, masterSecret, clientKeyShare);
   }
 
   // Attach tier limits — queries user's own DB (no WHERE user_id needed)
@@ -134,9 +139,11 @@ async function buildIsolatedUserCtx(ctx, user, masterSecret, teamScope) {
     const limits = getTierLimits(user.tier);
     userCtx.checkLimits = () => {
       const entryCount = db.prepare("SELECT COUNT(*) as c FROM vault").get().c;
-      const storageBytes = db.prepare(
-        "SELECT COALESCE(SUM(LENGTH(COALESCE(body,'')) + LENGTH(COALESCE(body_encrypted,'')) + LENGTH(COALESCE(title,'')) + LENGTH(COALESCE(meta,''))), 0) as s FROM vault"
-      ).get().s;
+      const storageBytes = db
+        .prepare(
+          "SELECT COALESCE(SUM(LENGTH(COALESCE(body,'')) + LENGTH(COALESCE(body_encrypted,'')) + LENGTH(COALESCE(title,'')) + LENGTH(COALESCE(meta,''))), 0) as s FROM vault",
+        )
+        .get().s;
       return {
         entryCount,
         storageMb: storageBytes / (1024 * 1024),
@@ -164,18 +171,24 @@ function buildLegacyUserCtx(ctx, user, masterSecret, teamScope) {
   // Add encryption/decryption when master secret is configured and user is authenticated
   if (masterSecret && userId) {
     const clientKeyShare = user?.clientKeyShare || null;
-    userCtx.encrypt = (entry) => encryptForStorage(entry, userId, masterSecret, clientKeyShare);
-    userCtx.decrypt = (row) => decryptFromStorage(row, userId, masterSecret, clientKeyShare);
+    userCtx.encrypt = (entry) =>
+      encryptForStorage(entry, userId, masterSecret, clientKeyShare);
+    userCtx.decrypt = (row) =>
+      decryptFromStorage(row, userId, masterSecret, clientKeyShare);
   }
 
   // Attach tier limits for hosted mode
   if (userId && user.tier) {
     const limits = getTierLimits(user.tier);
     userCtx.checkLimits = () => {
-      const entryCount = ctx.db.prepare("SELECT COUNT(*) as c FROM vault WHERE user_id = ?").get(userId).c;
-      const storageBytes = ctx.db.prepare(
-        "SELECT COALESCE(SUM(LENGTH(COALESCE(body,'')) + LENGTH(COALESCE(body_encrypted,'')) + LENGTH(COALESCE(title,'')) + LENGTH(COALESCE(meta,''))), 0) as s FROM vault WHERE user_id = ?"
-      ).get(userId).s;
+      const entryCount = ctx.db
+        .prepare("SELECT COUNT(*) as c FROM vault WHERE user_id = ?")
+        .get(userId).c;
+      const storageBytes = ctx.db
+        .prepare(
+          "SELECT COALESCE(SUM(LENGTH(COALESCE(body,'')) + LENGTH(COALESCE(body_encrypted,'')) + LENGTH(COALESCE(title,'')) + LENGTH(COALESCE(meta,''))), 0) as s FROM vault WHERE user_id = ?",
+        )
+        .get(userId).s;
       return {
         entryCount,
         storageMb: storageBytes / (1024 * 1024),

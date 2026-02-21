@@ -14,14 +14,19 @@ import { join } from "node:path";
 
 const PORT = 3458;
 const BASE = `http://localhost:${PORT}`;
-const SERVER_ENTRY = resolve(import.meta.dirname, "../../packages/hosted/src/index.js");
+const SERVER_ENTRY = resolve(
+  import.meta.dirname,
+  "../../packages/hosted/src/index.js",
+);
 
 // Use unique email prefix per run to avoid collisions
 const RUN_ID = Date.now().toString(36);
 
 // Each test gets a unique IP via X-Forwarded-For to avoid cross-test rate limiting
 let ipCounter = 0;
-function uniqueIp() { return `10.0.${Math.floor(++ipCounter / 256)}.${ipCounter % 256}`; }
+function uniqueIp() {
+  return `10.0.${Math.floor(++ipCounter / 256)}.${ipCounter % 256}`;
+}
 
 describe("hosted auth + management API", () => {
   let serverProcess;
@@ -48,7 +53,10 @@ describe("hosted auth + management API", () => {
     });
 
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Server start timeout")), 15000);
+      const timeout = setTimeout(
+        () => reject(new Error("Server start timeout")),
+        15000,
+      );
       const check = (data) => {
         if (data.toString().includes("listening")) {
           clearTimeout(timeout);
@@ -57,7 +65,10 @@ describe("hosted auth + management API", () => {
       };
       serverProcess.stdout.on("data", check);
       serverProcess.stderr.on("data", check);
-      serverProcess.on("error", (err) => { clearTimeout(timeout); reject(err); });
+      serverProcess.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
     });
   }, 30000);
 
@@ -85,7 +96,11 @@ describe("hosted auth + management API", () => {
         jsonrpc: "2.0",
         id: 1,
         method: "initialize",
-        params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1.0" } },
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1.0" },
+        },
       }),
     });
     expect(res.status).toBe(401);
@@ -94,8 +109,14 @@ describe("hosted auth + management API", () => {
   it("registers a user and gets an API key", async () => {
     const res = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
-      body: JSON.stringify({ email: `reg-${RUN_ID}@test.com`, name: "Test User" }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
+      body: JSON.stringify({
+        email: `reg-${RUN_ID}@test.com`,
+        name: "Test User",
+      }),
     });
     expect(res.status).toBe(201);
     const data = await res.json();
@@ -107,7 +128,10 @@ describe("hosted auth + management API", () => {
   it("rejects duplicate registration", async () => {
     const res = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `reg-${RUN_ID}@test.com` }),
     });
     expect(res.status).toBe(409);
@@ -117,7 +141,10 @@ describe("hosted auth + management API", () => {
     // Register
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `flow-${RUN_ID}@test.com` }),
     });
     const { apiKey } = await regRes.json();
@@ -125,7 +152,7 @@ describe("hosted auth + management API", () => {
     // Connect MCP client with auth
     const transport = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: { Authorization: `Bearer ${apiKey.key}` } } }
+      { requestInit: { headers: { Authorization: `Bearer ${apiKey.key}` } } },
     );
     const client = new Client({ name: "test-client", version: "1.0.0" });
     await client.connect(transport);
@@ -135,7 +162,10 @@ describe("hosted auth + management API", () => {
     expect(tools.length).toBeGreaterThanOrEqual(6);
 
     // Call context_status
-    const result = await client.callTool({ name: "context_status", arguments: {} });
+    const result = await client.callTool({
+      name: "context_status",
+      arguments: {},
+    });
     expect(result.content[0].text).toContain("Vault Status");
 
     await client.close();
@@ -144,11 +174,17 @@ describe("hosted auth + management API", () => {
   it("key management: list, limit, delete, and create keys", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `keys-${RUN_ID}@test.com` }),
     });
     const { apiKey } = await regRes.json();
-    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+    const authHeaders = {
+      Authorization: `Bearer ${apiKey.key}`,
+      "Content-Type": "application/json",
+    };
 
     // List keys (should have 1 from registration)
     const listRes = await fetch(`${BASE}/api/keys`, { headers: authHeaders });
@@ -179,20 +215,29 @@ describe("hosted auth + management API", () => {
   it("create entry: valid entry returns full object", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `import-${RUN_ID}@test.com` }),
     });
     const regData = await regRes.json();
     const authHeaders = {
       Authorization: `Bearer ${regData.apiKey.key}`,
       "Content-Type": "application/json",
-      ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+      ...(regData.encryptionSecret
+        ? { "X-Vault-Secret": regData.encryptionSecret }
+        : {}),
     };
 
     const res = await fetch(`${BASE}/api/vault/entries`, {
       method: "POST",
       headers: authHeaders,
-      body: JSON.stringify({ kind: "insight", body: "Test import entry", tags: ["test"] }),
+      body: JSON.stringify({
+        kind: "insight",
+        body: "Test import entry",
+        tags: ["test"],
+      }),
     });
     expect(res.status).toBe(201);
     const data = await res.json();
@@ -203,11 +248,17 @@ describe("hosted auth + management API", () => {
   it("create entry: missing body returns 400", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `import-nobody-${RUN_ID}@test.com` }),
     });
     const { apiKey } = await regRes.json();
-    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+    const authHeaders = {
+      Authorization: `Bearer ${apiKey.key}`,
+      "Content-Type": "application/json",
+    };
 
     const res = await fetch(`${BASE}/api/vault/entries`, {
       method: "POST",
@@ -222,11 +273,17 @@ describe("hosted auth + management API", () => {
   it("create entry: missing kind returns 400", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `import-nokind-${RUN_ID}@test.com` }),
     });
     const { apiKey } = await regRes.json();
-    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+    const authHeaders = {
+      Authorization: `Bearer ${apiKey.key}`,
+      "Content-Type": "application/json",
+    };
 
     const res = await fetch(`${BASE}/api/vault/entries`, {
       method: "POST",
@@ -241,7 +298,10 @@ describe("hosted auth + management API", () => {
   it("export: free tier returns 403", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `export-free-${RUN_ID}@test.com` }),
     });
     const { apiKey } = await regRes.json();
@@ -257,7 +317,10 @@ describe("hosted auth + management API", () => {
   it("usage tracking endpoint returns data", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `usage-${RUN_ID}@test.com` }),
     });
     const { apiKey } = await regRes.json();
@@ -295,7 +358,10 @@ describe("hosted auth + management API", () => {
   });
 
   it("OAuth callback: error param redirects to login with oauth_denied", async () => {
-    const res = await fetch(`${BASE}/api/auth/google/callback?error=access_denied`, { redirect: "manual" });
+    const res = await fetch(
+      `${BASE}/api/auth/google/callback?error=access_denied`,
+      { redirect: "manual" },
+    );
     expect(res.status).toBe(302);
     const location = res.headers.get("location");
     expect(location).toContain("error=oauth_denied");
@@ -303,9 +369,12 @@ describe("hosted auth + management API", () => {
 
   it("OAuth callback: missing state redirects with oauth_invalid_state", async () => {
     // Provide a code but no state cookie — should reject
-    const res = await fetch(`${BASE}/api/auth/google/callback?code=fake_code&state=fake_state`, {
-      redirect: "manual",
-    });
+    const res = await fetch(
+      `${BASE}/api/auth/google/callback?code=fake_code&state=fake_state`,
+      {
+        redirect: "manual",
+      },
+    );
     expect(res.status).toBe(302);
     const location = res.headers.get("location");
     expect(location).toContain("error=oauth_invalid_state");
@@ -313,10 +382,13 @@ describe("hosted auth + management API", () => {
 
   it("OAuth callback: mismatched state redirects with oauth_invalid_state", async () => {
     // Provide state in URL but different state in cookie
-    const res = await fetch(`${BASE}/api/auth/google/callback?code=fake_code&state=abc123`, {
-      redirect: "manual",
-      headers: { Cookie: "oauth_state=different_state" },
-    });
+    const res = await fetch(
+      `${BASE}/api/auth/google/callback?code=fake_code&state=abc123`,
+      {
+        redirect: "manual",
+        headers: { Cookie: "oauth_state=different_state" },
+      },
+    );
     expect(res.status).toBe(302);
     const location = res.headers.get("location");
     expect(location).toContain("error=oauth_invalid_state");
@@ -327,11 +399,17 @@ describe("hosted auth + management API", () => {
   it("create entry: body >100KB returns 400", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `val-bigbody-${RUN_ID}@test.com` }),
     });
     const { apiKey } = await regRes.json();
-    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+    const authHeaders = {
+      Authorization: `Bearer ${apiKey.key}`,
+      "Content-Type": "application/json",
+    };
 
     const bigBody = "x".repeat(101 * 1024);
     const res = await fetch(`${BASE}/api/vault/entries`, {
@@ -347,16 +425,26 @@ describe("hosted auth + management API", () => {
   it("create entry: non-array tags returns 400", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `val-tags-${RUN_ID}@test.com` }),
     });
     const { apiKey } = await regRes.json();
-    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+    const authHeaders = {
+      Authorization: `Bearer ${apiKey.key}`,
+      "Content-Type": "application/json",
+    };
 
     const res = await fetch(`${BASE}/api/vault/entries`, {
       method: "POST",
       headers: authHeaders,
-      body: JSON.stringify({ kind: "insight", body: "test", tags: "not-an-array" }),
+      body: JSON.stringify({
+        kind: "insight",
+        body: "test",
+        tags: "not-an-array",
+      }),
     });
     expect(res.status).toBe(400);
     const data = await res.json();
@@ -366,11 +454,17 @@ describe("hosted auth + management API", () => {
   it("create entry: invalid kind format returns 400", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `val-kind-${RUN_ID}@test.com` }),
     });
     const { apiKey } = await regRes.json();
-    const authHeaders = { Authorization: `Bearer ${apiKey.key}`, "Content-Type": "application/json" };
+    const authHeaders = {
+      Authorization: `Bearer ${apiKey.key}`,
+      "Content-Type": "application/json",
+    };
 
     const res = await fetch(`${BASE}/api/vault/entries`, {
       method: "POST",
@@ -412,7 +506,10 @@ describe("hosted auth + management API", () => {
     // Register User A
     const regA = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `iso-a-${RUN_ID}@test.com` }),
     });
     const regDataA = await regA.json();
@@ -420,7 +517,10 @@ describe("hosted auth + management API", () => {
     // Register User B
     const regB = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `iso-b-${RUN_ID}@test.com` }),
     });
     const regDataB = await regB.json();
@@ -431,19 +531,31 @@ describe("hosted auth + management API", () => {
       headers: {
         Authorization: `Bearer ${regDataA.apiKey.key}`,
         "Content-Type": "application/json",
-        ...(regDataA.encryptionSecret ? { "X-Vault-Secret": regDataA.encryptionSecret } : {}),
+        ...(regDataA.encryptionSecret
+          ? { "X-Vault-Secret": regDataA.encryptionSecret }
+          : {}),
       },
-      body: JSON.stringify({ kind: "insight", body: "secret-alpha-unicorn-data", tags: ["isolation-test"] }),
+      body: JSON.stringify({
+        kind: "insight",
+        body: "secret-alpha-unicorn-data",
+        tags: ["isolation-test"],
+      }),
     });
     expect(importRes.status).toBe(201);
 
     // User B searches via MCP — should NOT find User A's entry
     const transportB = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: {
-        Authorization: `Bearer ${regDataB.apiKey.key}`,
-        ...(regDataB.encryptionSecret ? { "X-Vault-Secret": regDataB.encryptionSecret } : {}),
-      } } }
+      {
+        requestInit: {
+          headers: {
+            Authorization: `Bearer ${regDataB.apiKey.key}`,
+            ...(regDataB.encryptionSecret
+              ? { "X-Vault-Secret": regDataB.encryptionSecret }
+              : {}),
+          },
+        },
+      },
     );
     const clientB = new Client({ name: "test-client-b", version: "1.0.0" });
     await clientB.connect(transportB);
@@ -458,10 +570,16 @@ describe("hosted auth + management API", () => {
     // User A searches via MCP — SHOULD find their entry
     const transportA = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: {
-        Authorization: `Bearer ${regDataA.apiKey.key}`,
-        ...(regDataA.encryptionSecret ? { "X-Vault-Secret": regDataA.encryptionSecret } : {}),
-      } } }
+      {
+        requestInit: {
+          headers: {
+            Authorization: `Bearer ${regDataA.apiKey.key}`,
+            ...(regDataA.encryptionSecret
+              ? { "X-Vault-Secret": regDataA.encryptionSecret }
+              : {}),
+          },
+        },
+      },
     );
     const clientA = new Client({ name: "test-client-a", version: "1.0.0" });
     await clientA.connect(transportA);
@@ -480,7 +598,10 @@ describe("hosted auth + management API", () => {
     // Register user (VAULT_MASTER_SECRET is set in beforeAll env)
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `enc-${RUN_ID}@test.com` }),
     });
     const regData = await regRes.json();
@@ -491,19 +612,31 @@ describe("hosted auth + management API", () => {
       headers: {
         Authorization: `Bearer ${regData.apiKey.key}`,
         "Content-Type": "application/json",
-        ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+        ...(regData.encryptionSecret
+          ? { "X-Vault-Secret": regData.encryptionSecret }
+          : {}),
       },
-      body: JSON.stringify({ kind: "insight", body: "encrypted-roundtrip-test-content", tags: ["encryption"] }),
+      body: JSON.stringify({
+        kind: "insight",
+        body: "encrypted-roundtrip-test-content",
+        tags: ["encryption"],
+      }),
     });
     expect(importRes.status).toBe(201);
 
     // Search via MCP — should return decrypted content
     const transport = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: {
-        Authorization: `Bearer ${regData.apiKey.key}`,
-        ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
-      } } }
+      {
+        requestInit: {
+          headers: {
+            Authorization: `Bearer ${regData.apiKey.key}`,
+            ...(regData.encryptionSecret
+              ? { "X-Vault-Secret": regData.encryptionSecret }
+              : {}),
+          },
+        },
+      },
     );
     const client = new Client({ name: "test-client-enc", version: "1.0.0" });
     await client.connect(transport);
@@ -521,7 +654,10 @@ describe("hosted auth + management API", () => {
     // Register User A
     const regA = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `del-a-${RUN_ID}@test.com` }),
     });
     const regDataA = await regA.json();
@@ -529,7 +665,10 @@ describe("hosted auth + management API", () => {
     // Register User B
     const regB = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `del-b-${RUN_ID}@test.com` }),
     });
     const regDataB = await regB.json();
@@ -540,9 +679,15 @@ describe("hosted auth + management API", () => {
       headers: {
         Authorization: `Bearer ${regDataA.apiKey.key}`,
         "Content-Type": "application/json",
-        ...(regDataA.encryptionSecret ? { "X-Vault-Secret": regDataA.encryptionSecret } : {}),
+        ...(regDataA.encryptionSecret
+          ? { "X-Vault-Secret": regDataA.encryptionSecret }
+          : {}),
       },
-      body: JSON.stringify({ kind: "insight", body: "cross-user-delete-test-data", tags: ["delete-test"] }),
+      body: JSON.stringify({
+        kind: "insight",
+        body: "cross-user-delete-test-data",
+        tags: ["delete-test"],
+      }),
     });
     expect(importRes.status).toBe(201);
     const { id: entryId } = await importRes.json();
@@ -551,10 +696,16 @@ describe("hosted auth + management API", () => {
     // User B tries to delete User A's entry via MCP
     const transportB = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: {
-        Authorization: `Bearer ${regDataB.apiKey.key}`,
-        ...(regDataB.encryptionSecret ? { "X-Vault-Secret": regDataB.encryptionSecret } : {}),
-      } } }
+      {
+        requestInit: {
+          headers: {
+            Authorization: `Bearer ${regDataB.apiKey.key}`,
+            ...(regDataB.encryptionSecret
+              ? { "X-Vault-Secret": regDataB.encryptionSecret }
+              : {}),
+          },
+        },
+      },
     );
     const clientB = new Client({ name: "test-client-del-b", version: "1.0.0" });
     await clientB.connect(transportB);
@@ -564,15 +715,23 @@ describe("hosted auth + management API", () => {
       arguments: { id: entryId },
     });
     // Should report not found (user B doesn't own this entry)
-    expect(deleteResult.content[0].text.toLowerCase()).toMatch(/not found|no entry/);
+    expect(deleteResult.content[0].text.toLowerCase()).toMatch(
+      /not found|no entry/,
+    );
 
     // Verify User A's entry still exists
     const transportA = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: {
-        Authorization: `Bearer ${regDataA.apiKey.key}`,
-        ...(regDataA.encryptionSecret ? { "X-Vault-Secret": regDataA.encryptionSecret } : {}),
-      } } }
+      {
+        requestInit: {
+          headers: {
+            Authorization: `Bearer ${regDataA.apiKey.key}`,
+            ...(regDataA.encryptionSecret
+              ? { "X-Vault-Secret": regDataA.encryptionSecret }
+              : {}),
+          },
+        },
+      },
     );
     const clientA = new Client({ name: "test-client-del-a", version: "1.0.0" });
     await clientA.connect(transportA);
@@ -592,7 +751,10 @@ describe("hosted auth + management API", () => {
   it("free user hits entry limit → LIMIT_EXCEEDED from save_context", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `limit-${RUN_ID}@test.com` }),
     });
     const regData = await regRes.json();
@@ -602,10 +764,16 @@ describe("hosted auth + management API", () => {
     // by connecting via MCP and checking that checkLimits is attached
     const transport = new StreamableHTTPClientTransport(
       new URL(`${BASE}/mcp`),
-      { requestInit: { headers: {
-        Authorization: `Bearer ${regData.apiKey.key}`,
-        ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
-      } } }
+      {
+        requestInit: {
+          headers: {
+            Authorization: `Bearer ${regData.apiKey.key}`,
+            ...(regData.encryptionSecret
+              ? { "X-Vault-Secret": regData.encryptionSecret }
+              : {}),
+          },
+        },
+      },
     );
     const client = new Client({ name: "test-limit", version: "1.0.0" });
     await client.connect(transport);
@@ -613,7 +781,11 @@ describe("hosted auth + management API", () => {
     // Save one entry — should succeed (well under limit)
     const result = await client.callTool({
       name: "save_context",
-      arguments: { kind: "insight", body: "test entry for limit check", tags: ["limit-test"] },
+      arguments: {
+        kind: "insight",
+        body: "test entry for limit check",
+        tags: ["limit-test"],
+      },
     });
     expect(result.content[0].text).toContain("Saved");
 
@@ -625,7 +797,10 @@ describe("hosted auth + management API", () => {
   it("GET /api/billing/usage returns entriesUsed and storageMb", async () => {
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `usage2-${RUN_ID}@test.com` }),
     });
     const regData = await regRes.json();
@@ -636,7 +811,9 @@ describe("hosted auth + management API", () => {
       headers: {
         Authorization: `Bearer ${regData.apiKey.key}`,
         "Content-Type": "application/json",
-        ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+        ...(regData.encryptionSecret
+          ? { "X-Vault-Secret": regData.encryptionSecret }
+          : {}),
       },
       body: JSON.stringify({ kind: "insight", body: "usage tracking test" }),
     });
@@ -677,7 +854,10 @@ describe("hosted auth + management API", () => {
   it("POST /api/billing/webhook rejects invalid signature", async () => {
     const res = await fetch(`${BASE}/api/billing/webhook`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "stripe-signature": "t=1,v1=invalid" },
+      headers: {
+        "Content-Type": "application/json",
+        "stripe-signature": "t=1,v1=invalid",
+      },
       body: JSON.stringify({}),
     });
     // Without STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET, Stripe SDK returns null
@@ -694,7 +874,10 @@ describe("hosted auth + management API", () => {
   it("registration: invalid email returns 400", async () => {
     const res = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: "not-an-email" }),
     });
     expect(res.status).toBe(400);
@@ -708,21 +891,30 @@ describe("hosted auth + management API", () => {
     // Register user
     const regRes = await fetch(`${BASE}/api/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": uniqueIp() },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Forwarded-For": uniqueIp(),
+      },
       body: JSON.stringify({ email: `delete-${RUN_ID}@test.com` }),
     });
     const regData = await regRes.json();
     const authHeaders = {
       Authorization: `Bearer ${regData.apiKey.key}`,
       "Content-Type": "application/json",
-      ...(regData.encryptionSecret ? { "X-Vault-Secret": regData.encryptionSecret } : {}),
+      ...(regData.encryptionSecret
+        ? { "X-Vault-Secret": regData.encryptionSecret }
+        : {}),
     };
 
     // Create an entry
     const createRes = await fetch(`${BASE}/api/vault/entries`, {
       method: "POST",
       headers: authHeaders,
-      body: JSON.stringify({ kind: "insight", body: "will be deleted", tags: ["delete-test"] }),
+      body: JSON.stringify({
+        kind: "insight",
+        body: "will be deleted",
+        tags: ["delete-test"],
+      }),
     });
     expect(createRes.status).toBe(201);
 

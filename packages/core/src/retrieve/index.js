@@ -38,7 +38,13 @@ export function recencyBoost(createdAt, category, decayDays = 30) {
  * Build additional WHERE clauses for category/time filtering.
  * Returns { clauses: string[], params: any[] }
  */
-export function buildFilterClauses({ categoryFilter, since, until, userIdFilter, teamIdFilter }) {
+export function buildFilterClauses({
+  categoryFilter,
+  since,
+  until,
+  userIdFilter,
+  teamIdFilter,
+}) {
   const clauses = [];
   const params = [];
   if (userIdFilter !== undefined) {
@@ -76,10 +82,26 @@ export function buildFilterClauses({ categoryFilter, since, until, userIdFilter,
 export async function hybridSearch(
   ctx,
   query,
-  { kindFilter = null, categoryFilter = null, since = null, until = null, limit = 20, offset = 0, decayDays = 30, userIdFilter, teamIdFilter = null } = {}
+  {
+    kindFilter = null,
+    categoryFilter = null,
+    since = null,
+    until = null,
+    limit = 20,
+    offset = 0,
+    decayDays = 30,
+    userIdFilter,
+    teamIdFilter = null,
+  } = {},
 ) {
   const results = new Map();
-  const extraFilters = buildFilterClauses({ categoryFilter, since, until, userIdFilter, teamIdFilter });
+  const extraFilters = buildFilterClauses({
+    categoryFilter,
+    since,
+    until,
+    userIdFilter,
+    teamIdFilter,
+  });
 
   // FTS5 search
   const ftsQuery = buildFtsQuery(query);
@@ -126,10 +148,16 @@ export async function hybridSearch(
       if (queryVec) {
         // Increase limits in hosted mode to compensate for post-filtering
         const hasPostFilter = userIdFilter !== undefined || teamIdFilter;
-        const vecLimit = hasPostFilter ? (kindFilter ? 60 : 30) : (kindFilter ? 30 : 15);
+        const vecLimit = hasPostFilter
+          ? kindFilter
+            ? 60
+            : 30
+          : kindFilter
+            ? 30
+            : 15;
         const vecRows = ctx.db
           .prepare(
-            `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ${vecLimit}`
+            `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ${vecLimit}`,
           )
           .all(queryVec);
 
@@ -138,7 +166,9 @@ export async function hybridSearch(
           const rowids = vecRows.map((vr) => vr.rowid);
           const placeholders = rowids.map(() => "?").join(",");
           const hydrated = ctx.db
-            .prepare(`SELECT rowid, * FROM vault WHERE rowid IN (${placeholders})`)
+            .prepare(
+              `SELECT rowid, * FROM vault WHERE rowid IN (${placeholders})`,
+            )
             .all(...rowids);
 
           const byRowid = new Map();
@@ -147,13 +177,15 @@ export async function hybridSearch(
           for (const vr of vecRows) {
             const row = byRowid.get(vr.rowid);
             if (!row) continue;
-            if (userIdFilter !== undefined && row.user_id !== userIdFilter) continue;
+            if (userIdFilter !== undefined && row.user_id !== userIdFilter)
+              continue;
             if (teamIdFilter && row.team_id !== teamIdFilter) continue;
             if (kindFilter && row.kind !== kindFilter) continue;
             if (categoryFilter && row.category !== categoryFilter) continue;
             if (since && row.created_at < since) continue;
             if (until && row.created_at > until) continue;
-            if (row.expires_at && new Date(row.expires_at) <= new Date()) continue;
+            if (row.expires_at && new Date(row.expires_at) <= new Date())
+              continue;
 
             const { rowid: _rowid, ...cleanRow } = row;
             // sqlite-vec returns L2 distance [0, 2] for normalized vectors.

@@ -10,16 +10,16 @@ Execution journal and scorecard. Newest week on top. Fill every Friday.
 
 ### Scorecard
 
-| Metric | Target | Actual | Delta |
-|--------|--------|--------|-------|
-| Blog posts published | 2 | | |
-| Demo videos published | 1 | | |
-| Build-in-public posts | 1 | | |
-| New conversations | 6 | | |
-| Activation calls | 3 | | |
-| Conversion asks | 1 | | |
-| Site sessions | 1,500 | | |
-| Registrations | 75 | | |
+| Metric                | Target | Actual | Delta |
+| --------------------- | ------ | ------ | ----- |
+| Blog posts published  | 2      |        |       |
+| Demo videos published | 1      |        |       |
+| Build-in-public posts | 1      |        |       |
+| New conversations     | 6      |        |       |
+| Activation calls      | 3      |        |       |
+| Conversion asks       | 1      |        |       |
+| Site sessions         | 1,500  |        |       |
+| Registrations         | 75     |        |       |
 
 ### Content Shipped
 
@@ -68,16 +68,16 @@ Execution journal and scorecard. Newest week on top. Fill every Friday.
 
 ### Scorecard
 
-| Metric | Target | Actual | Delta |
-|--------|--------|--------|-------|
-| Blog posts published | 2 | 2 | 0 |
-| Demo videos published | 1 | 0 | -1 |
-| Build-in-public posts | 1 | 0 | -1 |
-| New conversations | 6 | 0 | -6 |
-| Activation calls | 3 | 0 | -3 |
-| Conversion asks | 1 | 0 | -1 |
-| Site sessions | 1,250 | | |
-| Registrations | 50 | | |
+| Metric                | Target | Actual | Delta |
+| --------------------- | ------ | ------ | ----- |
+| Blog posts published  | 2      | 2      | 0     |
+| Demo videos published | 1      | 0      | -1    |
+| Build-in-public posts | 1      | 0      | -1    |
+| New conversations     | 6      | 0      | -6    |
+| Activation calls      | 3      | 0      | -3    |
+| Conversion asks       | 1      | 0      | -1    |
+| Site sessions         | 1,250  |        |       |
+| Registrations         | 50     |        |       |
 
 ### Content Shipped
 

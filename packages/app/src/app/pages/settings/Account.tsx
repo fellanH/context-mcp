@@ -1,5 +1,10 @@
 import { useTheme } from "next-themes";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
 import { Label } from "../../components/ui/label";
 import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
@@ -54,8 +59,17 @@ export function Account() {
               <code className="flex-1 bg-muted px-3 py-2 rounded text-xs font-mono">
                 {user.id}
               </code>
-              <Button variant="outline" size="icon" className="size-8" onClick={copyUserId}>
-                {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-8"
+                onClick={copyUserId}
+              >
+                {copied ? (
+                  <Check className="size-3" />
+                ) : (
+                  <Copy className="size-3" />
+                )}
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground">
@@ -77,11 +91,15 @@ export function Account() {
           <div className="flex items-center justify-between">
             <div>
               <Label className="text-sm">Dark mode</Label>
-              <p className="text-xs text-muted-foreground">Toggle between light and dark theme</p>
+              <p className="text-xs text-muted-foreground">
+                Toggle between light and dark theme
+              </p>
             </div>
             <Switch
               checked={theme === "dark"}
-              onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+              onCheckedChange={(checked) =>
+                setTheme(checked ? "dark" : "light")
+              }
             />
           </div>
         </CardContent>

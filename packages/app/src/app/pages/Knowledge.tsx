@@ -5,7 +5,15 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
-import { Search, Plus, Filter, FileText, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Filter,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+} from "lucide-react";
 import { EntryInspector } from "../components/EntryInspector";
 import { NewEntryDialog } from "../components/NewEntryDialog";
 import { EmptyState } from "../components/EmptyState";
@@ -42,7 +50,7 @@ export function Knowledge() {
     ? entries.filter(
         (entry) =>
           entry.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          entry.body.toLowerCase().includes(searchQuery.toLowerCase())
+          entry.body.toLowerCase().includes(searchQuery.toLowerCase()),
       )
     : entries;
 
@@ -118,7 +126,9 @@ export function Knowledge() {
           ) : isError ? (
             <div className="py-12 text-center text-muted-foreground">
               <p className="text-sm">Failed to load entries</p>
-              <p className="text-xs mt-1">Check your connection and try again</p>
+              <p className="text-xs mt-1">
+                Check your connection and try again
+              </p>
             </div>
           ) : total === 0 && !searchQuery && kindFilter === "all" ? (
             <EmptyState
@@ -135,11 +145,21 @@ export function Knowledge() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-muted/50">
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">ID</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Title</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Kind</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Tags</th>
-                      <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Updated</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">
+                        ID
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">
+                        Title
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">
+                        Kind
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">
+                        Tags
+                      </th>
+                      <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">
+                        Updated
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -155,18 +175,30 @@ export function Knowledge() {
                           </code>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm font-medium">{entry.title}</span>
+                          <span className="text-sm font-medium">
+                            {entry.title}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant="default" className="text-xs">{entry.kind}</Badge>
+                          <Badge variant="default" className="text-xs">
+                            {entry.kind}
+                          </Badge>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1 flex-wrap">
                             {entry.tags.slice(0, 3).map((tag) => (
-                              <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                              <Badge
+                                key={tag}
+                                variant="outline"
+                                className="text-xs"
+                              >
+                                {tag}
+                              </Badge>
                             ))}
                             {entry.tags.length > 3 && (
-                              <Badge variant="outline" className="text-xs">+{entry.tags.length - 3}</Badge>
+                              <Badge variant="outline" className="text-xs">
+                                +{entry.tags.length - 3}
+                              </Badge>
                             )}
                           </div>
                         </td>
@@ -183,7 +215,9 @@ export function Knowledge() {
                 {filteredEntries.length === 0 && (
                   <div className="py-12 text-center text-muted-foreground">
                     <p className="text-sm">No entries match your search</p>
-                    <p className="text-xs mt-1">Try adjusting your search or filters</p>
+                    <p className="text-xs mt-1">
+                      Try adjusting your search or filters
+                    </p>
                   </div>
                 )}
               </div>
@@ -192,7 +226,8 @@ export function Knowledge() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4">
                   <p className="text-xs text-muted-foreground">
-                    Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+                    Showing {page * PAGE_SIZE + 1}–
+                    {Math.min((page + 1) * PAGE_SIZE, total)} of {total}
                   </p>
                   <div className="flex items-center gap-1">
                     <Button

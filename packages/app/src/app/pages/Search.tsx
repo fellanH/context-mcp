@@ -6,7 +6,13 @@ import { Card, CardContent } from "../components/ui/card";
 import { Label } from "../components/ui/label";
 import { Skeleton } from "../components/ui/skeleton";
 import { Switch } from "../components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { Search as SearchIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { EntryInspector } from "../components/EntryInspector";
 import { useSearch } from "../lib/hooks";
@@ -80,7 +86,10 @@ export function Search() {
               <SelectItem value="event">Events</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={() => handleSearch()} disabled={!query.trim() || searchMutation.isPending}>
+          <Button
+            onClick={() => handleSearch()}
+            disabled={!query.trim() || searchMutation.isPending}
+          >
             Search
           </Button>
         </div>
@@ -91,13 +100,19 @@ export function Search() {
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           Advanced
-          {showAdvanced ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+          {showAdvanced ? (
+            <ChevronUp className="size-3" />
+          ) : (
+            <ChevronDown className="size-3" />
+          )}
         </button>
 
         {showAdvanced && (
           <div className="flex items-center gap-6 p-3 rounded-lg border border-border bg-card">
             <div className="flex items-center gap-2">
-              <Label htmlFor="hybrid" className="text-xs">Hybrid mode</Label>
+              <Label htmlFor="hybrid" className="text-xs">
+                Hybrid mode
+              </Label>
               <Switch
                 id="hybrid"
                 checked={hybridMode}
@@ -105,8 +120,13 @@ export function Search() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <Label htmlFor="limit" className="text-xs">Results</Label>
-              <Select value={String(resultLimit)} onValueChange={(v) => setResultLimit(Number(v))}>
+              <Label htmlFor="limit" className="text-xs">
+                Results
+              </Label>
+              <Select
+                value={String(resultLimit)}
+                onValueChange={(v) => setResultLimit(Number(v))}
+              >
                 <SelectTrigger className="w-20 h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -137,14 +157,20 @@ export function Search() {
 
       {!searchMutation.isPending && searched && results.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">No results found for "{query}"</p>
-          <p className="text-xs text-muted-foreground mt-1">Try a different query or broaden your search</p>
+          <p className="text-muted-foreground">
+            No results found for "{query}"
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Try a different query or broaden your search
+          </p>
         </div>
       )}
 
       {!searchMutation.isPending && results.length > 0 && (
         <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">{results.length} results</p>
+          <p className="text-xs text-muted-foreground">
+            {results.length} results
+          </p>
           {results.map((result) => (
             <Card
               key={result.id}
@@ -164,7 +190,9 @@ export function Search() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-medium text-sm truncate">{result.title}</h3>
+                      <h3 className="font-medium text-sm truncate">
+                        {result.title}
+                      </h3>
                       <Badge variant="outline" className="text-xs shrink-0">
                         {result.kind}
                       </Badge>
@@ -174,7 +202,11 @@ export function Search() {
                     </p>
                     <div className="flex items-center gap-2 mt-2">
                       {result.tags.slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-[10px]">
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="text-[10px]"
+                        >
                           {tag}
                         </Badge>
                       ))}
@@ -194,7 +226,9 @@ export function Search() {
 
       {!searched && (
         <div className="text-center py-12 space-y-4">
-          <p className="text-muted-foreground text-sm">Try searching for something</p>
+          <p className="text-muted-foreground text-sm">
+            Try searching for something
+          </p>
           <div className="flex flex-wrap justify-center gap-2">
             {exampleQueries.map((q) => (
               <button

@@ -13,15 +13,15 @@ You develop and maintain the marketing website in `packages/marketing/`. This in
 
 ## Tech Stack
 
-| Layer | Library | Version |
-|-------|---------|---------|
-| Framework | React | 18 |
-| Router | react-router | 7 |
-| Styling | Tailwind CSS | 4 |
-| Components | shadcn/ui | latest |
-| Icons | lucide-react | latest |
-| Build | Vite | 6 |
-| Rendering | Client-side SPA | No SSR |
+| Layer      | Library         | Version |
+| ---------- | --------------- | ------- |
+| Framework  | React           | 18      |
+| Router     | react-router    | 7       |
+| Styling    | Tailwind CSS    | 4       |
+| Components | shadcn/ui       | latest  |
+| Icons      | lucide-react    | latest  |
+| Build      | Vite            | 6       |
+| Rendering  | Client-side SPA | No SSR  |
 
 ## Component Conventions
 
@@ -42,10 +42,10 @@ Follow the patterns established in `LandingPage.tsx`:
 
 These CTAs must be used exactly as specified across all pages:
 
-| CTA | Label | Destination | Implementation |
-|-----|-------|-------------|----------------|
-| Primary | "Start free" | App register | `<a href={appHref("/register")}>` |
-| Secondary | "See 2-minute setup" | Get started | `<Link to="/get-started">` |
+| CTA       | Label                | Destination  | Implementation                    |
+| --------- | -------------------- | ------------ | --------------------------------- |
+| Primary   | "Start free"         | App register | `<a href={appHref("/register")}>` |
+| Secondary | "See 2-minute setup" | Get started  | `<Link to="/get-started">`        |
 
 ## Analytics Events
 
@@ -67,11 +67,13 @@ Use exact event names from `marketing-plan.md` Section 8:
 When implementing A/B tests, follow the prioritized backlog from `marketing-plan.md` Section 9:
 
 **P1 (run first):**
+
 1. Hero headline: "Persistent memory for AI agents" vs "Your MCP tools can finally remember"
 2. CTA copy: "Start free" vs "Set up in 2 minutes"
 3. Proof placement: demo above fold vs below fold
 
 **P2 (run after P1):**
+
 1. Pricing teaser: short bullets vs mini-comparison table
 2. Objection block order: privacy first vs lock-in first
 3. Blog CTA format: inline text link vs visual CTA card
@@ -79,9 +81,11 @@ When implementing A/B tests, follow the prioritized backlog from `marketing-plan
 ## Build Verification
 
 After making changes, always run:
+
 ```bash
 npm run build -w packages/marketing
 ```
+
 This catches TypeScript errors and ensures the build stays green.
 
 ## Branch Ownership
@@ -94,6 +98,7 @@ This catches TypeScript errors and ensures the build stays green.
 ## Boundaries
 
 You do NOT:
+
 - Write blog post content in `posts.ts` (that's cv-content-writer's job)
 - Modify packages outside `packages/marketing/`
 - Deploy to production

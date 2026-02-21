@@ -27,20 +27,20 @@ Uses `@context-vault/core` for all vault operations (same 6 MCP tools as local m
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `PORT` | No | `3000` | HTTP server port |
-| `AUTH_REQUIRED` | No | `false` | Enable API key auth for MCP endpoint |
-| `PUBLIC_URL` | No | — | Canonical app URL used for OAuth/login redirects (set to app subdomain) |
-| `STRIPE_SECRET_KEY` | No | — | Stripe API secret key (enables billing) |
-| `STRIPE_WEBHOOK_SECRET` | No | — | Stripe webhook signing secret |
-| `STRIPE_PRICE_PRO` | No | — | Stripe Price ID for Pro tier |
-| `APP_HOSTS` | No | `app.context-vault.com` | Comma-separated hostnames that should serve product app frontend |
-| `MARKETING_HOSTS` | No | `www.context-vault.com,context-vault.com` | Comma-separated hostnames that should serve marketing frontend |
-| `DEFAULT_FRONTEND` | No | `marketing` | Frontend for unknown hosts (`marketing` or `app`) |
-| `LOCALHOST_FRONTEND` | No | `app` | Frontend for localhost dev host (`marketing` or `app`) |
-| `CONTEXT_MCP_DATA_DIR` | No | `~/.context-mcp` | Data directory (databases) |
-| `CONTEXT_MCP_VAULT_DIR` | No | `<data_dir>/vault` | Vault markdown file storage |
+| Variable                | Required | Default                                   | Description                                                             |
+| ----------------------- | -------- | ----------------------------------------- | ----------------------------------------------------------------------- |
+| `PORT`                  | No       | `3000`                                    | HTTP server port                                                        |
+| `AUTH_REQUIRED`         | No       | `false`                                   | Enable API key auth for MCP endpoint                                    |
+| `PUBLIC_URL`            | No       | —                                         | Canonical app URL used for OAuth/login redirects (set to app subdomain) |
+| `STRIPE_SECRET_KEY`     | No       | —                                         | Stripe API secret key (enables billing)                                 |
+| `STRIPE_WEBHOOK_SECRET` | No       | —                                         | Stripe webhook signing secret                                           |
+| `STRIPE_PRICE_PRO`      | No       | —                                         | Stripe Price ID for Pro tier                                            |
+| `APP_HOSTS`             | No       | `app.context-vault.com`                   | Comma-separated hostnames that should serve product app frontend        |
+| `MARKETING_HOSTS`       | No       | `www.context-vault.com,context-vault.com` | Comma-separated hostnames that should serve marketing frontend          |
+| `DEFAULT_FRONTEND`      | No       | `marketing`                               | Frontend for unknown hosts (`marketing` or `app`)                       |
+| `LOCALHOST_FRONTEND`    | No       | `app`                                     | Frontend for localhost dev host (`marketing` or `app`)                  |
+| `CONTEXT_MCP_DATA_DIR`  | No       | `~/.context-mcp`                          | Data directory (databases)                                              |
+| `CONTEXT_MCP_VAULT_DIR` | No       | `<data_dir>/vault`                        | Vault markdown file storage                                             |
 
 ## Local Development
 
@@ -56,6 +56,7 @@ AUTH_REQUIRED=true npm run dev --workspace=packages/hosted
 ```
 
 The server starts at `http://localhost:3000` with:
+
 - Health check: `GET /health`
 - MCP endpoint: `POST /mcp`
 - Management API: `/api/*`
@@ -93,14 +94,14 @@ curl http://localhost:3000/api/billing/usage \
 
 Recommended production setup is a single Fly.io app:
 
-| Surface | Host / Route | Served by |
-|---------|---------------|-----------|
+| Surface              | Host / Route              | Served by                                       |
+| -------------------- | ------------------------- | ----------------------------------------------- |
 | Marketing site (SPA) | `www.context-vault.com/*` | Hono static serving (`packages/marketing/dist`) |
-| Product app (SPA) | `app.context-vault.com/*` | Hono static serving (`packages/app/dist`) |
-| Hosted REST API | `/api/*` | Hono routes |
-| MCP endpoint | `/mcp` | Streamable HTTP MCP transport |
-| OpenAPI schema | `/api/vault/openapi.json` | Public route |
-| Privacy policy | `/privacy` | Public route |
+| Product app (SPA)    | `app.context-vault.com/*` | Hono static serving (`packages/app/dist`)       |
+| Hosted REST API      | `/api/*`                  | Hono routes                                     |
+| MCP endpoint         | `/mcp`                    | Streamable HTTP MCP transport                   |
+| OpenAPI schema       | `/api/vault/openapi.json` | Public route                                    |
+| Privacy policy       | `/privacy`                | Public route                                    |
 
 This keeps marketing and product surfaces isolated while retaining one hosted runtime.
 
@@ -202,6 +203,7 @@ All management endpoints (except `/api/register`) require `Authorization: Bearer
 ### Registration
 
 **POST /api/register** — Create a new user account
+
 ```json
 // Request
 { "email": "user@example.com", "name": "User Name" }
@@ -214,6 +216,7 @@ All management endpoints (except `/api/register`) require `Authorization: Bearer
 **GET /api/keys** — List all keys for the authenticated user
 
 **POST /api/keys** — Create a new API key
+
 ```json
 // Request
 { "name": "my-key" }
@@ -228,6 +231,7 @@ All management endpoints (except `/api/register`) require `Authorization: Bearer
 **GET /api/billing/usage** — Current tier, limits, and usage stats
 
 **POST /api/billing/checkout** — Create a Stripe Checkout session for Pro upgrade
+
 ```json
 // Request (optional)
 { "successUrl": "https://...", "cancelUrl": "https://..." }
@@ -240,6 +244,7 @@ All management endpoints (except `/api/register`) require `Authorization: Bearer
 ### Vault Import/Export
 
 **POST /api/vault/import** — Import a single entry
+
 ```json
 // Request
 { "kind": "insight", "body": "Entry content", "title": "Optional title", "tags": ["tag1"], "source": "migration" }
@@ -248,6 +253,7 @@ All management endpoints (except `/api/register`) require `Authorization: Bearer
 ```
 
 **GET /api/vault/export** — Export all entries (Pro tier only)
+
 ```json
 // Response
 { "entries": [{ "id": "...", "kind": "...", "title": "...", "body": "...", "tags": [...], ... }] }
@@ -255,13 +261,13 @@ All management endpoints (except `/api/register`) require `Authorization: Bearer
 
 ### Tier Limits
 
-| Feature | Free | Pro | Team |
-|---------|------|-----|------|
-| Entries | 500 | Unlimited | Unlimited |
-| Storage | 10 MB | 1 GB | 5 GB |
-| Requests/day | 200 | Unlimited | Unlimited |
-| API Keys | 1 | Unlimited | Unlimited |
-| Export | No | Yes | Yes |
+| Feature      | Free  | Pro       | Team      |
+| ------------ | ----- | --------- | --------- |
+| Entries      | 500   | Unlimited | Unlimited |
+| Storage      | 10 MB | 1 GB      | 5 GB      |
+| Requests/day | 200   | Unlimited | Unlimited |
+| API Keys     | 1     | Unlimited | Unlimited |
+| Export       | No    | Yes       | Yes       |
 
 ## License
 

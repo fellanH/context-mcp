@@ -16,18 +16,28 @@ chrome.runtime.onMessage.addListener(
       switch (message.type) {
         case "inject_text": {
           const success = platform.injectText(message.text);
-          sendResponse({ type: "inject_result", success } satisfies MessageType);
+          sendResponse({
+            type: "inject_result",
+            success,
+          } satisfies MessageType);
           break;
         }
 
         case "get_messages": {
           const msgs = platform.getMessages();
-          sendResponse({ type: "messages_result", messages: msgs, platform: platform.name } satisfies MessageType);
+          sendResponse({
+            type: "messages_result",
+            messages: msgs,
+            platform: platform.name,
+          } satisfies MessageType);
           break;
         }
 
         case "capture_result": {
-          showNotification(`Saved to vault (${message.id.slice(0, 8)}...)`, "success");
+          showNotification(
+            `Saved to vault (${message.id.slice(0, 8)}...)`,
+            "success",
+          );
           break;
         }
 
@@ -38,10 +48,13 @@ chrome.runtime.onMessage.addListener(
       }
     } catch (err) {
       console.error("[context-vault:content]", err);
-      sendResponse({ type: "error", message: err instanceof Error ? err.message : "Content script error" } satisfies MessageType);
+      sendResponse({
+        type: "error",
+        message: err instanceof Error ? err.message : "Content script error",
+      } satisfies MessageType);
     }
     return false; // Synchronous response
-  }
+  },
 );
 
 // ─── Notification Toast (Shadow DOM isolated) ───────────────────────────────

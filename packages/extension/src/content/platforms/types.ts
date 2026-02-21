@@ -15,7 +15,8 @@ export interface PlatformAdapter {
 }
 
 function readText(el: HTMLElement): string {
-  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return el.value;
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement)
+    return el.value;
   return el.textContent || "";
 }
 
@@ -36,7 +37,13 @@ export function injectContentEditable(el: HTMLElement, text: string): boolean {
   try {
     const dt = new DataTransfer();
     dt.setData("text/plain", text);
-    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    el.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: dt,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
   } catch {}
   if (readText(el) !== before2) return true;
 

@@ -21,7 +21,23 @@ export function safeFolderPath(vaultDir, kind, folder) {
   return resolved;
 }
 
-export function writeEntryFile(vaultDir, kind, { id, title, body, meta, tags, source, createdAt, folder, category, identity_key, expires_at }) {
+export function writeEntryFile(
+  vaultDir,
+  kind,
+  {
+    id,
+    title,
+    body,
+    meta,
+    tags,
+    source,
+    createdAt,
+    folder,
+    category,
+    identity_key,
+    expires_at,
+  },
+) {
   // P5: folder is now a top-level param; also accept from meta for backward compat
   const resolvedFolder = folder || meta?.folder || "";
   const dir = safeFolderPath(vaultDir, kind, resolvedFolder);
@@ -55,7 +71,9 @@ export function writeEntryFile(vaultDir, kind, { id, title, body, meta, tags, so
   let filename;
   if (category === "entity" && identity_key) {
     const identitySlug = slugify(identity_key);
-    filename = identitySlug ? `${identitySlug}.md` : `${id.slice(-8).toLowerCase()}.md`;
+    filename = identitySlug
+      ? `${identitySlug}.md`
+      : `${id.slice(-8).toLowerCase()}.md`;
   } else {
     const slug = slugify((title || body).slice(0, 40));
     const shortId = id.slice(-8).toLowerCase();

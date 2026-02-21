@@ -6,5 +6,7 @@ export const docsQuickstartUrl =
 
 export function appHref(path: string) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return normalizedBaseUrl ? `${normalizedBaseUrl}${normalizedPath}` : normalizedPath;
+  return normalizedBaseUrl
+    ? `${normalizedBaseUrl}${normalizedPath}`
+    : normalizedPath;
 }

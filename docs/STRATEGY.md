@@ -4,7 +4,7 @@
 
 AI agents are stateless. Every session starts from zero. The agent has no memory of what you decided yesterday, what the client said last week, what patterns have worked, or what documentation you've already gathered. Each conversation burns tokens re-explaining context that already exists somewhere.
 
-Humans solve this with messy, distributed systems — notes in Notion, messages in Slack, code in repos, contacts in a CRM, docs in Google Drive. But AI agents can't navigate that landscape. They need a single interface that answers: *"What do I already know about X?"*
+Humans solve this with messy, distributed systems — notes in Notion, messages in Slack, code in repos, contacts in a CRM, docs in Google Drive. But AI agents can't navigate that landscape. They need a single interface that answers: _"What do I already know about X?"_
 
 ## The Core Thesis
 

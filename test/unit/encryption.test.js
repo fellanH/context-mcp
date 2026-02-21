@@ -4,8 +4,17 @@
 
 import { describe, it, expect } from "vitest";
 import { randomBytes } from "node:crypto";
-import { encrypt, decrypt, encryptEntry, decryptEntry } from "../../packages/hosted/src/encryption/crypto.js";
-import { deriveKey, generateDek, decryptDek } from "../../packages/hosted/src/encryption/keys.js";
+import {
+  encrypt,
+  decrypt,
+  encryptEntry,
+  decryptEntry,
+} from "../../packages/hosted/src/encryption/crypto.js";
+import {
+  deriveKey,
+  generateDek,
+  decryptDek,
+} from "../../packages/hosted/src/encryption/keys.js";
 
 describe("AES-256-GCM encrypt/decrypt", () => {
   const key = randomBytes(32);
@@ -23,7 +32,8 @@ describe("AES-256-GCM encrypt/decrypt", () => {
   });
 
   it("roundtrips unicode text", () => {
-    const text = "Encrypted vault entry with unicode: \u00e4\u00f6\u00fc\u00df \ud83d\ude80 \u65e5\u672c\u8a9e";
+    const text =
+      "Encrypted vault entry with unicode: \u00e4\u00f6\u00fc\u00df \ud83d\ude80 \u65e5\u672c\u8a9e";
     const { encrypted, iv } = encrypt(text, key);
     expect(decrypt(encrypted, iv, key)).toBe(text);
   });

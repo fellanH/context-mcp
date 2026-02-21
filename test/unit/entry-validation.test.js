@@ -62,7 +62,10 @@ describe("validation constants", () => {
 
 describe("validateEntryInput — valid inputs", () => {
   it("accepts minimal valid entry (kind + body)", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Some content" });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Some content",
+    });
     expect(result).toBeNull();
   });
 
@@ -110,7 +113,11 @@ describe("validateEntryInput — valid inputs", () => {
 
   it("accepts title at exactly MAX_TITLE_LENGTH", () => {
     const title = "a".repeat(MAX_TITLE_LENGTH);
-    const result = validateEntryInput({ kind: "insight", body: "Content", title });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      title,
+    });
     expect(result).toBeNull();
   });
 
@@ -122,30 +129,50 @@ describe("validateEntryInput — valid inputs", () => {
 
   it("accepts exactly MAX_TAGS_COUNT tags", () => {
     const tags = Array.from({ length: MAX_TAGS_COUNT }, (_, i) => `tag-${i}`);
-    const result = validateEntryInput({ kind: "insight", body: "Content", tags });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      tags,
+    });
     expect(result).toBeNull();
   });
 
   it("accepts tag at exactly MAX_TAG_LENGTH", () => {
     const tag = "a".repeat(MAX_TAG_LENGTH);
-    const result = validateEntryInput({ kind: "insight", body: "Content", tags: [tag] });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      tags: [tag],
+    });
     expect(result).toBeNull();
   });
 
   it("accepts source at exactly MAX_SOURCE_LENGTH", () => {
     const source = "a".repeat(MAX_SOURCE_LENGTH);
-    const result = validateEntryInput({ kind: "insight", body: "Content", source });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      source,
+    });
     expect(result).toBeNull();
   });
 
   it("accepts identity_key at exactly MAX_IDENTITY_KEY_LENGTH", () => {
     const identity_key = "a".repeat(MAX_IDENTITY_KEY_LENGTH);
-    const result = validateEntryInput({ kind: "insight", body: "Content", identity_key });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      identity_key,
+    });
     expect(result).toBeNull();
   });
 
   it("accepts empty tags array", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", tags: [] });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      tags: [],
+    });
     expect(result).toBeNull();
   });
 });
@@ -161,7 +188,10 @@ describe("validateEntryInput — kind", () => {
   });
 
   it("allows missing kind when requireKind is false", () => {
-    const result = validateEntryInput({ body: "Content" }, { requireKind: false });
+    const result = validateEntryInput(
+      { body: "Content" },
+      { requireKind: false },
+    );
     expect(result).toBeNull();
   });
 
@@ -201,7 +231,10 @@ describe("validateEntryInput — kind", () => {
   });
 
   it("validates kind even when requireKind is false if kind is provided", () => {
-    const result = validateEntryInput({ kind: "INVALID", body: "Content" }, { requireKind: false });
+    const result = validateEntryInput(
+      { kind: "INVALID", body: "Content" },
+      { requireKind: false },
+    );
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/lowercase/);
   });
@@ -217,7 +250,10 @@ describe("validateEntryInput — body", () => {
   });
 
   it("allows missing body when requireBody is false", () => {
-    const result = validateEntryInput({ kind: "insight" }, { requireBody: false });
+    const result = validateEntryInput(
+      { kind: "insight" },
+      { requireBody: false },
+    );
     expect(result).toBeNull();
   });
 
@@ -251,25 +287,41 @@ describe("validateEntryInput — body", () => {
 
 describe("validateEntryInput — title", () => {
   it("accepts valid title", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", title: "My Title" });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      title: "My Title",
+    });
     expect(result).toBeNull();
   });
 
   it("rejects title exceeding MAX_TITLE_LENGTH", () => {
     const title = "a".repeat(MAX_TITLE_LENGTH + 1);
-    const result = validateEntryInput({ kind: "insight", body: "Content", title });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      title,
+    });
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/500/);
   });
 
   it("rejects non-string title", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", title: 42 });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      title: 42,
+    });
     expect(result).not.toBeNull();
     expect(result.status).toBe(400);
   });
 
   it("accepts empty string title", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", title: "" });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      title: "",
+    });
     expect(result).toBeNull();
   });
 });
@@ -278,39 +330,66 @@ describe("validateEntryInput — title", () => {
 
 describe("validateEntryInput — tags", () => {
   it("rejects non-array tags", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", tags: "not-array" });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      tags: "not-array",
+    });
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/array/);
   });
 
   it("rejects tags object instead of array", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", tags: { a: 1 } });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      tags: { a: 1 },
+    });
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/array/);
   });
 
   it("rejects too many tags", () => {
-    const tags = Array.from({ length: MAX_TAGS_COUNT + 1 }, (_, i) => `tag-${i}`);
-    const result = validateEntryInput({ kind: "insight", body: "Content", tags });
+    const tags = Array.from(
+      { length: MAX_TAGS_COUNT + 1 },
+      (_, i) => `tag-${i}`,
+    );
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      tags,
+    });
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/max.*20/i);
   });
 
   it("rejects non-string tag in array", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", tags: [123] });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      tags: [123],
+    });
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/string/);
   });
 
   it("rejects tag exceeding MAX_TAG_LENGTH", () => {
     const longTag = "a".repeat(MAX_TAG_LENGTH + 1);
-    const result = validateEntryInput({ kind: "insight", body: "Content", tags: [longTag] });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      tags: [longTag],
+    });
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/100/);
   });
 
   it("accepts tags with empty strings", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", tags: [""] });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      tags: [""],
+    });
     expect(result).toBeNull();
   });
 });
@@ -319,13 +398,21 @@ describe("validateEntryInput — tags", () => {
 
 describe("validateEntryInput — meta", () => {
   it("accepts valid meta object", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", meta: { key: "value" } });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      meta: { key: "value" },
+    });
     expect(result).toBeNull();
   });
 
   it("rejects oversized meta", () => {
     const meta = { data: "x".repeat(MAX_META_LENGTH) };
-    const result = validateEntryInput({ kind: "insight", body: "Content", meta });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      meta,
+    });
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/10KB/);
   });
@@ -334,7 +421,11 @@ describe("validateEntryInput — meta", () => {
     // Create a meta object whose JSON serialization is just under the limit
     const padding = "x".repeat(MAX_META_LENGTH - 20);
     const meta = { d: padding };
-    const result = validateEntryInput({ kind: "insight", body: "Content", meta });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      meta,
+    });
     expect(result).toBeNull();
   });
 });
@@ -343,25 +434,41 @@ describe("validateEntryInput — meta", () => {
 
 describe("validateEntryInput — source", () => {
   it("accepts valid source", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", source: "claude-code" });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      source: "claude-code",
+    });
     expect(result).toBeNull();
   });
 
   it("rejects source exceeding MAX_SOURCE_LENGTH", () => {
     const source = "a".repeat(MAX_SOURCE_LENGTH + 1);
-    const result = validateEntryInput({ kind: "insight", body: "Content", source });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      source,
+    });
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/200/);
   });
 
   it("rejects non-string source", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", source: 42 });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      source: 42,
+    });
     expect(result).not.toBeNull();
     expect(result.status).toBe(400);
   });
 
   it("accepts empty string source", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", source: "" });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      source: "",
+    });
     expect(result).toBeNull();
   });
 });
@@ -370,25 +477,41 @@ describe("validateEntryInput — source", () => {
 
 describe("validateEntryInput — identity_key", () => {
   it("accepts valid identity_key", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", identity_key: "my-key" });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      identity_key: "my-key",
+    });
     expect(result).toBeNull();
   });
 
   it("rejects identity_key exceeding MAX_IDENTITY_KEY_LENGTH", () => {
     const identity_key = "a".repeat(MAX_IDENTITY_KEY_LENGTH + 1);
-    const result = validateEntryInput({ kind: "insight", body: "Content", identity_key });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      identity_key,
+    });
     expect(result).not.toBeNull();
     expect(result.error).toMatch(/200/);
   });
 
   it("rejects non-string identity_key", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", identity_key: 123 });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      identity_key: 123,
+    });
     expect(result).not.toBeNull();
     expect(result.status).toBe(400);
   });
 
   it("accepts empty string identity_key", () => {
-    const result = validateEntryInput({ kind: "insight", body: "Content", identity_key: "" });
+    const result = validateEntryInput({
+      kind: "insight",
+      body: "Content",
+      identity_key: "",
+    });
     expect(result).toBeNull();
   });
 });
@@ -409,15 +532,18 @@ describe("validateEntryInput — options", () => {
   });
 
   it("both requireKind and requireBody can be false", () => {
-    const result = validateEntryInput({}, { requireKind: false, requireBody: false });
+    const result = validateEntryInput(
+      {},
+      { requireKind: false, requireBody: false },
+    );
     expect(result).toBeNull();
   });
 
   it("returns 400 status for all validation errors", () => {
     const errors = [
-      validateEntryInput({ body: "c" }),                          // missing kind
-      validateEntryInput({ kind: "insight" }),                    // missing body
-      validateEntryInput({ kind: "UPPER", body: "c" }),           // invalid kind
+      validateEntryInput({ body: "c" }), // missing kind
+      validateEntryInput({ kind: "insight" }), // missing body
+      validateEntryInput({ kind: "UPPER", body: "c" }), // invalid kind
       validateEntryInput({ kind: "insight", body: "c", title: 1 }), // invalid title type
       validateEntryInput({ kind: "insight", body: "c", tags: "str" }), // invalid tags type
     ];

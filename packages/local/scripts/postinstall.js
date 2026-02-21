@@ -39,7 +39,11 @@ async function main() {
   }
 
   if (needsRebuild) {
-    console.log("[context-vault] Rebuilding native modules for Node.js " + process.version + "...");
+    console.log(
+      "[context-vault] Rebuilding native modules for Node.js " +
+        process.version +
+        "...",
+    );
     try {
       execSync("npm rebuild better-sqlite3 sqlite-vec", {
         stdio: "inherit",
@@ -48,7 +52,9 @@ async function main() {
       console.log("[context-vault] Native modules rebuilt successfully.");
     } catch {
       console.error("[context-vault] Warning: native module rebuild failed.");
-      console.error("[context-vault] Try manually: npm rebuild better-sqlite3 sqlite-vec");
+      console.error(
+        "[context-vault] Try manually: npm rebuild better-sqlite3 sqlite-vec",
+      );
     }
   }
 
@@ -60,17 +66,26 @@ async function main() {
   // which may find it in the workspace during `npm install -g ./tarball`).
   const transformersDir = join(NODE_MODULES, "@huggingface", "transformers");
   if (!existsSync(transformersDir)) {
-    console.log("[context-vault] Installing embedding support (@huggingface/transformers)...");
+    console.log(
+      "[context-vault] Installing embedding support (@huggingface/transformers)...",
+    );
     try {
-      execSync("npm install --no-save --ignore-scripts @huggingface/transformers@^3.0.0", {
-        stdio: "inherit",
-        timeout: 120000,
-        cwd: PKG_ROOT,
-      });
+      execSync(
+        "npm install --no-save --ignore-scripts @huggingface/transformers@^3.0.0",
+        {
+          stdio: "inherit",
+          timeout: 120000,
+          cwd: PKG_ROOT,
+        },
+      );
       console.log("[context-vault] Embedding support installed.");
     } catch {
-      console.error("[context-vault] Warning: could not install @huggingface/transformers.");
-      console.error("[context-vault] Semantic search will be unavailable; full-text search still works.");
+      console.error(
+        "[context-vault] Warning: could not install @huggingface/transformers.",
+      );
+      console.error(
+        "[context-vault] Semantic search will be unavailable; full-text search still works.",
+      );
     }
   }
 }

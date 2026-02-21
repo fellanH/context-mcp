@@ -14,21 +14,27 @@ export function Settings({ onSaved }: Props) {
   const [apiKey, setApiKey] = useState("");
   const [vaultPath, setVaultPath] = useState("");
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    error?: string;
+  } | null>(null);
 
   useEffect(() => {
-    chrome.runtime.sendMessage({ type: "get_settings" }, (response: MessageType) => {
-      if (chrome.runtime.lastError) {
-        console.warn("[context-vault]", chrome.runtime.lastError.message);
-        return;
-      }
-      if (response?.type === "settings") {
-        setMode(response.mode);
-        setServerUrl(response.serverUrl);
-        setApiKey(response.apiKey);
-        setVaultPath(response.vaultPath);
-      }
-    });
+    chrome.runtime.sendMessage(
+      { type: "get_settings" },
+      (response: MessageType) => {
+        if (chrome.runtime.lastError) {
+          console.warn("[context-vault]", chrome.runtime.lastError.message);
+          return;
+        }
+        if (response?.type === "settings") {
+          setMode(response.mode);
+          setServerUrl(response.serverUrl);
+          setApiKey(response.apiKey);
+          setVaultPath(response.vaultPath);
+        }
+      },
+    );
   }, []);
 
   function handleModeSwitch(newMode: VaultMode) {
@@ -56,12 +62,22 @@ export function Settings({ onSaved }: Props) {
   }
 
   function handleSave() {
-    const effectiveUrl = mode === "local" ? LOCAL_DEFAULTS.serverUrl : serverUrl;
+    const effectiveUrl =
+      mode === "local" ? LOCAL_DEFAULTS.serverUrl : serverUrl;
     chrome.runtime.sendMessage(
-      { type: "save_settings", serverUrl: effectiveUrl, apiKey, mode, vaultPath } satisfies MessageType,
+      {
+        type: "save_settings",
+        serverUrl: effectiveUrl,
+        apiKey,
+        mode,
+        vaultPath,
+      } satisfies MessageType,
       (response: MessageType) => {
         if (chrome.runtime.lastError) {
-          setTestResult({ success: false, error: "Could not reach background service." });
+          setTestResult({
+            success: false,
+            error: "Could not reach background service.",
+          });
           return;
         }
         if (response?.type === "error") {
@@ -72,7 +88,7 @@ export function Settings({ onSaved }: Props) {
           setTestResult({ success: true });
           onSaved(response.connected);
         }
-      }
+      },
     );
   }
 
@@ -80,13 +96,23 @@ export function Settings({ onSaved }: Props) {
     setTesting(true);
     setTestResult(null);
 
-    const effectiveUrl = mode === "local" ? LOCAL_DEFAULTS.serverUrl : serverUrl;
+    const effectiveUrl =
+      mode === "local" ? LOCAL_DEFAULTS.serverUrl : serverUrl;
     chrome.runtime.sendMessage(
-      { type: "save_settings", serverUrl: effectiveUrl, apiKey, mode, vaultPath } satisfies MessageType,
+      {
+        type: "save_settings",
+        serverUrl: effectiveUrl,
+        apiKey,
+        mode,
+        vaultPath,
+      } satisfies MessageType,
       (saveResponse: MessageType) => {
         if (chrome.runtime.lastError) {
           setTesting(false);
-          setTestResult({ success: false, error: "Could not reach background service." });
+          setTestResult({
+            success: false,
+            error: "Could not reach background service.",
+          });
           return;
         }
         if (saveResponse?.type === "error") {
@@ -94,18 +120,24 @@ export function Settings({ onSaved }: Props) {
           setTestResult({ success: false, error: saveResponse.message });
           return;
         }
-        chrome.runtime.sendMessage({ type: "test_connection" }, (response: MessageType) => {
-          if (chrome.runtime.lastError) {
+        chrome.runtime.sendMessage(
+          { type: "test_connection" },
+          (response: MessageType) => {
+            if (chrome.runtime.lastError) {
+              setTesting(false);
+              setTestResult({
+                success: false,
+                error: "Could not reach background service.",
+              });
+              return;
+            }
             setTesting(false);
-            setTestResult({ success: false, error: "Could not reach background service." });
-            return;
-          }
-          setTesting(false);
-          if (response?.type === "connection_result") {
-            setTestResult(response);
-          }
-        });
-      }
+            if (response?.type === "connection_result") {
+              setTestResult(response);
+            }
+          },
+        );
+      },
     );
   }
 
@@ -126,10 +158,14 @@ export function Settings({ onSaved }: Props) {
               "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer",
               mode === m
                 ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {m === "local" ? <HardDrive className="w-3 h-3" /> : <Cloud className="w-3 h-3" />}
+            {m === "local" ? (
+              <HardDrive className="w-3 h-3" />
+            ) : (
+              <Cloud className="w-3 h-3" />
+            )}
             {m === "local" ? "Local" : "Hosted"}
           </button>
         ))}
@@ -138,7 +174,9 @@ export function Settings({ onSaved }: Props) {
       {/* Local mode — entries folder path */}
       {isLocal && (
         <>
-          <label className="block text-xs text-muted-foreground mb-1">Entries Folder</label>
+          <label className="block text-xs text-muted-foreground mb-1">
+            Entries Folder
+          </label>
           <div className="flex gap-1.5 mb-1">
             <input
               type="text"
@@ -159,7 +197,11 @@ export function Settings({ onSaved }: Props) {
             Folder containing your vault markdown files
           </p>
           <div className="text-xs text-muted-foreground/70 mb-4 leading-relaxed">
-            Requires <code className="bg-secondary px-1 py-0.5 rounded font-mono text-[11px]">context-vault ui</code> running in your terminal.
+            Requires{" "}
+            <code className="bg-secondary px-1 py-0.5 rounded font-mono text-[11px]">
+              context-vault ui
+            </code>{" "}
+            running in your terminal.
           </div>
         </>
       )}
@@ -167,7 +209,9 @@ export function Settings({ onSaved }: Props) {
       {/* Hosted mode — server URL + API key */}
       {!isLocal && (
         <>
-          <label className="block text-xs text-muted-foreground mb-1">Server URL</label>
+          <label className="block text-xs text-muted-foreground mb-1">
+            Server URL
+          </label>
           <input
             type="url"
             value={serverUrl}
@@ -176,7 +220,9 @@ export function Settings({ onSaved }: Props) {
             className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-lg text-foreground outline-none focus:ring-1 focus:ring-ring mb-3"
           />
 
-          <label className="block text-xs text-muted-foreground mb-1">API Key</label>
+          <label className="block text-xs text-muted-foreground mb-1">
+            API Key
+          </label>
           <input
             type="password"
             value={apiKey}
@@ -201,7 +247,11 @@ export function Settings({ onSaved }: Props) {
             <div>
               <div className="font-medium mb-1">Local server not running</div>
               <div className="text-xs opacity-80">
-                Run <code className="bg-secondary px-1 py-0.5 rounded font-mono">context-vault ui</code> in your terminal to start the server.
+                Run{" "}
+                <code className="bg-secondary px-1 py-0.5 rounded font-mono">
+                  context-vault ui
+                </code>{" "}
+                in your terminal to start the server.
               </div>
             </div>
           ) : (

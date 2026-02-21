@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { formatNumber, formatMegabytes } from "../../packages/app/src/app/lib/format.ts";
+import {
+  formatNumber,
+  formatMegabytes,
+} from "../../packages/app/src/app/lib/format.ts";
 
 describe("formatNumber", () => {
   it("trims to two decimals by default", () => {

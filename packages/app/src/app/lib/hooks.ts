@@ -34,7 +34,12 @@ interface UseEntriesOpts {
   limit?: number;
 }
 
-export function useEntries({ category, kind, offset = 0, limit = 20 }: UseEntriesOpts = {}) {
+export function useEntries({
+  category,
+  kind,
+  offset = 0,
+  limit = 20,
+}: UseEntriesOpts = {}) {
   return useQuery({
     queryKey: ["entries", { category, kind, offset, limit }],
     queryFn: async () => {
@@ -45,7 +50,7 @@ export function useEntries({ category, kind, offset = 0, limit = 20 }: UseEntrie
       params.set("limit", String(limit));
 
       const raw = await api.get<{ entries: ApiEntry[]; total: number }>(
-        `/vault/entries?${params}`
+        `/vault/entries?${params}`,
       );
       return {
         entries: raw.entries.map(transformEntry),
@@ -69,8 +74,12 @@ export function useEntry(id: string | null) {
 export function useCreateEntry() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { kind: string; title: string; body: string; tags?: string[] }) =>
-      api.post<ApiEntry>("/vault/entries", data),
+    mutationFn: (data: {
+      kind: string;
+      title: string;
+      body: string;
+      tags?: string[];
+    }) => api.post<ApiEntry>("/vault/entries", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["entries"] });
       qc.invalidateQueries({ queryKey: ["usage"] });
@@ -81,7 +90,8 @@ export function useCreateEntry() {
 export function useDeleteEntry() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.del<{ deleted: boolean }>(`/vault/entries/${id}`),
+    mutationFn: (id: string) =>
+      api.del<{ deleted: boolean }>(`/vault/entries/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["entries"] });
       qc.invalidateQueries({ queryKey: ["usage"] });
@@ -100,13 +110,18 @@ interface SearchOpts {
 export function useSearch() {
   return useMutation({
     mutationFn: async (opts: SearchOpts) => {
-      const body: Record<string, unknown> = { query: opts.query, limit: opts.limit || 20 };
-      if (opts.category && opts.category !== "all") body.category = opts.category;
+      const body: Record<string, unknown> = {
+        query: opts.query,
+        limit: opts.limit || 20,
+      };
+      if (opts.category && opts.category !== "all")
+        body.category = opts.category;
 
-      const raw = await api.post<{ results: ApiSearchResult[]; count: number; query: string }>(
-        "/vault/search",
-        body
-      );
+      const raw = await api.post<{
+        results: ApiSearchResult[];
+        count: number;
+        query: string;
+      }>("/vault/search", body);
       return {
         results: raw.results.map(transformSearchResult),
         count: raw.count,
@@ -132,7 +147,10 @@ export function useCreateApiKey() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (name: string) =>
-      api.post<{ id: string; key: string; prefix: string; name: string }>("/keys", { name }),
+      api.post<{ id: string; key: string; prefix: string; name: string }>(
+        "/keys",
+        { name },
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["apiKeys"] });
     },
@@ -279,7 +297,7 @@ export function useInviteMember() {
     mutationFn: ({ teamId, email }: { teamId: string; email: string }) =>
       api.post<{ id: string; token: string; email: string; expiresAt: string }>(
         `/teams/${teamId}/invite`,
-        { email }
+        { email },
       ),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["team", vars.teamId] });
@@ -293,7 +311,7 @@ export function useJoinTeam() {
     mutationFn: ({ teamId, token }: { teamId: string; token: string }) =>
       api.post<{ joined: boolean; teamId: string; role: string }>(
         `/teams/${teamId}/join`,
-        { token }
+        { token },
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["teams"] });
@@ -305,7 +323,9 @@ export function useRemoveMember() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ teamId, userId }: { teamId: string; userId: string }) =>
-      api.del<{ removed: boolean; userId: string }>(`/teams/${teamId}/members/${userId}`),
+      api.del<{ removed: boolean; userId: string }>(
+        `/teams/${teamId}/members/${userId}`,
+      ),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["team", vars.teamId] });
       qc.invalidateQueries({ queryKey: ["teamUsage", vars.teamId] });

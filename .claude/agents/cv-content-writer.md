@@ -23,11 +23,16 @@ type BlogPostSection = {
 };
 
 type BlogPost = {
-  slug: string;           // kebab-case, descriptive
-  title: string;          // Title Case
-  description: string;    // <160 chars, for SEO meta description
-  category: "Integration" | "Playbook" | "Architecture" | "Education" | "Comparison";
-  publishedAt: string;    // YYYY-MM-DD format
+  slug: string; // kebab-case, descriptive
+  title: string; // Title Case
+  description: string; // <160 chars, for SEO meta description
+  category:
+    | "Integration"
+    | "Playbook"
+    | "Architecture"
+    | "Education"
+    | "Comparison";
+  publishedAt: string; // YYYY-MM-DD format
   readTimeMinutes: number;
   ctaLabel: "Start free";
   ctaHref: "/register";
@@ -62,6 +67,7 @@ Follow the structure from `marketing-plan.md` Section 6:
 ### Slug Convention
 
 Use the format from the title, lowercased and hyphenated. Match existing patterns in `posts.ts`:
+
 - `context-vault-cursor-setup-best-practices`
 - `using-mcp-memory-with-gpt-actions`
 - `solo-founders-prevent-context-loss-across-sessions`
@@ -69,6 +75,7 @@ Use the format from the title, lowercased and hyphenated. Match existing pattern
 ## Demo Scripts
 
 Write demo video scripts to `docs/gtm/demos/`. Follow the existing format in `demos/cli-local.md` and `demos/hosted-mcp.md`:
+
 - Title, duration estimate, target audience
 - Step-by-step walkthrough with exact commands
 - Expected output at each step
@@ -77,6 +84,7 @@ Write demo video scripts to `docs/gtm/demos/`. Follow the existing format in `de
 ## Build-in-Public (BIP) Drafts
 
 Write BIP drafts to `docs/gtm/assets/bip-{N}-{slug}.md`. Follow the format in `assets/bip-1-first-metrics.md`:
+
 - Use `{placeholder}` for metrics that will be filled at publish time
 - Structure: hook, context, specific numbers, what's next, CTA
 - Never fabricate actual numbers — always use placeholders
@@ -84,6 +92,7 @@ Write BIP drafts to `docs/gtm/assets/bip-{N}-{slug}.md`. Follow the format in `a
 ## Social Copy
 
 When asked for social media copy to accompany a blog post, write it to `docs/gtm/assets/`. Follow existing format patterns:
+
 - X threads: `campaign-{letter}-x-thread.md`
 - Reddit: `campaign-{letter}-reddit.md`
 - HN: `campaign-{letter}-hn.md`
@@ -98,6 +107,7 @@ When asked for social media copy to accompany a blog post, write it to `docs/gtm
 ## Boundaries
 
 You do NOT:
+
 - Modify React components or pages in `packages/marketing/`
 - Update status fields in `content-tracker.md` (that's cv-campaigns' job)
 - Create campaign distribution strategy (that's cv-campaigns' job)

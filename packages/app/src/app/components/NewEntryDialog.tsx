@@ -4,7 +4,13 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { Badge } from "./ui/badge";
 import { toast } from "sonner";
 import type { Category } from "../lib/types";
@@ -18,8 +24,14 @@ interface NewEntryDialogProps {
   category?: Category;
 }
 
-export function NewEntryDialog({ open, onOpenChange, category }: NewEntryDialogProps) {
-  const [selectedCategory, setSelectedCategory] = useState<Category>(category || "knowledge");
+export function NewEntryDialog({
+  open,
+  onOpenChange,
+  category,
+}: NewEntryDialogProps) {
+  const [selectedCategory, setSelectedCategory] = useState<Category>(
+    category || "knowledge",
+  );
   const [kind, setKind] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -73,13 +85,15 @@ export function NewEntryDialog({ open, onOpenChange, category }: NewEntryDialogP
             } else if (err.status === 400) {
               toast.error("Validation error", { description: err.message });
             } else {
-              toast.error("Failed to create entry", { description: err.message });
+              toast.error("Failed to create entry", {
+                description: err.message,
+              });
             }
           } else {
             toast.error("Failed to create entry");
           }
         },
-      }
+      },
     );
   };
 
@@ -96,7 +110,9 @@ export function NewEntryDialog({ open, onOpenChange, category }: NewEntryDialogP
               <Label>Category *</Label>
               <Select
                 value={selectedCategory}
-                onValueChange={(value) => setSelectedCategory(value as Category)}
+                onValueChange={(value) =>
+                  setSelectedCategory(value as Category)
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -151,7 +167,9 @@ export function NewEntryDialog({ open, onOpenChange, category }: NewEntryDialogP
               <Input
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && (e.preventDefault(), handleAddTag())
+                }
                 placeholder="Add tag..."
               />
               <Button type="button" onClick={handleAddTag} variant="outline">
@@ -181,7 +199,9 @@ export function NewEntryDialog({ open, onOpenChange, category }: NewEntryDialogP
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={createEntry.isPending}>
-            {createEntry.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
+            {createEntry.isPending && (
+              <Loader2 className="size-4 mr-2 animate-spin" />
+            )}
             Save Entry
           </Button>
         </div>

@@ -1,9 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { formatFrontmatter, parseFrontmatter, extractCustomMeta } from "@context-vault/core/core/frontmatter";
+import {
+  formatFrontmatter,
+  parseFrontmatter,
+  extractCustomMeta,
+} from "@context-vault/core/core/frontmatter";
 
 describe("formatFrontmatter + parseFrontmatter roundtrip", () => {
   it("roundtrips simple scalar fields", () => {
-    const meta = { id: "01ABC", source: "claude-code", created: "2026-01-01T00:00:00Z" };
+    const meta = {
+      id: "01ABC",
+      source: "claude-code",
+      created: "2026-01-01T00:00:00Z",
+    };
     const formatted = formatFrontmatter(meta);
     const { meta: parsed } = parseFrontmatter(formatted + "\nSome body text");
     expect(parsed.id).toBe("01ABC");
@@ -60,13 +68,24 @@ describe("parseFrontmatter", () => {
 
 describe("extractCustomMeta", () => {
   it("extracts non-reserved keys", () => {
-    const fm = { id: "01ABC", tags: ["a"], source: "test", language: "js", status: "accepted" };
+    const fm = {
+      id: "01ABC",
+      tags: ["a"],
+      source: "test",
+      language: "js",
+      status: "accepted",
+    };
     const custom = extractCustomMeta(fm);
     expect(custom).toEqual({ language: "js", status: "accepted" });
   });
 
   it("returns null when no custom keys", () => {
-    const fm = { id: "01ABC", tags: ["a"], source: "test", created: "2026-01-01" };
+    const fm = {
+      id: "01ABC",
+      tags: ["a"],
+      source: "test",
+      created: "2026-01-01",
+    };
     expect(extractCustomMeta(fm)).toBeNull();
   });
 });
