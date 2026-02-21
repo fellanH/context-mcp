@@ -11,10 +11,10 @@ import { mkdirSync } from "node:fs";
 
 let extractor = null;
 
-/** @type {null | true | false} null = unknown, true = working, false = failed */
+/** @type {null | true | false} null = uninitialized/retry, true = ready, false = permanently failed */
 let embedAvailable = null;
 
-/** Shared promise for in-flight initialization — prevents concurrent loads */
+/** In-flight load promise — coalesces concurrent callers onto a single pipeline() call */
 let loadingPromise = null;
 
 async function ensurePipeline() {

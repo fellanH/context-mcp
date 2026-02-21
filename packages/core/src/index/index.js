@@ -49,6 +49,11 @@ export async function indexEntry(
     userId,
   },
 ) {
+  // Don't index entries that have already expired
+  if (expires_at && new Date(expires_at) <= new Date()) {
+    return;
+  }
+
   const tagsJson = tags ? JSON.stringify(tags) : null;
   const metaJson = meta ? JSON.stringify(meta) : null;
   const cat = category || categoryFor(kind);
@@ -239,8 +244,7 @@ export async function reindex(ctx, opts = {}) {
   // Phase 1: Sync DB ops in a transaction — FTS is searchable immediately after COMMIT.
   // Phase 2: Async embedding runs post-transaction so it can't hold the write lock
   //          or roll back DB state on failure.
-  const pendingEmbeds = []; // { rowid, text }
-  const staleVecRowids = []; // rowids whose old vectors need deleting before re-embed
+  const pendingEmbeds = []; // { rowid, text, isUpdate }
 
   ctx.db.exec("BEGIN");
   try {
@@ -347,11 +351,14 @@ export async function reindex(ctx, opts = {}) {
             if (bodyChanged || titleChanged) {
               const rowid = ctx.stmts.getRowid.get(existing.id)?.rowid;
               if (rowid) {
-                staleVecRowids.push(rowid);
                 const embeddingText = [parsed.title, parsed.body]
                   .filter(Boolean)
                   .join(" ");
-                pendingEmbeds.push({ rowid, text: embeddingText });
+                pendingEmbeds.push({
+                  rowid,
+                  text: embeddingText,
+                  isUpdate: true,
+                });
               }
             }
             stats.updated++;
@@ -433,20 +440,16 @@ export async function reindex(ctx, opts = {}) {
 
   // Phase 2: Async embedding — runs after COMMIT so FTS is already searchable.
   // Failures here are non-fatal; semantic search catches up on next reindex.
-
-  // Delete stale vectors for updated entries before re-embedding
-  for (const rowid of staleVecRowids) {
-    try {
-      ctx.deleteVec(rowid);
-    } catch {}
-  }
-
-  // Batch embed all pending texts
+  // Vec delete happens atomically with insert (only on success) to avoid
+  // leaving entries permanently without vectors if embedBatch() fails mid-batch.
   for (let i = 0; i < pendingEmbeds.length; i += EMBED_BATCH_SIZE) {
     const batch = pendingEmbeds.slice(i, i + EMBED_BATCH_SIZE);
     const embeddings = await embedBatch(batch.map((e) => e.text));
     for (let j = 0; j < batch.length; j++) {
       if (embeddings[j]) {
+        try {
+          ctx.deleteVec(batch[j].rowid);
+        } catch {}
         ctx.insertVec(batch[j].rowid, embeddings[j]);
       }
     }

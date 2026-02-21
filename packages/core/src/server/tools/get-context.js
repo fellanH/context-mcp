@@ -110,7 +110,10 @@ export async function handler(
 
   const effectiveLimit = limit || 10;
   // When tag-filtering, over-fetch to compensate for post-filter reduction
-  const fetchLimit = tags?.length ? effectiveLimit * 10 : effectiveLimit;
+  const MAX_FETCH_LIMIT = 500;
+  const fetchLimit = tags?.length
+    ? Math.min(effectiveLimit * 10, MAX_FETCH_LIMIT)
+    : effectiveLimit;
 
   let filtered;
   if (hasQuery) {

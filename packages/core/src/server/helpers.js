@@ -13,7 +13,7 @@ export function err(text, code = "UNKNOWN") {
 export function ensureVaultExists(config) {
   if (!config.vaultDirExists) {
     return err(
-      `Vault directory not found: ${config.vaultDir}. Run context_status for diagnostics.`,
+      `Vault directory not found: ${config.vaultDir}. Run context-status for diagnostics.`,
       "VAULT_NOT_FOUND",
     );
   }

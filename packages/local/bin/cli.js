@@ -1793,6 +1793,15 @@ async function runExport() {
   }
 }
 
+function safeJsonParse(str, fallback) {
+  if (!str) return fallback;
+  try {
+    return JSON.parse(str);
+  } catch {
+    return fallback;
+  }
+}
+
 function mapExportRow(row) {
   return {
     id: row.id,
@@ -1800,8 +1809,8 @@ function mapExportRow(row) {
     category: row.category,
     title: row.title || null,
     body: row.body || null,
-    tags: row.tags ? JSON.parse(row.tags) : [],
-    meta: row.meta ? JSON.parse(row.meta) : {},
+    tags: safeJsonParse(row.tags, []),
+    meta: safeJsonParse(row.meta, {}),
     source: row.source || null,
     identity_key: row.identity_key || null,
     expires_at: row.expires_at || null,
