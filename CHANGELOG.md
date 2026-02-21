@@ -2,6 +2,14 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.8.13] — 2026-02-21
+
+### Fixed
+
+- Embedding download during setup now times out after 90 seconds instead of hanging indefinitely — falls back to FTS-only mode with a clear retry message
+- Download spinner now shows bytes downloaded (X.X MB / ~22 MB) alongside elapsed time
+- Setup exits immediately with a clear error if the user declines to create the vault directory (previously continued and crashed at seed phase)
+
 ## [2.8.12] — 2026-02-21
 
 ### Changed

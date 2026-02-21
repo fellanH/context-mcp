@@ -14,6 +14,7 @@ import { createInterface } from "node:readline";
 import {
   existsSync,
   statSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
   mkdirSync,
@@ -455,6 +456,9 @@ async function runSetup() {
     if (create.toLowerCase() !== "n") {
       mkdirSync(resolvedVaultDir, { recursive: true });
       console.log(`  ${green("+")} Created ${resolvedVaultDir}`);
+    } else {
+      console.log(red("\n  Setup cancelled — vault directory is required."));
+      process.exit(1);
     }
   }
 
@@ -506,16 +510,45 @@ async function runSetup() {
       const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
       let frame = 0;
       const start = Date.now();
+      const modelDir = join(homedir(), ".context-mcp", "models");
       const spinner = setInterval(() => {
         const elapsed = ((Date.now() - start) / 1000).toFixed(0);
+        let downloadedMB = "?";
+        try {
+          const files = readdirSync(modelDir, {
+            recursive: true,
+            withFileTypes: true,
+          });
+          const totalBytes = files
+            .filter((f) => f.isFile())
+            .reduce(
+              (sum, f) =>
+                sum + statSync(join(f.parentPath ?? f.path, f.name)).size,
+              0,
+            );
+          downloadedMB = (totalBytes / 1024 / 1024).toFixed(1);
+        } catch {}
         process.stdout.write(
-          `\r  ${spinnerFrames[frame++ % spinnerFrames.length]} Downloading... ${dim(`${elapsed}s`)}`,
+          `\r  ${spinnerFrames[frame++ % spinnerFrames.length]} Downloading... ${downloadedMB} MB / ~22 MB  ${dim(`${elapsed}s`)}`,
         );
       }, 100);
 
       try {
         const { embed } = await import("@context-vault/core/index/embed");
-        await embed("warmup");
+        let timeoutHandle;
+        const timeout = new Promise((_, reject) => {
+          timeoutHandle = setTimeout(
+            () =>
+              reject(
+                Object.assign(new Error("Download timed out after 90s"), {
+                  code: "ETIMEDOUT",
+                }),
+              ),
+            90_000,
+          );
+        });
+        await Promise.race([embed("warmup"), timeout]);
+        clearTimeout(timeoutHandle);
 
         clearInterval(spinner);
         process.stdout.write(
