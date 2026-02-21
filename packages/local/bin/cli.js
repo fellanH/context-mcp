@@ -21,9 +21,8 @@ import {
 } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { homedir, platform } from "node:os";
-import { execSync, execFile, fork } from "node:child_process";
+import { execSync, execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createServer as createNetServer } from "node:net";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -224,7 +223,6 @@ ${bold("Commands:")}
   ${cyan("connect")} --key cv_...  Connect AI tools to hosted vault
   ${cyan("switch")} local|hosted      Switch between local and hosted MCP modes
   ${cyan("serve")}                 Start the MCP server (used by AI clients)
-  ${cyan("ui")} [--port 3141]      Launch web dashboard
   ${cyan("reindex")}               Rebuild search index from knowledge files
   ${cyan("status")}                Show vault diagnostics
   ${cyan("update")}                Check for and install updates
@@ -232,8 +230,6 @@ ${bold("Commands:")}
   ${cyan("import")} <path>          Import entries from file or directory
   ${cyan("export")}                Export vault to JSON or CSV
   ${cyan("ingest")} <url>          Fetch URL and save as vault entry
-  ${cyan("link")} --key cv_...     Link local vault to hosted account
-  ${cyan("sync")}                  Sync entries between local and hosted
   ${cyan("migrate")}               Migrate vault between local and hosted
 
 ${bold("Options:")}
@@ -559,17 +555,6 @@ async function runSetup() {
     );
   }
 
-  // Offer to launch UI
-  console.log();
-  if (!isNonInteractive) {
-    const launchUi = await prompt(`  Launch web dashboard? (y/N):`, "N");
-    if (launchUi.toLowerCase() === "y") {
-      console.log();
-      runUi();
-      return;
-    }
-  }
-
   // Health check
   console.log(`\n  ${dim("[5/5]")}${bold(" Health check...")}\n`);
   const okResults = results.filter((r) => r.ok);
@@ -608,7 +593,6 @@ async function runSetup() {
     ``,
     `  ${bold("CLI Commands:")}`,
     `  context-vault status    Show vault health`,
-    `  context-vault ui        Launch web dashboard`,
     `  context-vault update    Check for updates`,
   ];
   const innerWidth = Math.max(...boxLines.map((l) => l.length)) + 2;
@@ -1177,52 +1161,6 @@ async function runSwitch() {
     console.log(dim(`  Endpoint: ${hostedUrl}/mcp`));
     console.log();
   }
-}
-
-function runUi() {
-  const port = parseInt(getFlag("--port") || "3141", 10);
-  const localServer = join(ROOT, "scripts", "local-server.js");
-  if (!existsSync(localServer)) {
-    console.error(red("Local server not found."));
-    process.exit(1);
-  }
-
-  // Probe the port before forking
-  const probe = createNetServer();
-  probe.once("error", (e) => {
-    if (e.code === "EADDRINUSE") {
-      console.error(red(`  Port ${port} is already in use.`));
-      console.error(`  Try: ${cyan(`context-vault ui --port ${port + 1}`)}`);
-      process.exit(1);
-    }
-    // Other error — let the fork handle it
-    probe.close();
-    launchServer(port, localServer);
-  });
-  probe.listen(port, () => {
-    probe.close(() => {
-      launchServer(port, localServer);
-    });
-  });
-}
-
-function launchServer(port, localServer) {
-  const child = fork(localServer, [`--port=${port}`], { stdio: "inherit" });
-  child.on("exit", (code) => process.exit(code ?? 0));
-
-  setTimeout(() => {
-    try {
-      const url = `https://app.context-vault.com?mode=local&port=${port}`;
-      console.log(`Opening ${url}`);
-      const open =
-        PLATFORM === "darwin"
-          ? "open"
-          : PLATFORM === "win32"
-            ? "start"
-            : "xdg-open";
-      execSync(`${open} ${url}`, { stdio: "ignore" });
-    } catch {}
-  }, 1500);
 }
 
 async function runReindex() {
@@ -1845,185 +1783,6 @@ async function runIngest() {
   console.log();
 }
 
-async function runLink() {
-  const apiKey = getFlag("--key");
-  const hostedUrl = getFlag("--url") || "https://api.context-vault.com";
-
-  if (!apiKey) {
-    console.log(`\n  ${bold("context-vault link")} --key cv_...\n`);
-    console.log(`  Link your local vault to a hosted Context Vault account.\n`);
-    console.log(`  Options:`);
-    console.log(`    --key <key>   API key (required)`);
-    console.log(
-      `    --url <url>   Hosted server URL (default: https://api.context-vault.com)`,
-    );
-    console.log();
-    return;
-  }
-
-  console.log(dim("  Verifying API key..."));
-
-  let user;
-  try {
-    const response = await fetch(`${hostedUrl}/api/me`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    user = await response.json();
-  } catch (e) {
-    console.error(red(`  Verification failed: ${e.message}`));
-    console.error(dim(`  Check your API key and server URL.`));
-    process.exit(1);
-  }
-
-  // Store credentials in config
-  const dataDir = join(HOME, ".context-mcp");
-  const configPath = join(dataDir, "config.json");
-  let config = {};
-  if (existsSync(configPath)) {
-    try {
-      config = JSON.parse(readFileSync(configPath, "utf-8"));
-    } catch {}
-  }
-
-  config.hostedUrl = hostedUrl;
-  config.apiKey = apiKey;
-  config.userId = user.userId || user.id;
-  config.email = user.email;
-  config.linkedAt = new Date().toISOString();
-
-  mkdirSync(dataDir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
-
-  console.log();
-  console.log(green(`  ✓ Linked to ${user.email}`));
-  console.log(dim(`    Tier: ${user.tier || "free"}`));
-  console.log(dim(`    Server: ${hostedUrl}`));
-  console.log(dim(`    Config: ${configPath}`));
-  console.log();
-}
-
-async function runSync() {
-  const dryRun = flags.has("--dry-run");
-  const pushOnly = flags.has("--push-only");
-  const pullOnly = flags.has("--pull-only");
-
-  // Read credentials
-  const dataDir = join(HOME, ".context-mcp");
-  const configPath = join(dataDir, "config.json");
-  let storedConfig = {};
-  if (existsSync(configPath)) {
-    try {
-      storedConfig = JSON.parse(readFileSync(configPath, "utf-8"));
-    } catch {}
-  }
-
-  const apiKey = getFlag("--key") || storedConfig.apiKey;
-  const hostedUrl =
-    getFlag("--url") ||
-    storedConfig.hostedUrl ||
-    "https://api.context-vault.com";
-
-  if (!apiKey) {
-    console.error(
-      red("  Not linked. Run `context-vault link --key cv_...` first."),
-    );
-    process.exit(1);
-  }
-
-  const { resolveConfig } = await import("@context-vault/core/core/config");
-  const { initDatabase, prepareStatements, insertVec, deleteVec } =
-    await import("@context-vault/core/index/db");
-  const { embed } = await import("@context-vault/core/index/embed");
-  const {
-    buildLocalManifest,
-    fetchRemoteManifest,
-    computeSyncPlan,
-    executeSync,
-  } = await import("@context-vault/core/sync");
-
-  const config = resolveConfig();
-  if (!config.vaultDirExists) {
-    console.error(red(`  Vault directory not found: ${config.vaultDir}`));
-    process.exit(1);
-  }
-
-  const db = await initDatabase(config.dbPath);
-  const stmts = prepareStatements(db);
-  const ctx = {
-    db,
-    config,
-    stmts,
-    embed,
-    insertVec: (r, e) => insertVec(stmts, r, e),
-    deleteVec: (r) => deleteVec(stmts, r),
-  };
-
-  console.log(dim("  Building manifests..."));
-  const local = buildLocalManifest(ctx);
-
-  let remote;
-  try {
-    remote = await fetchRemoteManifest(hostedUrl, apiKey);
-  } catch (e) {
-    db.close();
-    console.error(red(`  Failed to fetch remote manifest: ${e.message}`));
-    process.exit(1);
-  }
-
-  const plan = computeSyncPlan(local, remote);
-
-  // Apply push-only / pull-only filters
-  if (pushOnly) plan.toPull = [];
-  if (pullOnly) plan.toPush = [];
-
-  console.log();
-  console.log(`  ${bold("Sync Plan")}`);
-  console.log(`    Push (local → remote): ${plan.toPush.length} entries`);
-  console.log(`    Pull (remote → local): ${plan.toPull.length} entries`);
-  console.log(`    Up to date:            ${plan.upToDate.length} entries`);
-
-  if (plan.toPush.length === 0 && plan.toPull.length === 0) {
-    db.close();
-    console.log(green("\n  ✓ Everything in sync."));
-    console.log();
-    return;
-  }
-
-  if (dryRun) {
-    db.close();
-    console.log(dim("\n  Dry run — no changes were made."));
-    console.log();
-    return;
-  }
-
-  console.log(dim("\n  Syncing..."));
-
-  const result = await executeSync(ctx, {
-    hostedUrl,
-    apiKey,
-    plan,
-    onProgress: (phase, current, total) => {
-      process.stdout.write(
-        `\r  ${phase === "push" ? "Pushing" : "Pulling"}... ${current}/${total}`,
-      );
-    },
-  });
-
-  db.close();
-
-  console.log(`\r  ${green("✓")} Sync complete                      `);
-  console.log(`    ${green("↑")} ${result.pushed} pushed`);
-  console.log(`    ${green("↓")} ${result.pulled} pulled`);
-  if (result.failed > 0) {
-    console.log(`    ${red("x")} ${result.failed} failed`);
-    for (const err of result.errors.slice(0, 5)) {
-      console.log(`      ${dim(err)}`);
-    }
-  }
-  console.log();
-}
-
 async function runServe() {
   await import("../src/server/index.js");
 }
@@ -2052,9 +1811,6 @@ async function main() {
     case "serve":
       await runServe();
       break;
-    case "ui":
-      runUi();
-      break;
     case "import":
       await runImport();
       break;
@@ -2063,12 +1819,6 @@ async function main() {
       break;
     case "ingest":
       await runIngest();
-      break;
-    case "link":
-      await runLink();
-      break;
-    case "sync":
-      await runSync();
       break;
     case "reindex":
       await runReindex();

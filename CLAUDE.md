@@ -74,12 +74,6 @@ Versioning: bump root + core + local together.
 | cv-test-runner     | read-only — no commits             |
 | Claude CLI         | any package                        |
 
-## Specs (planned work, not yet implemented)
-
-| File                       | Description                                                                                                                                                                                                |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `specs/local-ui-bundle.md` | Cloud UI (`app.context-vault.com`) connecting to local instances (local SQLite, local MCP). Covers mode store, API base URL switching, auth bypass, VaultModePopover wiring, and CLI `ui` command URL fix. |
-
 ## Issue Labels
 
 `bug` · `feature` · `enhancement` · `dx` · `infra` · `gtm` · `user-request` · `P0`–`P3`
