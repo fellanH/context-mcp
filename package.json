@@ -1,7 +1,7 @@
 {
   "name": "context-vault-monorepo",
   "private": true,
-  "version": "2.8.9",
+  "version": "2.8.10",
   "type": "module",
   "workspaces": [
     "packages/core",
