@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.8.12] — 2026-02-21
+
+### Changed
+
+- Release script now automatically creates a GitHub Release with CHANGELOG notes after each npm publish
+
 ## [2.8.11] — 2026-02-21
 
 ### Fixed
