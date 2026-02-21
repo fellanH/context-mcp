@@ -8,3 +8,9 @@ config.json
 .pipeline/
 *.tgz
 .archive/
+.agent/
+.agents/
+.claude/
+.windsurf/
+skills/
+skills-lock.json
