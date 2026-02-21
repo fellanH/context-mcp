@@ -8,9 +8,9 @@
 
 Active work. Hard cap: 3 items. Finish or demote before adding.
 
-| Item                     | Source | Issue |
-| ------------------------ | ------ | ----- |
-| _Empty — pull from Next_ |        |       |
+| Item                                                                                | Source               | Issue |
+| ----------------------------------------------------------------------------------- | -------------------- | ----- |
+| Add headless CI checks (duplicate constant detector, cross-package impact analysis) | AI workflow research | #51   |
 
 ---
 
