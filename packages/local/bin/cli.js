@@ -292,24 +292,29 @@ async function runSetup() {
       }
 
       let selected;
-      console.log(bold("  Which tools should context-vault connect to?\n"));
-      for (let i = 0; i < detected.length; i++) {
-        console.log(`    ${i + 1}) ${detected[i].name}`);
-      }
-      console.log();
-      const answer = await prompt(
-        `  Select (${dim("1,2,3")} or ${dim('"all"')}):`,
-        "all",
-      );
-      if (answer === "all" || answer === "") {
+      if (detected.length === 1) {
         selected = detected;
+        console.log(`  ${dim("→")} Auto-selected ${detected[0].name}\n`);
       } else {
-        const nums = answer
-          .split(/[,\s]+/)
-          .map((n) => parseInt(n, 10) - 1)
-          .filter((n) => n >= 0 && n < detected.length);
-        selected = nums.map((n) => detected[n]);
-        if (selected.length === 0) selected = detected;
+        console.log(bold("  Which tools should context-vault connect to?\n"));
+        for (let i = 0; i < detected.length; i++) {
+          console.log(`    ${i + 1}) ${detected[i].name}`);
+        }
+        console.log();
+        const answer = await prompt(
+          `  Select (${dim("1,2,3")} or ${dim('"all"')}):`,
+          "all",
+        );
+        if (answer === "all" || answer === "") {
+          selected = detected;
+        } else {
+          const nums = answer
+            .split(/[,\s]+/)
+            .map((n) => parseInt(n, 10) - 1)
+            .filter((n) => n >= 0 && n < detected.length);
+          selected = nums.map((n) => detected[n]);
+          if (selected.length === 0) selected = detected;
+        }
       }
 
       // Read vault dir from existing config
@@ -360,8 +365,8 @@ async function runSetup() {
       console.log(`  ${dim("{")}
     ${dim('"mcpServers": {')}
       ${dim('"context-vault": {')}
-        ${dim('"command": "context-vault",')}
-        ${dim(`"args": ["serve", "--vault-dir", "/path/to/vault"]`)}
+        ${dim('"command": "npx",')}
+        ${dim(`"args": ["-y", "context-vault", "serve", "--vault-dir", "/path/to/vault"]`)}
       ${dim("}")}
     ${dim("}")}
   ${dim("}")}\n`);
@@ -388,8 +393,11 @@ async function runSetup() {
 
   // Select tools
   let selected;
-  if (isNonInteractive) {
+  if (isNonInteractive || detected.length === 1) {
     selected = detected;
+    if (detected.length === 1) {
+      console.log(`  ${dim("→")} Auto-selected ${detected[0].name}\n`);
+    }
   } else {
     console.log(bold("  Which tools should context-vault connect to?\n"));
     for (let i = 0; i < detected.length; i++) {
@@ -417,7 +425,7 @@ async function runSetup() {
   const defaultVaultDir = join(HOME, "vault");
   const vaultDir = isNonInteractive
     ? defaultVaultDir
-    : await prompt(`\n  Vault directory:`, defaultVaultDir);
+    : await prompt(`  Vault directory:`, defaultVaultDir);
   const resolvedVaultDir = resolve(vaultDir);
 
   // Create vault dir if needed
@@ -511,7 +519,11 @@ async function runSetup() {
         if (isNetwork) {
           console.log(dim(`    Check your internet connection and try again.`));
         }
-        console.log(dim(`    Retry: context-vault setup`));
+        console.log(
+          dim(
+            `    Retry: ${isNpx() ? "npx context-vault" : "context-vault"} setup`,
+          ),
+        );
         console.log(
           dim(`    Semantic search disabled — full-text search still works.`),
         );
@@ -597,8 +609,8 @@ async function runSetup() {
     `  "Show my vault status"`,
     ``,
     `  ${bold("CLI Commands:")}`,
-    `  context-vault status    Show vault health`,
-    `  context-vault update    Check for updates`,
+    `  ${isNpx() ? "npx context-vault" : "context-vault"} status    Show vault health`,
+    `  ${isNpx() ? "npx context-vault" : "context-vault"} update    Check for updates`,
   ];
   const innerWidth = Math.max(...boxLines.map((l) => l.length)) + 2;
   const pad = (s) => s + " ".repeat(Math.max(0, innerWidth - s.length));
