@@ -1,7 +1,0 @@
-[      67ms] [ERROR] TypeError: Cannot read properties of undefined (reading 'sendMessage')
-    at http://localhost:3457/popup/assets/index-CuXSZyyu.js:4274:20
-    at Qj (http://localhost:3457/popup/assets/index-CuXSZyyu.js:428:335)
-    at Hk (http://localhost:3457/popup/assets/index-CuXSZyyu.js:470:112)
-    at http://localhost:3457/popup/assets/index-CuXSZyyu.js:466:394
-    at J (http://localhost:3457/popup/assets/index-CuXSZyyu.js:162:213)
-    at MessagePort.R (http://localhost:3457/popup/assets/index-CuXSZyyu.js:163:141) @ http://localhost:3457/popup/assets/index-CuXSZyyu.js:372
