@@ -272,9 +272,39 @@ async function runSetup() {
       existingVault = cfg.vaultDir || existingVault;
     } catch {}
 
+    // Version check against npm registry (5s timeout, fail silently if offline)
+    let latestVersion = null;
+    try {
+      latestVersion = execSync("npm view context-vault version", {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 5000,
+      }).trim();
+    } catch {}
+
+    if (latestVersion === VERSION) {
+      console.log(
+        green(`  ✓ context-vault v${VERSION} is up to date`) +
+          dim(`  (vault: ${existingVault})`),
+      );
+      console.log();
+      return;
+    }
+
     console.log(yellow(`  Existing installation detected`));
     console.log(dim(`  Vault: ${existingVault}`));
-    console.log(dim(`  Config: ${existingConfig}`));
+    if (latestVersion) {
+      console.log();
+      console.log(`  Current: ${dim(VERSION)}`);
+      console.log(`  Latest:  ${green(latestVersion)}`);
+      const upgradeCmd = isNpx()
+        ? "npx context-vault@latest setup"
+        : "npm install -g context-vault";
+      console.log();
+      console.log(dim(`  To upgrade: ${upgradeCmd}`));
+    } else {
+      console.log(dim(`  Config: ${existingConfig}`));
+    }
     console.log();
     console.log(`    1) Full reconfigure`);
     console.log(`    2) Update tool configs only ${dim("(skip vault setup)")}`);
