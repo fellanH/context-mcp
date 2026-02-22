@@ -9,31 +9,41 @@ You are planning a release batch for context-vault.
 1. Fetch open issues:
    `gh issue list --state open --limit 50 --json number,title,labels,body`
 
-2. Read `.claude/issue-batch.json` if it exists. Skip any issues already in
-   `pending` or `failed` arrays.
+2. Read `.claude/issue-batch.json` if it exists.
 
-3. Select 3–7 issues to batch. Criteria:
+   Build the **skip list**: issue numbers already in `queue`, `pending`, or `failed`.
+   - `queue` issues are already planned but not yet run — preserve them, do not re-select
+   - `pending` and `failed` issues are already processed — skip entirely
+
+3. Select 3–7 **additional** issues to append to the queue. Criteria:
+   - Not in the skip list
    - Well-scoped: no architectural rewrites, no new packages
-   - Non-conflicting: avoid issues that touch the same core files
+   - Non-conflicting with each other AND with issues already in `queue`
    - Order lowest-risk first: dx/infra/enhancement before bug, simple before complex
 
-4. Determine projected release type (highest-wins across selected labels):
+4. Determine projected release type (highest-wins across ALL queued issues —
+   existing queue + new additions):
    - Any `breaking` → major
    - Any `feature`, `enhancement`, `gtm` → minor
    - Only `bug`, `dx`, `infra`, `user-request`, `P0`–`P3` → patch
 
-5. Present the planned queue and projected release type. Wait for user to say
-   "proceed" or "go" before writing.
+5. Present:
+   - Existing queue (if any) — labelled "Already queued"
+   - New additions — labelled "Adding"
+   - Combined total and projected release type
+     Wait for user to say "proceed" or "go" before writing.
 
-6. Write `.claude/issue-batch.json`:
+6. Write `.claude/issue-batch.json`, merging new issues into the existing queue:
 
    ```json
    {
-     "queue": [{"number": N, "title": "...", "labels": [...]}],
-     "pending": [],
-     "failed": [],
+     "queue": [<existing queue entries>, <new entries>],
+     "pending": [<preserve existing>],
+     "failed": [<preserve existing>],
      "planned_at": "<ISO timestamp>"
    }
    ```
 
-7. Confirm: "Queue ready: N issues (projected: patch/minor/major). Run /run-batch to start."
+   If no prior file exists, `pending` and `failed` default to `[]`.
+
+7. Confirm: "Queue ready: N issues total (projected: patch/minor/major). Run /run-batch to start."
