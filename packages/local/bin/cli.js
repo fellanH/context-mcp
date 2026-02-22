@@ -242,6 +242,7 @@ ${bold("Commands:")}
   ${cyan("export")}                Export vault to JSON or CSV
   ${cyan("ingest")} <url>          Fetch URL and save as vault entry
   ${cyan("migrate")}               Migrate vault between local and hosted
+  ${cyan("ui")}                   Open vault dashboard in browser
 
 ${bold("Options:")}
   --help                Show this help
@@ -1893,6 +1894,33 @@ async function runIngest() {
   console.log();
 }
 
+async function runUi() {
+  const appDistDir = resolve(ROOT, "app-dist");
+  if (!existsSync(appDistDir)) {
+    console.error(
+      red("\n  Web UI not bundled. Run `node scripts/prepack.js` first.\n"),
+    );
+    process.exit(1);
+  }
+
+  const { startLocalServer } = await import("../src/local-server.js");
+  const port = parseInt(getFlag("--port") || "4422", 10);
+  await startLocalServer(port);
+  const url = `http://localhost:${port}`;
+  console.log(`\n  ${bold("◇ context-vault ui")} ${dim("→ " + url)}\n`);
+  const opener =
+    PLATFORM === "win32"
+      ? "start"
+      : PLATFORM === "darwin"
+        ? "open"
+        : "xdg-open";
+  try {
+    execSync(`${opener} ${url}`, { stdio: "ignore" });
+  } catch {}
+  console.log(`  Press Ctrl+C to stop.\n`);
+  await new Promise(() => {});
+}
+
 async function runServe() {
   await import("../src/server/index.js");
 }
@@ -1944,6 +1972,9 @@ async function main() {
       break;
     case "migrate":
       await runMigrate();
+      break;
+    case "ui":
+      await runUi();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));
