@@ -110,8 +110,9 @@ describe("recencyBoost", () => {
 describe("buildFilterClauses", () => {
   it("always includes expiry clause", () => {
     const { clauses, params } = buildFilterClauses({});
-    expect(clauses).toHaveLength(1);
-    expect(clauses[0]).toContain("expires_at");
+    expect(clauses).toHaveLength(2);
+    expect(clauses.some((c) => c.includes("expires_at"))).toBe(true);
+    expect(clauses.some((c) => c.includes("superseded_by"))).toBe(true);
     expect(params).toHaveLength(0);
   });
 
@@ -159,8 +160,8 @@ describe("buildFilterClauses", () => {
       userIdFilter: "u1",
       teamIdFilter: "t1",
     });
-    // 5 explicit + 1 expiry
-    expect(clauses).toHaveLength(6);
+    // 5 explicit + 1 expiry + 1 superseded_by
+    expect(clauses).toHaveLength(7);
     expect(params).toHaveLength(5);
   });
 
