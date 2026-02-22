@@ -20,7 +20,6 @@
     "bin/",
     "src/",
     "scripts/",
-    "app-dist/",
     "README.md",
     "LICENSE"
   ],

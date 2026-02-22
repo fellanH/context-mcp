@@ -6,11 +6,9 @@ import {
   mkdirSync,
   readFileSync,
   writeFileSync,
-  existsSync,
 } from "node:fs";
-import { join, dirname, resolve as resolvePath } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCAL_ROOT = join(__dirname, "..");
@@ -43,17 +41,3 @@ delete corePkg.dependencies;
 writeFileSync(corePkgPath, JSON.stringify(corePkg, null, 2) + "\n");
 
 console.log("[prepack] Bundled @context-vault/core into node_modules");
-
-// Build the web UI from the sibling context-vault-app repo
-const APP_ROOT = resolvePath(LOCAL_ROOT, "..", "..", "..", "context-vault-app");
-const APP_DIST_SRC = join(APP_ROOT, "dist");
-const APP_DIST_DEST = join(LOCAL_ROOT, "app-dist");
-
-if (existsSync(APP_ROOT)) {
-  execSync("npm run build", { cwd: APP_ROOT, stdio: "inherit" });
-  rmSync(APP_DIST_DEST, { recursive: true, force: true });
-  cpSync(APP_DIST_SRC, APP_DIST_DEST, { recursive: true });
-  console.log("[prepack] Bundled web UI into app-dist/");
-} else {
-  console.warn("[prepack] context-vault-app not found — skipping UI bundle.");
-}
