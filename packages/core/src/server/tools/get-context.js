@@ -182,12 +182,21 @@ export async function handler(
     for (const r of filtered) r.score = 0;
   }
 
-  if (!filtered.length)
+  if (!filtered.length) {
+    if (autoWindowed) {
+      const days = config.eventDecayDays || 30;
+      return ok(
+        hasQuery
+          ? `No results found for "${query}" in events (last ${days} days).\nTry with \`since: "YYYY-MM-DD"\` to search older events.`
+          : `No entries found matching the given filters in events (last ${days} days).\nTry with \`since: "YYYY-MM-DD"\` to search older events.`,
+      );
+    }
     return ok(
       hasQuery
         ? "No results found for: " + query
         : "No entries found matching the given filters.",
     );
+  }
 
   // Decrypt encrypted entries if ctx.decrypt is available
   if (ctx.decrypt) {
@@ -212,6 +221,12 @@ export async function handler(
     );
   const heading = hasQuery ? `Results for "${query}"` : "Filtered entries";
   lines.push(`## ${heading} (${filtered.length} matches)\n`);
+  if (autoWindowed) {
+    const days = config.eventDecayDays || 30;
+    lines.push(
+      `> ℹ Event search limited to last ${days} days. Use \`since\` parameter for older results.\n`,
+    );
+  }
   for (let i = 0; i < filtered.length; i++) {
     const r = filtered[i];
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
@@ -228,11 +243,6 @@ export async function handler(
     );
     lines.push(r.body?.slice(0, 300) + (r.body?.length > 300 ? "..." : ""));
     lines.push("");
-  }
-  if (autoWindowed) {
-    lines.push(
-      `_Showing events from last ${config.eventDecayDays || 30} days. Use since/until for custom range._`,
-    );
   }
   return ok(lines.join("\n"));
 }

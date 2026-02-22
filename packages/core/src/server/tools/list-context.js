@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeKind } from "../../core/files.js";
+import { categoryFor } from "../../core/categories.js";
 import { ok } from "../helpers.js";
 
 export const name = "list_context";
@@ -50,6 +51,17 @@ export async function handler(
 
   await ensureIndexed();
 
+  const kindFilter = kind ? normalizeKind(kind) : null;
+  const effectiveCategory =
+    category || (kindFilter ? categoryFor(kindFilter) : null);
+  let effectiveSince = since || null;
+  let autoWindowed = false;
+  if (effectiveCategory === "event" && !since && !until) {
+    const decayMs = (config.eventDecayDays || 30) * 86400000;
+    effectiveSince = new Date(Date.now() - decayMs).toISOString();
+    autoWindowed = true;
+  }
+
   const clauses = [];
   const params = [];
 
@@ -57,17 +69,17 @@ export async function handler(
     clauses.push("user_id = ?");
     params.push(userId);
   }
-  if (kind) {
+  if (kindFilter) {
     clauses.push("kind = ?");
-    params.push(normalizeKind(kind));
+    params.push(kindFilter);
   }
   if (category) {
     clauses.push("category = ?");
     params.push(category);
   }
-  if (since) {
+  if (effectiveSince) {
     clauses.push("created_at >= ?");
-    params.push(since);
+    params.push(effectiveSince);
   }
   if (until) {
     clauses.push("created_at <= ?");
@@ -103,8 +115,15 @@ export async function handler(
         .slice(0, effectiveLimit)
     : rows;
 
-  if (!filtered.length)
+  if (!filtered.length) {
+    if (autoWindowed) {
+      const days = config.eventDecayDays || 30;
+      return ok(
+        `No entries found matching the given filters in events (last ${days} days).\nTry with \`since: "YYYY-MM-DD"\` to search older events.`,
+      );
+    }
     return ok("No entries found matching the given filters.");
+  }
 
   const lines = [];
   if (reindexFailed)
@@ -112,6 +131,12 @@ export async function handler(
       `> **Warning:** Auto-reindex failed. Results may be stale. Run \`context-vault reindex\` to fix.\n`,
     );
   lines.push(`## Vault Entries (${filtered.length} shown, ${total} total)\n`);
+  if (autoWindowed) {
+    const days = config.eventDecayDays || 30;
+    lines.push(
+      `> ℹ Event search limited to last ${days} days. Use \`since\` parameter for older results.\n`,
+    );
+  }
   for (const r of filtered) {
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
     const tagStr = entryTags.length ? entryTags.join(", ") : "none";
