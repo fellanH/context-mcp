@@ -6,6 +6,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { walkDir } from "./files.js";
 import { isEmbedAvailable } from "../index/embed.js";
+import { KIND_STALENESS_DAYS } from "./categories.js";
 
 /**
  * Gather raw vault status data for formatting by consumers.
@@ -164,6 +165,27 @@ export function gatherVaultStatus(ctx, opts = {}) {
     errors.push(`Auto-captured feedback count failed: ${e.message}`);
   }
 
+  // Stale knowledge entries — kinds with a threshold, not updated within N days
+  let staleKnowledge = [];
+  try {
+    const stalenessKinds = Object.entries(KIND_STALENESS_DAYS);
+    if (stalenessKinds.length > 0) {
+      const kindClauses = stalenessKinds
+        .map(
+          ([kind, days]) =>
+            `(kind = '${kind}' AND COALESCE(updated_at, created_at) <= datetime('now', '-${days} days'))`,
+        )
+        .join(" OR ");
+      staleKnowledge = db
+        .prepare(
+          `SELECT kind, title, COALESCE(updated_at, created_at) as last_updated FROM vault WHERE category = 'knowledge' AND (${kindClauses}) AND (expires_at IS NULL OR expires_at > datetime('now')) ${userAnd} ORDER BY last_updated ASC LIMIT 10`,
+        )
+        .all(...userParams);
+    }
+  } catch (e) {
+    errors.push(`Stale knowledge check failed: ${e.message}`);
+  }
+
   return {
     fileCount,
     subdirs,
@@ -179,6 +201,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
     embeddingStatus,
     embedModelAvailable,
     autoCapturedFeedbackCount,
+    staleKnowledge,
     resolvedFrom: config.resolvedFrom,
     errors,
   };

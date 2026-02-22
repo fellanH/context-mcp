@@ -40,6 +40,17 @@ const CATEGORY_DIR_NAMES = {
 /** Set of valid category directory names (for reindex discovery) */
 export const CATEGORY_DIRS = new Set(Object.values(CATEGORY_DIR_NAMES));
 
+/**
+ * Staleness thresholds (in days) per knowledge kind.
+ * Kinds not listed here are considered enduring (no staleness threshold).
+ * Based on updated_at; falls back to created_at if updated_at is null.
+ */
+export const KIND_STALENESS_DAYS = {
+  pattern: 180,
+  decision: 365,
+  reference: 90,
+};
+
 export function categoryFor(kind) {
   return KIND_CATEGORY[kind] || "knowledge";
 }

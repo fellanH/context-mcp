@@ -93,6 +93,25 @@ export function handler(_args, ctx) {
     lines.push(`Auto-reindex will fix this on next search or save.`);
   }
 
+  if (status.staleKnowledge?.length > 0) {
+    lines.push(``);
+    lines.push(`### ⚠ Potentially Stale Knowledge`);
+    lines.push(
+      `Not updated within kind staleness window (pattern: 180d, decision: 365d, reference: 90d):`,
+    );
+    for (const entry of status.staleKnowledge) {
+      const lastUpdated = entry.last_updated
+        ? entry.last_updated.split("T")[0]
+        : "unknown";
+      lines.push(
+        `- "${entry.title}" (${entry.kind}) — last updated ${lastUpdated}`,
+      );
+    }
+    lines.push(
+      `Use save_context to refresh or add expires_at to retire stale entries.`,
+    );
+  }
+
   // Error log
   const logPath = errorLogPath(config.dataDir);
   const logCount = errorLogCount(config.dataDir);
