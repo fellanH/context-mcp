@@ -65,17 +65,6 @@ export async function handler(
 
   await ensureIndexed();
 
-  // Hosted tier limit enforcement
-  if (ctx.checkLimits) {
-    const usage = ctx.checkLimits();
-    if (usage.entryCount >= usage.maxEntries) {
-      return err(
-        `Entry limit reached (${usage.maxEntries}). Upgrade to Pro for unlimited entries.`,
-        "LIMIT_EXCEEDED",
-      );
-    }
-  }
-
   try {
     const { ingestUrl } = await import("../../capture/ingest-url.js");
     const entryData = await ingestUrl(targetUrl, { kind, tags });
