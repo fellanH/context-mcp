@@ -20,6 +20,10 @@ const pkg = JSON.parse(
 
 import { resolveConfig } from "@context-vault/core/core/config";
 import { appendErrorLog } from "@context-vault/core/core/error-log";
+import {
+  sendTelemetryEvent,
+  maybeShowTelemetryNotice,
+} from "@context-vault/core/core/telemetry";
 import { embed } from "@context-vault/core/index/embed";
 import {
   initDatabase,
@@ -46,6 +50,7 @@ async function main() {
     phase = "DIRS";
     mkdirSync(config.dataDir, { recursive: true });
     mkdirSync(config.vaultDir, { recursive: true });
+    maybeShowTelemetryNotice(config.dataDir);
 
     // Verify vault directory is writable (catch permission issues early)
     try {
@@ -217,6 +222,13 @@ async function main() {
       phase,
     };
     appendErrorLog(dataDir, logEntry);
+
+    sendTelemetryEvent(config, {
+      event: "startup_error",
+      code: phase,
+      tool: null,
+      cv_version: pkg.version,
+    });
 
     if (err instanceof NativeModuleError) {
       // Boxed diagnostic for native module mismatch

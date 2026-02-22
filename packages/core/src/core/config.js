@@ -33,6 +33,7 @@ export function resolveConfig() {
     devDir: join(HOME, "dev"),
     eventDecayDays: 30,
     thresholds: { ...DEFAULT_GROWTH_THRESHOLDS },
+    telemetry: false,
     resolvedFrom: "defaults",
   };
 
@@ -71,6 +72,7 @@ export function resolveConfig() {
             ...t.eventsWithoutTtl,
           };
       }
+      if (fc.telemetry != null) config.telemetry = fc.telemetry === true;
       // Hosted account linking (Phase 4)
       if (fc.hostedUrl) config.hostedUrl = fc.hostedUrl;
       if (fc.apiKey) config.apiKey = fc.apiKey;
@@ -120,6 +122,11 @@ export function resolveConfig() {
   }
   if (process.env.CONTEXT_VAULT_HOSTED_URL) {
     config.hostedUrl = process.env.CONTEXT_VAULT_HOSTED_URL;
+  }
+  if (process.env.CONTEXT_VAULT_TELEMETRY !== undefined) {
+    config.telemetry =
+      process.env.CONTEXT_VAULT_TELEMETRY === "1" ||
+      process.env.CONTEXT_VAULT_TELEMETRY === "true";
   }
 
   if (cliArgs.vaultDir) {

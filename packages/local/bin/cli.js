@@ -360,7 +360,7 @@ async function runSetup() {
   }
 
   // Detect tools
-  console.log(dim(`  [1/5]`) + bold(" Detecting tools...\n"));
+  console.log(dim(`  [1/6]`) + bold(" Detecting tools...\n"));
   const { detected, results: detectionResults } = await detectAllTools();
   printDetectionResults(detectionResults);
   console.log();
@@ -428,7 +428,7 @@ async function runSetup() {
   }
 
   // Vault directory (content files)
-  console.log(dim(`  [2/5]`) + bold(" Configuring vault...\n"));
+  console.log(dim(`  [2/6]`) + bold(" Configuring vault...\n"));
   const defaultVaultDir = getFlag("--vault-dir") || join(HOME, "vault");
   const vaultDir = isNonInteractive
     ? defaultVaultDir
@@ -485,6 +485,39 @@ async function runSetup() {
   vaultConfig.dbPath = join(dataDir, "vault.db");
   vaultConfig.devDir = join(HOME, "dev");
   vaultConfig.mode = "local";
+
+  // Telemetry opt-in
+  console.log(`\n  ${dim("[3/6]")}${bold(" Anonymous error reporting\n")}`);
+  console.log(
+    dim(
+      "  When enabled, unhandled errors send a minimal event (type, tool name,",
+    ),
+  );
+  console.log(
+    dim("  version, platform) to help diagnose issues. No vault content,"),
+  );
+  console.log(
+    dim("  file paths, or personal data is ever sent. Off by default."),
+  );
+  console.log(dim("  Full schema: https://contextvault.dev/telemetry"));
+  console.log();
+
+  let telemetryEnabled = vaultConfig.telemetry === true;
+  if (!isNonInteractive) {
+    const defaultChoice = telemetryEnabled ? "Y" : "n";
+    const telemetryAnswer = await prompt(
+      `  Enable anonymous error reporting? (y/N):`,
+      defaultChoice,
+    );
+    telemetryEnabled =
+      telemetryAnswer.toLowerCase() === "y" ||
+      telemetryAnswer.toLowerCase() === "yes";
+  }
+  vaultConfig.telemetry = telemetryEnabled;
+  console.log(
+    `  ${telemetryEnabled ? green("+") : dim("-")} Telemetry: ${telemetryEnabled ? "enabled" : "disabled"}`,
+  );
+
   writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + "\n");
   console.log(`\n  ${green("+")} Wrote ${configPath}`);
 
@@ -492,7 +525,7 @@ async function runSetup() {
   const skipEmbeddings = flags.has("--skip-embeddings");
   if (skipEmbeddings) {
     console.log(
-      `\n  ${dim("[3/5]")}${bold(" Embedding model")} ${dim("(skipped)")}`,
+      `\n  ${dim("[4/6]")}${bold(" Embedding model")} ${dim("(skipped)")}`,
     );
     console.log(
       dim(
@@ -504,7 +537,7 @@ async function runSetup() {
     );
   } else {
     console.log(
-      `\n  ${dim("[3/5]")}${bold(" Downloading embedding model...")}`,
+      `\n  ${dim("[4/6]")}${bold(" Downloading embedding model...")}`,
     );
     console.log(dim("  all-MiniLM-L6-v2 (~22MB, one-time download)\n"));
     {
@@ -593,7 +626,7 @@ async function runSetup() {
   }
 
   // Configure each tool — pass vault dir as arg if non-default
-  console.log(`\n  ${dim("[4/5]")}${bold(" Configuring tools...\n")}`);
+  console.log(`\n  ${dim("[5/6]")}${bold(" Configuring tools...\n")}`);
   const results = [];
   const defaultVDir = join(HOME, "vault");
   const customVaultDir =
@@ -625,7 +658,7 @@ async function runSetup() {
   }
 
   // Health check
-  console.log(`\n  ${dim("[5/5]")}${bold(" Health check...")}\n`);
+  console.log(`\n  ${dim("[6/6]")}${bold(" Health check...")}\n`);
   const okResults = results.filter((r) => r.ok);
 
   // Verify DB is accessible

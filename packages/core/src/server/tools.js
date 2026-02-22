@@ -1,6 +1,7 @@
 import { reindex } from "../index/index.js";
 import { captureAndIndex } from "../capture/index.js";
 import { err } from "./helpers.js";
+import { sendTelemetryEvent } from "../core/telemetry.js";
 import pkg from "../../package.json" with { type: "json" };
 
 import * as getContext from "./tools/get-context.js";
@@ -57,6 +58,12 @@ export function registerTools(server, ctx) {
               timestamp: Date.now(),
             };
           }
+          sendTelemetryEvent(ctx.config, {
+            event: "tool_error",
+            code: "TIMEOUT",
+            tool: toolName,
+            cv_version: pkg.version,
+          });
           return err(
             "Tool timed out after 60s. Try a simpler query or run `context-vault reindex` first.",
             "TIMEOUT",
@@ -70,6 +77,12 @@ export function registerTools(server, ctx) {
             timestamp: Date.now(),
           };
         }
+        sendTelemetryEvent(ctx.config, {
+          event: "tool_error",
+          code: "UNKNOWN",
+          tool: toolName,
+          cv_version: pkg.version,
+        });
         try {
           await captureAndIndex(ctx, {
             kind: "feedback",
