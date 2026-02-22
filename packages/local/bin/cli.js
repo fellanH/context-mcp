@@ -235,6 +235,7 @@ ${bold("Commands:")}
   ${cyan("switch")} local|hosted      Switch between local and hosted MCP modes
   ${cyan("serve")}                 Start the MCP server (used by AI clients)
   ${cyan("reindex")}               Rebuild search index from knowledge files
+  ${cyan("prune")}                 Remove expired entries (use --dry-run to preview)
   ${cyan("status")}                Show vault diagnostics
   ${cyan("update")}                Check for and install updates
   ${cyan("uninstall")}             Remove MCP configs and optionally data
@@ -1308,6 +1309,69 @@ async function runReindex() {
   console.log(`  ${dim("·")} ${stats.unchanged} unchanged`);
 }
 
+async function runPrune() {
+  const dryRun = flags.has("--dry-run");
+
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { initDatabase, prepareStatements, insertVec, deleteVec } =
+    await import("@context-vault/core/index/db");
+  const { pruneExpired } = await import("@context-vault/core/index");
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red(`Vault directory not found: ${config.vaultDir}`));
+    console.error("Run " + cyan("context-vault setup") + " to configure.");
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+
+  if (dryRun) {
+    const expired = db
+      .prepare(
+        "SELECT id, kind, title, expires_at FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')",
+      )
+      .all();
+    db.close();
+
+    if (expired.length === 0) {
+      console.log(green("  No expired entries found."));
+      return;
+    }
+
+    console.log(
+      `\n  ${bold(String(expired.length))} expired ${expired.length === 1 ? "entry" : "entries"} would be removed:\n`,
+    );
+    for (const e of expired) {
+      const label = e.title ? `${e.kind}: ${e.title}` : `${e.kind} (${e.id})`;
+      console.log(`  ${dim("-")} ${label} ${dim(`(expired ${e.expires_at})`)}`);
+    }
+    console.log(dim("\n  Dry run — no entries were removed."));
+    return;
+  }
+
+  const stmts = prepareStatements(db);
+  const ctx = {
+    db,
+    config,
+    stmts,
+    embed: async () => null,
+    insertVec: (r, e) => insertVec(stmts, r, e),
+    deleteVec: (r) => deleteVec(stmts, r),
+  };
+
+  const count = await pruneExpired(ctx);
+  db.close();
+
+  if (count === 0) {
+    console.log(green("  No expired entries found."));
+  } else {
+    console.log(
+      green(`  ✓ Pruned ${count} expired ${count === 1 ? "entry" : "entries"}`),
+    );
+  }
+}
+
 async function runStatus() {
   const { resolveConfig } = await import("@context-vault/core/core/config");
   const { initDatabase } = await import("@context-vault/core/index/db");
@@ -1939,6 +2003,9 @@ async function main() {
       break;
     case "reindex":
       await runReindex();
+      break;
+    case "prune":
+      await runPrune();
       break;
     case "status":
       await runStatus();

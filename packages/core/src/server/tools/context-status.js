@@ -40,7 +40,7 @@ export function handler(_args, ctx) {
     `Data dir:  ${config.dataDir}`,
     `Config:    ${config.configPath}`,
     `Resolved via: ${status.resolvedFrom}`,
-    `Schema:    v7 (teams)`,
+    `Schema:    v8 (updated_at)`,
   ];
 
   if (status.embeddingStatus) {
@@ -58,7 +58,7 @@ export function handler(_args, ctx) {
   lines.push(`Decay:     ${config.eventDecayDays} days (event recency window)`);
   if (status.expiredCount > 0) {
     lines.push(
-      `Expired:   ${status.expiredCount} entries (pruned on next reindex)`,
+      `Expired:   ${status.expiredCount} entries pending prune (run \`context-vault prune\` to remove now)`,
     );
   }
 

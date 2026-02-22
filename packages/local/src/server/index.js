@@ -29,6 +29,7 @@ import {
   deleteVec,
 } from "@context-vault/core/index/db";
 import { registerTools } from "@context-vault/core/server/tools";
+import { pruneExpired } from "@context-vault/core/index/index";
 
 // ─── Phased Startup ─────────────────────────────────────────────────────────
 
@@ -110,6 +111,20 @@ async function main() {
       activeOps: { count: 0 },
       toolStats: { ok: 0, errors: 0, lastError: null },
     };
+
+    // ── Phase: PRUNE ─────────────────────────────────────────────────────────
+    try {
+      const pruned = await pruneExpired(ctx);
+      if (pruned > 0) {
+        console.error(
+          `[context-vault] Pruned ${pruned} expired ${pruned === 1 ? "entry" : "entries"}`,
+        );
+      }
+    } catch (pruneErr) {
+      console.error(
+        `[context-vault] Warning: startup prune failed: ${pruneErr.message}`,
+      );
+    }
 
     // ── Phase: SERVER ────────────────────────────────────────────────────────
     phase = "SERVER";

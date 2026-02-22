@@ -111,6 +111,7 @@ export async function indexEntry(
           identity_key || null,
           expires_at || null,
           createdAt,
+          createdAt,
           encrypted.body_encrypted,
           encrypted.title_encrypted,
           encrypted.meta_encrypted,
@@ -130,6 +131,7 @@ export async function indexEntry(
           filePath,
           identity_key || null,
           expires_at || null,
+          createdAt,
           createdAt,
         );
       }
@@ -187,6 +189,39 @@ export async function indexEntry(
 }
 
 /**
+ * Prune expired entries: delete files, vec rows, and DB rows for all entries
+ * where expires_at <= now(). Safe to call on startup or CLI — non-destructive
+ * to active data.
+ *
+ * @param {import('../server/types.js').BaseCtx} ctx
+ * @returns {Promise<number>} count of pruned entries
+ */
+export async function pruneExpired(ctx) {
+  const expired = ctx.db
+    .prepare(
+      "SELECT id, file_path FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')",
+    )
+    .all();
+
+  for (const row of expired) {
+    if (row.file_path) {
+      try {
+        unlinkSync(row.file_path);
+      } catch {}
+    }
+    const vRowid = ctx.stmts.getRowid.get(row.id)?.rowid;
+    if (vRowid) {
+      try {
+        ctx.deleteVec(Number(vRowid));
+      } catch {}
+    }
+    ctx.stmts.deleteEntry.run(row.id);
+  }
+
+  return expired.length;
+}
+
+/**
  * Bulk reindex: sync vault directory into the database.
  * P2: Wrapped in a transaction for atomicity.
  * P3: Detects title/tag/meta changes, not just body.
@@ -205,7 +240,7 @@ export async function reindex(ctx, opts = {}) {
   // Use INSERT OR IGNORE for reindex — handles files with duplicate frontmatter IDs
   // user_id is NULL for reindex (always local mode)
   const upsertEntry = ctx.db.prepare(
-    `INSERT OR IGNORE INTO vault (id, user_id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR IGNORE INTO vault (id, user_id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
   // Auto-discover kind directories, supporting both:
@@ -309,6 +344,7 @@ export async function reindex(ctx, opts = {}) {
             identity_key,
             expires_at,
             created,
+            fmMeta.updated || created,
           );
           if (result.changes > 0) {
             const rowidResult = ctx.stmts.getRowid.get(id);

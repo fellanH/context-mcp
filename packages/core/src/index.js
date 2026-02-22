@@ -47,7 +47,7 @@ export {
   deleteVec,
 } from "./index/db.js";
 export { embed, embedBatch, resetEmbedPipeline } from "./index/embed.js";
-export { indexEntry, reindex } from "./index/index.js";
+export { indexEntry, reindex, pruneExpired } from "./index/index.js";
 
 // Retrieve layer
 export { hybridSearch } from "./retrieve/index.js";
