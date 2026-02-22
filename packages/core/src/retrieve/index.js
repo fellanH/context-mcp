@@ -9,6 +9,16 @@
 
 const FTS_WEIGHT = 0.4;
 const VEC_WEIGHT = 0.6;
+const NEAR_DUP_THRESHOLD = 0.92;
+
+/**
+ * Dot product of two Float32Array vectors (cosine similarity for unit vectors).
+ */
+export function dotProduct(a, b) {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+  return sum;
+}
 
 /**
  * Build a tiered FTS5 query that prioritises phrase match, then proximity,
@@ -102,6 +112,8 @@ export async function hybridSearch(
   } = {},
 ) {
   const results = new Map();
+  const idToRowid = new Map();
+  let queryVec = null;
   const extraFilters = buildFilterClauses({
     categoryFilter,
     since,
@@ -151,7 +163,7 @@ export async function hybridSearch(
       .prepare("SELECT COUNT(*) as c FROM vault_vec")
       .get().c;
     if (vecCount > 0) {
-      const queryVec = await ctx.embed(query);
+      queryVec = await ctx.embed(query);
       if (queryVec) {
         // Increase limits in hosted mode to compensate for post-filtering
         const hasPostFilter = userIdFilter !== undefined || teamIdFilter;
@@ -195,6 +207,7 @@ export async function hybridSearch(
               continue;
 
             const { rowid: _rowid, ...cleanRow } = row;
+            idToRowid.set(cleanRow.id, Number(row.rowid));
             // sqlite-vec returns L2 distance [0, 2] for normalized vectors.
             // Convert to similarity [1, 0] with: 1 - distance/2
             const vecScore = Math.max(0, 1 - vr.distance / 2) * VEC_WEIGHT;
@@ -222,5 +235,56 @@ export async function hybridSearch(
   }
 
   const sorted = [...results.values()].sort((a, b) => b.score - a.score);
+
+  // Near-duplicate suppression: when embeddings are available and we have more
+  // candidates than needed, skip results that are too similar to already-selected ones.
+  if (queryVec && idToRowid.size > 0 && sorted.length > limit) {
+    const rowidsToFetch = sorted
+      .filter((c) => idToRowid.has(c.id))
+      .map((c) => idToRowid.get(c.id));
+
+    const embeddingMap = new Map();
+    if (rowidsToFetch.length > 0) {
+      try {
+        const placeholders = rowidsToFetch.map(() => "?").join(",");
+        const vecData = ctx.db
+          .prepare(
+            `SELECT rowid, embedding FROM vault_vec WHERE rowid IN (${placeholders})`,
+          )
+          .all(...rowidsToFetch);
+        for (const row of vecData) {
+          const buf = row.embedding;
+          if (buf) {
+            embeddingMap.set(
+              Number(row.rowid),
+              new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4),
+            );
+          }
+        }
+      } catch (_) {
+        return sorted.slice(offset, offset + limit);
+      }
+    }
+
+    const selected = [];
+    const selectedVecs = [];
+    for (const candidate of sorted) {
+      if (selected.length >= offset + limit) break;
+      const rowid = idToRowid.get(candidate.id);
+      const vec = rowid !== undefined ? embeddingMap.get(rowid) : null;
+      if (vec && selectedVecs.length > 0) {
+        let maxSim = 0;
+        for (const sv of selectedVecs) {
+          const sim = dotProduct(sv, vec);
+          if (sim > maxSim) maxSim = sim;
+        }
+        if (maxSim > NEAR_DUP_THRESHOLD) continue;
+      }
+      selected.push(candidate);
+      if (vec) selectedVecs.push(vec);
+    }
+    return selected.slice(offset, offset + limit);
+  }
+
   return sorted.slice(offset, offset + limit);
 }

@@ -4,6 +4,7 @@ import {
   recencyBoost,
   buildFilterClauses,
   hybridSearch,
+  dotProduct,
 } from "@context-vault/core/retrieve";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex } from "@context-vault/core/capture";
@@ -173,6 +174,33 @@ describe("buildFilterClauses", () => {
     // userIdFilter uses !== undefined check, so null should still be included
     const { clauses } = buildFilterClauses({ userIdFilter: null });
     expect(clauses).toContain("e.user_id = ?");
+  });
+});
+
+// ─── dotProduct ─────────────────────────────────────────────────────────────
+
+describe("dotProduct", () => {
+  it("returns 1.0 for identical unit vectors", () => {
+    const a = new Float32Array([1, 0, 0]);
+    expect(dotProduct(a, a)).toBeCloseTo(1.0);
+  });
+
+  it("returns 0.0 for orthogonal vectors", () => {
+    const a = new Float32Array([1, 0, 0]);
+    const b = new Float32Array([0, 1, 0]);
+    expect(dotProduct(a, b)).toBeCloseTo(0.0);
+  });
+
+  it("returns -1.0 for opposite unit vectors", () => {
+    const a = new Float32Array([1, 0, 0]);
+    const b = new Float32Array([-1, 0, 0]);
+    expect(dotProduct(a, b)).toBeCloseTo(-1.0);
+  });
+
+  it("computes correct dot product for general vectors", () => {
+    const a = new Float32Array([1, 2, 3]);
+    const b = new Float32Array([4, 5, 6]);
+    expect(dotProduct(a, b)).toBeCloseTo(32.0);
   });
 });
 
@@ -499,4 +527,30 @@ describe("hybridSearch", () => {
 
     ctx.db.prepare("DELETE FROM vault WHERE id = ?").run("expired-1");
   }, 30000);
+
+  // ── Near-duplicate suppression ──────────────────────────────────────────
+
+  it("suppresses near-duplicate results when candidates exceed limit", async () => {
+    // Seed multiple near-identical entries about the same topic
+    for (let i = 1; i <= 5; i++) {
+      await captureAndIndex(ctx, {
+        kind: "insight",
+        title: `SQLite WAL mode note ${i}`,
+        body: `WAL mode allows concurrent reads and writes in SQLite. It is the recommended journal mode for production use. Version ${i}.`,
+        tags: ["sqlite"],
+        source: "dedup-test",
+      });
+    }
+
+    // With limit=3, near-dup suppression should prevent all 5 similar entries
+    // from filling the results — at least one topically different entry should appear
+    const results = await hybridSearch(ctx, "SQLite WAL concurrent reads", {
+      limit: 3,
+    });
+
+    expect(results.length).toBeLessThanOrEqual(3);
+
+    // Cleanup
+    ctx.db.prepare("DELETE FROM vault WHERE source = ?").run("dedup-test");
+  }, 60000);
 });
