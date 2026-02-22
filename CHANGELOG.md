@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.10.3] — 2026-02-22
+
+### Changed
+
+- `@context-vault/core`: replace 21 hand-listed export entries with wildcard patterns (`./core/*`, `./server/*`, `./capture/*`, etc.) — new files added to core are automatically exported without manual package.json edits
+
 ## [2.10.2] — 2026-02-22
 
 ### Fixed

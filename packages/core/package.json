@@ -6,26 +6,17 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
+    "./constants": "./src/constants.js",
     "./capture": "./src/capture/index.js",
-    "./capture/formatters": "./src/capture/formatters.js",
-    "./capture/file-ops": "./src/capture/file-ops.js",
-    "./index/db": "./src/index/db.js",
-    "./index/embed": "./src/index/embed.js",
+    "./capture/*": "./src/capture/*.js",
     "./index": "./src/index/index.js",
+    "./index/*": "./src/index/*.js",
     "./retrieve": "./src/retrieve/index.js",
-    "./server/tools": "./src/server/tools.js",
-    "./server/helpers": "./src/server/helpers.js",
-    "./core/categories": "./src/core/categories.js",
-    "./core/config": "./src/core/config.js",
-    "./core/files": "./src/core/files.js",
-    "./core/frontmatter": "./src/core/frontmatter.js",
-    "./core/error-log": "./src/core/error-log.js",
-    "./core/status": "./src/core/status.js",
-    "./capture/importers": "./src/capture/importers.js",
-    "./capture/import-pipeline": "./src/capture/import-pipeline.js",
-    "./capture/ingest-url": "./src/capture/ingest-url.js",
+    "./retrieve/*": "./src/retrieve/*.js",
     "./sync": "./src/sync/sync.js",
-    "./constants": "./src/constants.js"
+    "./sync/*": "./src/sync/*.js",
+    "./core/*": "./src/core/*.js",
+    "./server/*": "./src/server/*.js"
   },
   "files": [
     "src/"
