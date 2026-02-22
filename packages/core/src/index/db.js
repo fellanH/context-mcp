@@ -1,4 +1,5 @@
 import { unlinkSync, copyFileSync, existsSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 
 export class NativeModuleError extends Error {
   constructor(originalError) {
@@ -11,55 +12,34 @@ export class NativeModuleError extends Error {
 
 function formatNativeModuleError(err) {
   const msg = err.message || "";
-  const versionMatch = msg.match(
-    /was compiled against a different Node\.js version using\s+NODE_MODULE_VERSION (\d+)\. This version of Node\.js requires\s+NODE_MODULE_VERSION (\d+)/,
-  );
-
-  const lines = [
-    `Native module failed to load: ${msg}`,
+  return [
+    `sqlite-vec extension failed to load: ${msg}`,
     "",
     `  Running Node.js: ${process.version} (${process.execPath})`,
-  ];
-
-  if (versionMatch) {
-    lines.push(`  Module compiled for: NODE_MODULE_VERSION ${versionMatch[1]}`);
-    lines.push(`  Current runtime:     NODE_MODULE_VERSION ${versionMatch[2]}`);
-  }
-
-  lines.push(
     "",
-    "  Fix: Rebuild native modules for your current Node.js:",
-    "    npm rebuild better-sqlite3 sqlite-vec",
-    "",
-    "  Or reinstall:",
+    "  Fix: Reinstall context-vault:",
     "    npx -y context-vault@latest setup",
-  );
-
-  return lines.join("\n");
+  ].join("\n");
 }
 
-let _Database = null;
 let _sqliteVec = null;
 
-async function loadNativeModules() {
-  if (_Database && _sqliteVec)
-    return { Database: _Database, sqliteVec: _sqliteVec };
+async function loadSqliteVec() {
+  if (_sqliteVec) return _sqliteVec;
+  const vecMod = await import("sqlite-vec");
+  _sqliteVec = vecMod;
+  return _sqliteVec;
+}
 
+function runTransaction(db, fn) {
+  db.exec("BEGIN");
   try {
-    const dbMod = await import("better-sqlite3");
-    _Database = dbMod.default;
+    fn();
+    db.exec("COMMIT");
   } catch (e) {
-    throw new NativeModuleError(e);
+    db.exec("ROLLBACK");
+    throw e;
   }
-
-  try {
-    const vecMod = await import("sqlite-vec");
-    _sqliteVec = vecMod;
-  } catch (e) {
-    throw new NativeModuleError(e);
-  }
-
-  return { Database: _Database, sqliteVec: _sqliteVec };
 }
 
 export const SCHEMA_DDL = `
@@ -118,12 +98,12 @@ export const SCHEMA_DDL = `
 `;
 
 export async function initDatabase(dbPath) {
-  const { Database, sqliteVec } = await loadNativeModules();
+  const sqliteVec = await loadSqliteVec();
 
   function createDb(path) {
-    const db = new Database(path);
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
+    const db = new DatabaseSync(path, { allowExtension: true });
+    db.exec("PRAGMA journal_mode = WAL");
+    db.exec("PRAGMA foreign_keys = ON");
     try {
       sqliteVec.load(db);
     } catch (e) {
@@ -133,7 +113,7 @@ export async function initDatabase(dbPath) {
   }
 
   const db = createDb(dbPath);
-  const version = db.pragma("user_version", { simple: true });
+  const version = db.prepare("PRAGMA user_version").get().user_version;
 
   // Enforce fresh-DB-only — old schemas get a full rebuild (with backup)
   if (version > 0 && version < 5) {
@@ -167,17 +147,17 @@ export async function initDatabase(dbPath) {
 
     const freshDb = createDb(dbPath);
     freshDb.exec(SCHEMA_DDL);
-    freshDb.pragma("user_version = 7");
+    freshDb.exec("PRAGMA user_version = 7");
     return freshDb;
   }
 
   if (version < 5) {
     db.exec(SCHEMA_DDL);
-    db.pragma("user_version = 7");
+    db.exec("PRAGMA user_version = 7");
   } else if (version === 5) {
     // v5 -> v6 migration: add multi-tenancy + encryption columns
     // Wrapped in transaction with duplicate-column guards for idempotent retry
-    const migrate = db.transaction(() => {
+    runTransaction(db, () => {
       const addColumnSafe = (sql) => {
         try {
           db.exec(sql);
@@ -197,21 +177,19 @@ export async function initDatabase(dbPath) {
       db.exec(
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_identity ON vault(user_id, kind, identity_key) WHERE identity_key IS NOT NULL`,
       );
-      db.pragma("user_version = 7");
+      db.exec("PRAGMA user_version = 7");
     });
-    migrate();
   } else if (version === 6) {
     // v6 -> v7 migration: add team_id column
-    const migrate = db.transaction(() => {
+    runTransaction(db, () => {
       try {
         db.exec(`ALTER TABLE vault ADD COLUMN team_id TEXT`);
       } catch (e) {
         if (!e.message.includes("duplicate column")) throw e;
       }
       db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_team ON vault(team_id)`);
-      db.pragma("user_version = 7");
+      db.exec("PRAGMA user_version = 7");
     });
-    migrate();
   }
 
   return db;
@@ -247,15 +225,15 @@ export function prepareStatements(db) {
   } catch (e) {
     throw new Error(
       `Failed to prepare database statements. The database may be corrupted.\n` +
-        `Try deleting and rebuilding: rm "${db.name}" && context-vault reindex\n` +
+        `Try deleting and rebuilding: context-vault reindex\n` +
         `Original error: ${e.message}`,
     );
   }
 }
 
 export function insertVec(stmts, rowid, embedding) {
-  // sqlite-vec requires BigInt for primary key — better-sqlite3 binds Number as REAL,
-  // but vec0 virtual tables only accept INTEGER rowids
+  // sqlite-vec requires BigInt for primary key — node:sqlite may bind Number as REAL
+  // for vec0 virtual tables which only accept INTEGER rowids
   const safeRowid = BigInt(rowid);
   if (safeRowid < 1n) throw new Error(`Invalid rowid: ${rowid}`);
   stmts.insertVecStmt.run(safeRowid, embedding);

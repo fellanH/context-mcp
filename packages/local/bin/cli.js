@@ -699,6 +699,8 @@ async function configureClaude(tool, vaultDir) {
           "add",
           "-s",
           "user",
+          "-e",
+          "NODE_OPTIONS=--no-warnings=ExperimentalWarning",
           "context-vault",
           "--",
           "npx",
@@ -719,6 +721,8 @@ async function configureClaude(tool, vaultDir) {
           "add",
           "-s",
           "user",
+          "-e",
+          "NODE_OPTIONS=--no-warnings=ExperimentalWarning",
           "context-vault",
           "--",
           process.execPath,
@@ -801,6 +805,7 @@ function configureJsonTool(tool, vaultDir) {
     config[tool.configKey]["context-vault"] = {
       command: "npx",
       args: ["-y", "context-vault", "serve", ...serverArgs],
+      env: { NODE_OPTIONS: "--no-warnings=ExperimentalWarning" },
     };
   } else if (isInstalledPackage()) {
     const launcherPath = join(HOME, ".context-mcp", "server.mjs");
@@ -809,6 +814,7 @@ function configureJsonTool(tool, vaultDir) {
     config[tool.configKey]["context-vault"] = {
       command: process.execPath,
       args: [launcherPath, ...serverArgs],
+      env: { NODE_OPTIONS: "--no-warnings=ExperimentalWarning" },
     };
   } else {
     const serverArgs = [SERVER_PATH];
@@ -816,6 +822,7 @@ function configureJsonTool(tool, vaultDir) {
     config[tool.configKey]["context-vault"] = {
       command: process.execPath,
       args: serverArgs,
+      env: { NODE_OPTIONS: "--no-warnings=ExperimentalWarning" },
     };
   }
 

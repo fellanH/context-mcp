@@ -3,10 +3,10 @@
 /**
  * postinstall.js — Post-install setup for context-vault
  *
- * 1. Detects NODE_MODULE_VERSION mismatches for native modules and rebuilds.
- * 2. Installs @huggingface/transformers with --ignore-scripts to avoid sharp's
+ * 1. Installs @huggingface/transformers with --ignore-scripts to avoid sharp's
  *    broken install lifecycle in global contexts.  Semantic search degrades
  *    gracefully if this step fails.
+ * 2. Writes local server launcher (global installs only).
  */
 
 import { execSync } from "node:child_process";
@@ -20,46 +20,7 @@ const PKG_ROOT = join(__dirname, "..");
 const NODE_MODULES = join(PKG_ROOT, "node_modules");
 
 async function main() {
-  // ── 1. Native-module rebuild ──────────────────────────────────────────
-  let needsRebuild = false;
-
-  try {
-    await import("better-sqlite3");
-  } catch (e) {
-    if (e.message?.includes("NODE_MODULE_VERSION")) {
-      needsRebuild = true;
-    }
-  }
-
-  try {
-    await import("sqlite-vec");
-  } catch (e) {
-    if (e.message?.includes("NODE_MODULE_VERSION")) {
-      needsRebuild = true;
-    }
-  }
-
-  if (needsRebuild) {
-    console.log(
-      "[context-vault] Rebuilding native modules for Node.js " +
-        process.version +
-        "...",
-    );
-    try {
-      execSync("npm rebuild better-sqlite3 sqlite-vec", {
-        stdio: "inherit",
-        timeout: 60000,
-      });
-      console.log("[context-vault] Native modules rebuilt successfully.");
-    } catch {
-      console.error("[context-vault] Warning: native module rebuild failed.");
-      console.error(
-        "[context-vault] Try manually: npm rebuild better-sqlite3 sqlite-vec",
-      );
-    }
-  }
-
-  // ── 2. Install @huggingface/transformers (optional) ───────────────────
+  // ── 1. Install @huggingface/transformers (optional) ───────────────────
   // The transformers package depends on `sharp`, whose install script fails
   // in global npm contexts.  We install with --ignore-scripts to skip it —
   // context-vault only uses text embeddings, not image processing.
@@ -90,7 +51,7 @@ async function main() {
     }
   }
 
-  // ── 3. Write local server launcher (global installs only) ────────────
+  // ── 2. Write local server launcher (global installs only) ────────────
   // Under npx the path would be stale after cache eviction — configs use
   // `npx context-vault serve` instead, so skip writing the launcher.
   const isNpx = PKG_ROOT.includes("/_npx/") || PKG_ROOT.includes("\\_npx\\");

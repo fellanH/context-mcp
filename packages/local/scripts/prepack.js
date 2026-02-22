@@ -30,7 +30,7 @@ cpSync(CORE_SRC, CORE_DEST, { recursive: true, dereference: true });
 rmSync(join(CORE_DEST, "node_modules"), { recursive: true, force: true });
 
 // Strip all dependencies from the bundled core's package.json.
-// Core's deps (better-sqlite3, sqlite-vec, MCP SDK) are hoisted to
+// Core's deps (sqlite-vec, MCP SDK) are hoisted to
 // context-vault's own dependencies.  @huggingface/transformers is
 // dynamically imported and installed via postinstall.  Leaving them
 // in the bundled core causes duplicate resolution that breaks native

@@ -31,7 +31,7 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "author": "Felix Hellstrom",
   "repository": {
@@ -45,7 +45,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "better-sqlite3": "^12.6.2",
     "sqlite-vec": "^0.1.0"
   },
   "optionalDependencies": {
