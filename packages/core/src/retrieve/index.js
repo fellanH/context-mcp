@@ -11,8 +11,11 @@ const FTS_WEIGHT = 0.4;
 const VEC_WEIGHT = 0.6;
 
 /**
- * Strip FTS5 metacharacters from query words and build an AND query.
- * Returns null if no valid words remain.
+ * Build a tiered FTS5 query that prioritises phrase match, then proximity,
+ * then AND.  Multi-word queries become:
+ *   "word1 word2" OR NEAR("word1" "word2", 10) OR "word1" AND "word2"
+ * Single-word queries remain a simple quoted term.
+ * Returns null if no valid words remain after stripping FTS5 metacharacters.
  */
 export function buildFtsQuery(query) {
   const words = query
@@ -20,7 +23,11 @@ export function buildFtsQuery(query) {
     .map((w) => w.replace(/[*"():^~{}]/g, ""))
     .filter((w) => w.length > 0);
   if (!words.length) return null;
-  return words.map((w) => `"${w}"`).join(" AND ");
+  if (words.length === 1) return `"${words[0]}"`;
+  const phrase = `"${words.join(" ")}"`;
+  const near = `NEAR(${words.map((w) => `"${w}"`).join(" ")}, 10)`;
+  const and = words.map((w) => `"${w}"`).join(" AND ");
+  return `${phrase} OR ${near} OR ${and}`;
 }
 
 /**
