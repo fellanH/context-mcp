@@ -2,6 +2,25 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.11.0] — 2026-02-22
+
+### Added
+
+- Issue #91: `context-vault recall` + `hooks install/remove` — Claude Code `UserPromptSubmit` hook that injects relevant vault entries as context on every prompt (`bf59213`)
+- Issue #75: Write-time similarity check in `save_context` — warns before creating near-duplicate knowledge; `dry_run` mode and configurable `similarity_threshold` (`bc4385d`)
+- Issue #76: `supersedes[]` field in `save_context` — marks referenced entries as retired; superseded entries excluded from search by default; `include_superseded` opt-in in `get_context` (`bca7f78`)
+- Issue #88: Opt-in anonymous error telemetry — disabled by default; enable via `"telemetry": true` in config or `CONTEXT_VAULT_TELEMETRY=1`; sends only event type, error code, tool name, version, platform (`baa019e`)
+- Issue #79: Vault growth warnings in `context_status` — configurable warn/critical thresholds for entry count and vault size (`bed6b34`)
+- Issue #83: Stale knowledge signal in `context_status` — surfaces entries not updated within kind-specific windows (pattern: 180d, decision: 365d, reference: 90d) (`d654b62`)
+- Issue #89: Removed daily upload limit for free tier (`0cf2d7e`)
+
+### Changed
+
+- Issue #77: Track `updated_at` separately from `created_at` — schema v9 migration; frontmatter `updated` field written on every edit; shown in `get_context` and `list_context` output (`bca7f78`)
+- Issue #81: FTS phrase semantics — multi-word queries now use tiered matching: exact phrase → `NEAR(..., 10)` → `AND` (`8b9af25`)
+- Issue #82: Near-duplicate suppression in hybrid search — when results exceed limit, embeddings are compared and near-duplicates (cosine ≥ 0.92) are skipped (`cfc5e75`)
+- Issue #78: Expired entries pruned automatically at server startup, not only on `reindex` (`b8a93f4`)
+
 ## [2.10.3] — 2026-02-22
 
 ### Changed
