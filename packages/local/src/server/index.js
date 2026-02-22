@@ -10,6 +10,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,6 +19,7 @@ const pkg = JSON.parse(
 );
 
 import { resolveConfig } from "@context-vault/core/core/config";
+import { appendErrorLog } from "@context-vault/core/core/error-log";
 import { embed } from "@context-vault/core/index/embed";
 import {
   initDatabase,
@@ -187,6 +189,20 @@ async function main() {
         .catch(() => {});
     }, 3000);
   } catch (err) {
+    const dataDir = config?.dataDir || join(homedir(), ".context-mcp");
+
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      error_type: err.constructor?.name || "Error",
+      message: err.message,
+      node_version: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      cv_version: pkg.version,
+      phase,
+    };
+    appendErrorLog(dataDir, logEntry);
+
     if (err instanceof NativeModuleError) {
       // Boxed diagnostic for native module mismatch
       console.error("");
@@ -204,6 +220,7 @@ async function main() {
       console.error("");
       console.error(`  Node.js path:    ${process.execPath}`);
       console.error(`  Node.js version: ${process.version}`);
+      console.error(`  Error log:       ${join(dataDir, "error.log")}`);
       console.error("");
       process.exit(78); // EX_CONFIG
     }
@@ -211,6 +228,7 @@ async function main() {
     console.error(
       `[context-vault] Fatal error during ${phase} phase: ${err.message}`,
     );
+    console.error(`[context-vault] Error log: ${join(dataDir, "error.log")}`);
     if (phase === "DB") {
       console.error(
         `[context-vault] Try deleting the DB file and restarting: rm "${config?.dbPath || "vault.db"}"`,

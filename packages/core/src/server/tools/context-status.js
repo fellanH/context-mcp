@@ -1,4 +1,5 @@
 import { gatherVaultStatus } from "../../core/status.js";
+import { errorLogPath, errorLogCount } from "../../core/error-log.js";
 import { ok } from "../helpers.js";
 
 function relativeTime(ts) {
@@ -90,6 +91,15 @@ export function handler(_args, ctx) {
       `DB contains ${status.staleCount} paths not matching current vault dir.`,
     );
     lines.push(`Auto-reindex will fix this on next search or save.`);
+  }
+
+  // Error log
+  const logPath = errorLogPath(config.dataDir);
+  const logCount = errorLogCount(config.dataDir);
+  if (logCount > 0) {
+    lines.push(``, `### Startup Error Log`);
+    lines.push(`- Path: ${logPath}`);
+    lines.push(`- Entries: ${logCount} (share this file for support)`);
   }
 
   // Health: session-level tool call stats
