@@ -1,7 +1,6 @@
 # context-vault
 
 [![npm version](https://img.shields.io/npm/v/context-vault)](https://www.npmjs.com/package/context-vault)
-[![npm downloads](https://img.shields.io/npm/dm/context-vault)](https://www.npmjs.com/package/context-vault)
 [![license](https://img.shields.io/npm/l/context-vault)](./LICENSE)
 [![node](https://img.shields.io/node/v/context-vault)](https://nodejs.org)
 
