@@ -1,4 +1,4 @@
-import { gatherVaultStatus } from "../../core/status.js";
+import { gatherVaultStatus, computeGrowthWarnings } from "../../core/status.js";
 import { errorLogPath, errorLogCount } from "../../core/error-log.js";
 import { ok } from "../helpers.js";
 
@@ -117,6 +117,21 @@ export function handler(_args, ctx) {
       lines.push(
         `- Auto-captured feedback entries: ${status.autoCapturedFeedbackCount} (run get_context with kind:feedback tags:auto-captured)`,
       );
+    }
+  }
+
+  // Growth warnings
+  const growth = computeGrowthWarnings(status, config.thresholds);
+  if (growth.hasWarnings) {
+    lines.push("", "### ⚠ Vault Growth Warning");
+    for (const w of growth.warnings) {
+      lines.push(`  ${w.message}`);
+    }
+    if (growth.actions.length) {
+      lines.push("", "Suggested growth actions:");
+      for (const a of growth.actions) {
+        lines.push(`  • ${a}`);
+      }
     }
   }
 

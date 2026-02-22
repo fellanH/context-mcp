@@ -109,6 +109,30 @@ export function gatherVaultStatus(ctx, opts = {}) {
     errors.push(`Expired count failed: ${e.message}`);
   }
 
+  // Count event-category entries
+  let eventCount = 0;
+  try {
+    eventCount = db
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE category = 'event' ${userAnd}`,
+      )
+      .get(...userParams).c;
+  } catch (e) {
+    errors.push(`Event count failed: ${e.message}`);
+  }
+
+  // Count event entries without expires_at
+  let eventsWithoutTtlCount = 0;
+  try {
+    eventsWithoutTtlCount = db
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE category = 'event' AND expires_at IS NULL ${userAnd}`,
+      )
+      .get(...userParams).c;
+  } catch (e) {
+    errors.push(`Events without TTL count failed: ${e.message}`);
+  }
+
   // Embedding/vector status
   let embeddingStatus = null;
   try {
@@ -150,10 +174,128 @@ export function gatherVaultStatus(ctx, opts = {}) {
     stalePaths,
     staleCount,
     expiredCount,
+    eventCount,
+    eventsWithoutTtlCount,
     embeddingStatus,
     embedModelAvailable,
     autoCapturedFeedbackCount,
     resolvedFrom: config.resolvedFrom,
     errors,
   };
+}
+
+/**
+ * Compute growth warnings based on vault status and configured thresholds.
+ *
+ * @param {object} status — result of gatherVaultStatus()
+ * @param {object} thresholds — from config.thresholds
+ * @returns {{ warnings: Array, hasCritical: boolean, hasWarnings: boolean, actions: string[] }}
+ */
+export function computeGrowthWarnings(status, thresholds) {
+  if (!thresholds)
+    return {
+      warnings: [],
+      hasCritical: false,
+      hasWarnings: false,
+      actions: [],
+    };
+
+  const t = thresholds;
+  const warnings = [];
+  const actions = [];
+
+  const total = status.embeddingStatus?.total ?? 0;
+  const {
+    eventCount = 0,
+    eventsWithoutTtlCount = 0,
+    expiredCount = 0,
+    dbSizeBytes = 0,
+  } = status;
+
+  if (t.totalEntries?.critical != null && total >= t.totalEntries.critical) {
+    warnings.push({
+      level: "critical",
+      message: `Total entries: ${total.toLocaleString()} (exceeds critical limit of ${t.totalEntries.critical.toLocaleString()})`,
+    });
+  } else if (t.totalEntries?.warn != null && total >= t.totalEntries.warn) {
+    warnings.push({
+      level: "warn",
+      message: `Total entries: ${total.toLocaleString()} (exceeds recommended ${t.totalEntries.warn.toLocaleString()})`,
+    });
+  }
+
+  if (
+    t.eventEntries?.critical != null &&
+    eventCount >= t.eventEntries.critical
+  ) {
+    warnings.push({
+      level: "critical",
+      message: `Event entries: ${eventCount.toLocaleString()} (exceeds critical limit of ${t.eventEntries.critical.toLocaleString()})`,
+    });
+  } else if (
+    t.eventEntries?.warn != null &&
+    eventCount >= t.eventEntries.warn
+  ) {
+    const ttlNote =
+      eventsWithoutTtlCount > 0
+        ? ` (${eventsWithoutTtlCount.toLocaleString()} without TTL)`
+        : "";
+    warnings.push({
+      level: "warn",
+      message: `Event entries: ${eventCount.toLocaleString()}${ttlNote} (exceeds recommended ${t.eventEntries.warn.toLocaleString()})`,
+    });
+  }
+
+  if (
+    t.vaultSizeBytes?.critical != null &&
+    dbSizeBytes >= t.vaultSizeBytes.critical
+  ) {
+    warnings.push({
+      level: "critical",
+      message: `Database size: ${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB (exceeds critical limit of ${(t.vaultSizeBytes.critical / 1024 / 1024).toFixed(0)}MB)`,
+    });
+  } else if (
+    t.vaultSizeBytes?.warn != null &&
+    dbSizeBytes >= t.vaultSizeBytes.warn
+  ) {
+    warnings.push({
+      level: "warn",
+      message: `Database size: ${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB (exceeds recommended ${(t.vaultSizeBytes.warn / 1024 / 1024).toFixed(0)}MB)`,
+    });
+  }
+
+  if (
+    t.eventsWithoutTtl?.warn != null &&
+    eventsWithoutTtlCount >= t.eventsWithoutTtl.warn
+  ) {
+    warnings.push({
+      level: "warn",
+      message: `Event entries without expires_at: ${eventsWithoutTtlCount.toLocaleString()} (exceeds recommended ${t.eventsWithoutTtl.warn.toLocaleString()})`,
+    });
+  }
+
+  const hasCritical = warnings.some((w) => w.level === "critical");
+
+  if (expiredCount > 0) {
+    actions.push(
+      `Run \`context-vault prune\` to remove ${expiredCount} expired event entr${expiredCount === 1 ? "y" : "ies"}`,
+    );
+  }
+  const eventThresholdExceeded =
+    eventCount >= (t.eventEntries?.warn ?? Infinity);
+  const ttlThresholdExceeded =
+    eventsWithoutTtlCount >= (t.eventsWithoutTtl?.warn ?? Infinity);
+  if (
+    eventsWithoutTtlCount > 0 &&
+    (eventThresholdExceeded || ttlThresholdExceeded)
+  ) {
+    actions.push(
+      "Add `expires_at` to event/session entries to enable automatic cleanup",
+    );
+  }
+  if (total >= (t.totalEntries?.warn ?? Infinity)) {
+    actions.push("Consider archiving events older than 90 days");
+  }
+
+  return { warnings, hasCritical, hasWarnings: warnings.length > 0, actions };
 }

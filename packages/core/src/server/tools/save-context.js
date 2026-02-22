@@ -399,5 +399,25 @@ export async function handler(
   if (similarEntries.length) {
     parts.push(formatSimilarWarning(similarEntries));
   }
+
+  const criticalLimit = config.thresholds?.totalEntries?.critical;
+  if (criticalLimit != null) {
+    try {
+      const countRow = ctx.db
+        .prepare(
+          userId !== undefined
+            ? "SELECT COUNT(*) as c FROM vault WHERE user_id = ?"
+            : "SELECT COUNT(*) as c FROM vault",
+        )
+        .get(...(userId !== undefined ? [userId] : []));
+      if (countRow.c >= criticalLimit) {
+        parts.push(
+          ``,
+          `ℹ Vault has ${countRow.c.toLocaleString()} entries. Consider running \`context-vault reindex\` or reviewing old entries.`,
+        );
+      }
+    } catch {}
+  }
+
   return ok(parts.join("\n"));
 }

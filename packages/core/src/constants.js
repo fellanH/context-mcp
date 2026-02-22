@@ -6,3 +6,10 @@ export const MAX_TAGS_COUNT = 20;
 export const MAX_META_LENGTH = 10 * 1024; // 10KB
 export const MAX_SOURCE_LENGTH = 200;
 export const MAX_IDENTITY_KEY_LENGTH = 200;
+
+export const DEFAULT_GROWTH_THRESHOLDS = {
+  totalEntries: { warn: 1000, critical: 5000 },
+  eventEntries: { warn: 500, critical: 2000 },
+  vaultSizeBytes: { warn: 50 * 1024 * 1024, critical: 200 * 1024 * 1024 },
+  eventsWithoutTtl: { warn: 200 },
+};

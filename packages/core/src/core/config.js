@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { DEFAULT_GROWTH_THRESHOLDS } from "../constants.js";
 
 export function parseArgs(argv) {
   const args = {};
@@ -31,6 +32,7 @@ export function resolveConfig() {
     dbPath: join(dataDir, "vault.db"),
     devDir: join(HOME, "dev"),
     eventDecayDays: 30,
+    thresholds: { ...DEFAULT_GROWTH_THRESHOLDS },
     resolvedFrom: "defaults",
   };
 
@@ -46,6 +48,29 @@ export function resolveConfig() {
       if (fc.dbPath) config.dbPath = fc.dbPath;
       if (fc.devDir) config.devDir = fc.devDir;
       if (fc.eventDecayDays != null) config.eventDecayDays = fc.eventDecayDays;
+      if (fc.thresholds) {
+        const t = fc.thresholds;
+        if (t.totalEntries)
+          config.thresholds.totalEntries = {
+            ...config.thresholds.totalEntries,
+            ...t.totalEntries,
+          };
+        if (t.eventEntries)
+          config.thresholds.eventEntries = {
+            ...config.thresholds.eventEntries,
+            ...t.eventEntries,
+          };
+        if (t.vaultSizeBytes)
+          config.thresholds.vaultSizeBytes = {
+            ...config.thresholds.vaultSizeBytes,
+            ...t.vaultSizeBytes,
+          };
+        if (t.eventsWithoutTtl)
+          config.thresholds.eventsWithoutTtl = {
+            ...config.thresholds.eventsWithoutTtl,
+            ...t.eventsWithoutTtl,
+          };
+      }
       // Hosted account linking (Phase 4)
       if (fc.hostedUrl) config.hostedUrl = fc.hostedUrl;
       if (fc.apiKey) config.apiKey = fc.apiKey;
