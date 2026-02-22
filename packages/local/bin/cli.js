@@ -234,6 +234,8 @@ ${bold("Commands:")}
   ${cyan("connect")} --key cv_...  Connect AI tools to hosted vault
   ${cyan("switch")} local|hosted      Switch between local and hosted MCP modes
   ${cyan("serve")}                 Start the MCP server (used by AI clients)
+  ${cyan("hooks")} install|remove  Install or remove Claude Code memory hook
+  ${cyan("recall")}                Search vault from a Claude Code hook (reads stdin)
   ${cyan("reindex")}               Rebuild search index from knowledge files
   ${cyan("prune")}                 Remove expired entries (use --dry-run to preview)
   ${cyan("status")}                Show vault diagnostics
@@ -646,6 +648,47 @@ async function runSetup() {
     } catch (e) {
       results.push({ tool, ok: false, error: e.message });
       console.log(`  ${red("x")} ${tool.name} — ${e.message}`);
+    }
+  }
+
+  // Claude Code memory hook (opt-in)
+  const claudeConfigured = results.some(
+    (r) => r.ok && r.tool.id === "claude-code",
+  );
+  const hookFlag = flags.has("--hooks");
+  if (claudeConfigured) {
+    let installHook = hookFlag;
+    if (!hookFlag && !isNonInteractive) {
+      console.log();
+      console.log(dim("  Claude Code detected — install memory hook?"));
+      console.log(
+        dim(
+          "  Searches your vault on every prompt and injects relevant entries",
+        ),
+      );
+      console.log(
+        dim("  as additional context alongside Claude's native memory."),
+      );
+      console.log();
+      const answer = await prompt(
+        "  Install Claude Code memory hook? (y/N):",
+        "N",
+      );
+      installHook = answer.toLowerCase() === "y";
+    }
+    if (installHook) {
+      try {
+        const installed = installClaudeHook();
+        if (installed) {
+          console.log(`\n  ${green("+")} Memory hook installed`);
+        }
+      } catch (e) {
+        console.log(`\n  ${red("x")} Hook install failed: ${e.message}`);
+      }
+    } else if (!isNonInteractive && !hookFlag) {
+      console.log(
+        dim(`  Skipped — install later: context-vault hooks install`),
+      );
     }
   }
 
@@ -1997,6 +2040,196 @@ async function runIngest() {
   console.log();
 }
 
+async function runRecall() {
+  let query;
+
+  if (!process.stdin.isTTY) {
+    const raw = await new Promise((resolve) => {
+      let data = "";
+      process.stdin.on("data", (chunk) => (data += chunk));
+      process.stdin.on("end", () => resolve(data));
+    });
+    try {
+      const payload = JSON.parse(raw);
+      query = payload.prompt || payload.query || "";
+    } catch {
+      query = args[1] || raw.trim();
+    }
+  } else {
+    query = args.slice(1).join(" ");
+  }
+
+  if (!query?.trim()) return;
+
+  let db;
+  try {
+    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const config = resolveConfig();
+
+    if (!config.vaultDirExists) return;
+
+    const { initDatabase, prepareStatements } =
+      await import("@context-vault/core/index/db");
+    const { embed } = await import("@context-vault/core/index/embed");
+    const { hybridSearch } = await import("@context-vault/core/retrieve/index");
+
+    db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+    const ctx = { db, config, stmts, embed };
+
+    const results = await hybridSearch(ctx, query, { limit: 5 });
+    if (!results.length) return;
+
+    const lines = ["## Context Vault\n"];
+    for (const r of results) {
+      const entryTags = r.tags ? JSON.parse(r.tags) : [];
+      lines.push(`### ${r.title || "(untitled)"} [${r.kind}]`);
+      if (entryTags.length) lines.push(`tags: ${entryTags.join(", ")}`);
+      lines.push(r.body?.slice(0, 400) + (r.body?.length > 400 ? "..." : ""));
+      lines.push("");
+    }
+
+    process.stdout.write(lines.join("\n"));
+  } catch {
+    // fail silently — never interrupt the user's workflow
+  } finally {
+    try {
+      db?.close();
+    } catch {}
+  }
+}
+
+/** Returns the path to Claude Code's global settings.json */
+function claudeSettingsPath() {
+  return join(HOME, ".claude", "settings.json");
+}
+
+/**
+ * Writes a UserPromptSubmit hook entry for context-vault recall to ~/.claude/settings.json.
+ * Returns true if installed, false if already present.
+ */
+function installClaudeHook() {
+  const settingsPath = claudeSettingsPath();
+  let settings = {};
+
+  if (existsSync(settingsPath)) {
+    const raw = readFileSync(settingsPath, "utf-8");
+    try {
+      settings = JSON.parse(raw);
+    } catch {
+      const bak = settingsPath + ".bak";
+      copyFileSync(settingsPath, bak);
+      console.log(yellow(`  Backed up corrupted settings to ${bak}`));
+    }
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.UserPromptSubmit) settings.hooks.UserPromptSubmit = [];
+
+  const alreadyInstalled = settings.hooks.UserPromptSubmit.some((h) =>
+    h.hooks?.some((hh) => hh.command?.includes("context-vault recall")),
+  );
+  if (alreadyInstalled) return false;
+
+  settings.hooks.UserPromptSubmit.push({
+    hooks: [
+      {
+        type: "command",
+        command: "context-vault recall",
+        timeout: 10,
+      },
+    ],
+  });
+
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
+/**
+ * Removes the context-vault recall hook from ~/.claude/settings.json.
+ * Returns true if removed, false if not found.
+ */
+function removeClaudeHook() {
+  const settingsPath = claudeSettingsPath();
+  if (!existsSync(settingsPath)) return false;
+
+  let settings;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+  } catch {
+    return false;
+  }
+
+  if (!settings.hooks?.UserPromptSubmit) return false;
+
+  const before = settings.hooks.UserPromptSubmit.length;
+  settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
+    (h) => !h.hooks?.some((hh) => hh.command?.includes("context-vault recall")),
+  );
+
+  if (settings.hooks.UserPromptSubmit.length === before) return false;
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
+async function runHooks() {
+  const sub = args[1];
+
+  if (sub === "install") {
+    try {
+      const installed = installClaudeHook();
+      if (installed) {
+        console.log(`\n  ${green("✓")} Claude Code memory hook installed.\n`);
+        console.log(
+          dim(
+            "  On every prompt, context-vault searches your vault for relevant entries",
+          ),
+        );
+        console.log(
+          dim(
+            "  and injects them as additional context alongside Claude's native memory.",
+          ),
+        );
+        console.log(
+          dim(`\n  To remove: ${cyan("context-vault hooks remove")}`),
+        );
+      } else {
+        console.log(`\n  ${yellow("!")} Hook already installed.\n`);
+      }
+    } catch (e) {
+      console.error(`\n  ${red("x")} Failed to install hook: ${e.message}\n`);
+      process.exit(1);
+    }
+    console.log();
+  } else if (sub === "remove") {
+    try {
+      const removed = removeClaudeHook();
+      if (removed) {
+        console.log(`\n  ${green("✓")} Claude Code memory hook removed.\n`);
+      } else {
+        console.log(`\n  ${yellow("!")} Hook not found — nothing to remove.\n`);
+      }
+    } catch (e) {
+      console.error(`\n  ${red("x")} Failed to remove hook: ${e.message}\n`);
+      process.exit(1);
+    }
+  } else {
+    console.log(`
+  ${bold("context-vault hooks")} <install|remove>
+
+  Manage the Claude Code memory hook integration.
+  When installed, context-vault automatically searches your vault on every user
+  prompt and injects relevant entries as additional context.
+
+${bold("Commands:")}
+  ${cyan("hooks install")}   Write UserPromptSubmit hook to ~/.claude/settings.json
+  ${cyan("hooks remove")}    Remove the hook from ~/.claude/settings.json
+`);
+  }
+}
+
 async function runServe() {
   await import("../src/server/index.js");
 }
@@ -2024,6 +2257,12 @@ async function main() {
       break;
     case "serve":
       await runServe();
+      break;
+    case "hooks":
+      await runHooks();
+      break;
+    case "recall":
+      await runRecall();
       break;
     case "import":
       await runImport();
