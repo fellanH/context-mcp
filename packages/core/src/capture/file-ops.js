@@ -32,10 +32,12 @@ export function writeEntryFile(
     tags,
     source,
     createdAt,
+    updatedAt,
     folder,
     category,
     identity_key,
     expires_at,
+    supersedes,
   },
 ) {
   // P5: folder is now a top-level param; also accept from meta for backward compat
@@ -61,9 +63,11 @@ export function writeEntryFile(
 
   if (identity_key) fmFields.identity_key = identity_key;
   if (expires_at) fmFields.expires_at = expires_at;
+  if (supersedes?.length) fmFields.supersedes = supersedes;
   fmFields.tags = tags || [];
   fmFields.source = source || "claude-code";
   fmFields.created = created;
+  if (updatedAt && updatedAt !== created) fmFields.updated = updatedAt;
 
   const mdBody = formatBody(kind, { title, body, meta });
 

@@ -61,6 +61,7 @@ export function buildFilterClauses({
   until,
   userIdFilter,
   teamIdFilter,
+  includeSuperseeded = false,
 }) {
   const clauses = [];
   const params = [];
@@ -85,6 +86,9 @@ export function buildFilterClauses({
     params.push(until);
   }
   clauses.push("(e.expires_at IS NULL OR e.expires_at > datetime('now'))");
+  if (!includeSuperseeded) {
+    clauses.push("e.superseded_by IS NULL");
+  }
   return { clauses, params };
 }
 
@@ -109,6 +113,7 @@ export async function hybridSearch(
     decayDays = 30,
     userIdFilter,
     teamIdFilter = null,
+    includeSuperseeded = false,
   } = {},
 ) {
   const results = new Map();
@@ -120,6 +125,7 @@ export async function hybridSearch(
     until,
     userIdFilter,
     teamIdFilter,
+    includeSuperseeded,
   });
 
   // FTS5 search

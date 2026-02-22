@@ -6,7 +6,7 @@ import { ok } from "../helpers.js";
 export const name = "list_context";
 
 export const description =
-  "Browse vault entries without a search query. Returns id, title, kind, category, tags, created_at. Use get_context with a query for semantic search. Use this to browse by tags or find recent entries.";
+  "Browse vault entries without a search query. Returns id, title, kind, category, tags, created_at, updated_at. Use get_context with a query for semantic search. Use this to browse by tags or find recent entries.";
 
 export const inputSchema = {
   kind: z
@@ -101,7 +101,7 @@ export async function handler(
   params.push(fetchLimit, effectiveOffset);
   const rows = ctx.db
     .prepare(
-      `SELECT id, title, kind, category, tags, created_at, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT id, title, kind, category, tags, created_at, updated_at, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
     )
     .all(...params);
 
@@ -140,8 +140,12 @@ export async function handler(
   for (const r of filtered) {
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
     const tagStr = entryTags.length ? entryTags.join(", ") : "none";
+    const dateStr =
+      r.updated_at && r.updated_at !== r.created_at
+        ? `${r.created_at} (updated ${r.updated_at})`
+        : r.created_at;
     lines.push(
-      `- **${r.title || "(untitled)"}** [${r.kind}/${r.category}] — ${tagStr} — ${r.created_at} — \`${r.id}\``,
+      `- **${r.title || "(untitled)"}** [${r.kind}/${r.category}] — ${tagStr} — ${dateStr} — \`${r.id}\``,
     );
     if (r.preview)
       lines.push(

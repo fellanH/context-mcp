@@ -42,6 +42,12 @@ export const inputSchema = {
     .optional()
     .describe("ISO date, return entries created before this"),
   limit: z.number().optional().describe("Max results to return (default 10)"),
+  include_superseded: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, include entries that have been superseded by newer ones. Default: false.",
+    ),
 };
 
 /**
@@ -50,7 +56,17 @@ export const inputSchema = {
  * @param {import('../types.js').ToolShared} shared
  */
 export async function handler(
-  { query, kind, category, identity_key, tags, since, until, limit },
+  {
+    query,
+    kind,
+    category,
+    identity_key,
+    tags,
+    since,
+    until,
+    limit,
+    include_superseded,
+  },
   ctx,
   { ensureIndexed, reindexFailed },
 ) {
@@ -126,6 +142,7 @@ export async function handler(
       limit: fetchLimit,
       decayDays: config.eventDecayDays || 30,
       userIdFilter: userId,
+      includeSuperseeded: include_superseded ?? false,
     });
 
     // Post-filter by tags if provided, then apply requested limit
@@ -238,8 +255,12 @@ export async function handler(
     lines.push(
       `### [${i + 1}/${filtered.length}] ${r.title || "(untitled)"} [${r.kind}/${r.category}]`,
     );
+    const dateStr =
+      r.updated_at && r.updated_at !== r.created_at
+        ? `${r.created_at} (updated ${r.updated_at})`
+        : r.created_at || "";
     lines.push(
-      `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · id: \`${r.id}\``,
+      `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · ${dateStr} · id: \`${r.id}\``,
     );
     lines.push(r.body?.slice(0, 300) + (r.body?.length > 300 ? "..." : ""));
     lines.push("");

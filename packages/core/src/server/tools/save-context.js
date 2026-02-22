@@ -207,6 +207,12 @@ export const inputSchema = {
       "Required for entity kinds (contact, project, tool, source). The unique identifier for this entity.",
     ),
   expires_at: z.string().optional().describe("ISO date for TTL expiry"),
+  supersedes: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Array of entry IDs that this entry supersedes/replaces. Those entries will be marked with superseded_by pointing to this new entry and excluded from future search results by default.",
+    ),
   dry_run: z
     .boolean()
     .optional()
@@ -240,6 +246,7 @@ export async function handler(
     source,
     identity_key,
     expires_at,
+    supersedes,
     dry_run,
     similarity_threshold,
   },
@@ -304,6 +311,7 @@ export async function handler(
       meta,
       source,
       expires_at,
+      supersedes,
     });
     await indexEntry(ctx, entry);
     const relPath = entry.filePath
@@ -387,6 +395,7 @@ export async function handler(
     folder,
     identity_key,
     expires_at,
+    supersedes,
     userId,
   });
   const relPath = entry.filePath

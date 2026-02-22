@@ -26,6 +26,7 @@ export function writeEntry(
     folder,
     identity_key,
     expires_at,
+    supersedes,
     userId,
   },
 ) {
@@ -47,6 +48,7 @@ export function writeEntry(
   // Entity upsert: check for existing file at deterministic path
   let id;
   let createdAt;
+  let updatedAt;
   if (category === "entity" && identity_key) {
     const identitySlug = slugify(identity_key);
     const dir = resolve(ctx.config.vaultDir, kindToPath(kind));
@@ -58,13 +60,16 @@ export function writeEntry(
       const { meta: fmMeta } = parseFrontmatter(raw);
       id = fmMeta.id || ulid();
       createdAt = fmMeta.created || new Date().toISOString();
+      updatedAt = new Date().toISOString();
     } else {
       id = ulid();
       createdAt = new Date().toISOString();
+      updatedAt = createdAt;
     }
   } else {
     id = ulid();
     createdAt = new Date().toISOString();
+    updatedAt = createdAt;
   }
 
   const filePath = writeEntryFile(ctx.config.vaultDir, kind, {
@@ -75,10 +80,12 @@ export function writeEntry(
     tags,
     source,
     createdAt,
+    updatedAt,
     folder,
     category,
     identity_key,
     expires_at,
+    supersedes,
   });
 
   return {
@@ -92,8 +99,10 @@ export function writeEntry(
     tags,
     source,
     createdAt,
+    updatedAt,
     identity_key,
     expires_at,
+    supersedes,
     userId: userId || null,
   };
 }
@@ -121,6 +130,10 @@ export function updateEntryFile(ctx, existing, updates) {
     updates.source !== undefined ? updates.source : existing.source;
   const expires_at =
     updates.expires_at !== undefined ? updates.expires_at : existing.expires_at;
+  const supersedes =
+    updates.supersedes !== undefined
+      ? updates.supersedes
+      : fmMeta.supersedes || null;
 
   let mergedMeta;
   if (updates.meta !== undefined) {
@@ -130,6 +143,7 @@ export function updateEntryFile(ctx, existing, updates) {
   }
 
   // Build frontmatter
+  const now = new Date().toISOString();
   const fmFields = { id: existing.id };
   for (const [k, v] of Object.entries(mergedMeta)) {
     if (k === "folder") continue;
@@ -137,9 +151,11 @@ export function updateEntryFile(ctx, existing, updates) {
   }
   if (existing.identity_key) fmFields.identity_key = existing.identity_key;
   if (expires_at) fmFields.expires_at = expires_at;
+  if (supersedes?.length) fmFields.supersedes = supersedes;
   fmFields.tags = tags;
   fmFields.source = source || "claude-code";
   fmFields.created = fmMeta.created || existing.created_at;
+  if (now !== fmFields.created) fmFields.updated = now;
 
   const mdBody = formatBody(existing.kind, { title, body, meta: mergedMeta });
   const md = formatFrontmatter(fmFields) + mdBody;
@@ -159,8 +175,10 @@ export function updateEntryFile(ctx, existing, updates) {
     tags,
     source,
     createdAt: fmMeta.created || existing.created_at,
+    updatedAt: now,
     identity_key: existing.identity_key,
     expires_at,
+    supersedes,
     userId: existing.user_id || null,
   };
 }
@@ -180,6 +198,14 @@ export async function captureAndIndex(ctx, data) {
   const entry = writeEntry(ctx, data);
   try {
     await indexEntry(ctx, entry);
+    // Apply supersedes: mark referenced entries as superseded by this entry
+    if (entry.supersedes?.length && ctx.stmts.updateSupersededBy) {
+      for (const supersededId of entry.supersedes) {
+        if (typeof supersededId === "string" && supersededId.trim()) {
+          ctx.stmts.updateSupersededBy.run(entry.id, supersededId.trim());
+        }
+      }
+    }
     return entry;
   } catch (err) {
     // Rollback: restore previous content for entity upserts, delete for new entries

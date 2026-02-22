@@ -40,7 +40,7 @@ export function handler(_args, ctx) {
     `Data dir:  ${config.dataDir}`,
     `Config:    ${config.configPath}`,
     `Resolved via: ${status.resolvedFrom}`,
-    `Schema:    v8 (updated_at)`,
+    `Schema:    v9 (updated_at, superseded_by)`,
   ];
 
   if (status.embeddingStatus) {
