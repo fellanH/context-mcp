@@ -2,6 +2,19 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.10.0] — 2026-02-22
+
+### Added
+
+- Issue #84: Write structured error log to disk on startup failures and NativeModuleError — `~/.context-mcp/error.log` (JSON lines, 1 MB rotation); path shown in stderr and `context_status` (`7dfef95`)
+- Issue #85: Auto-write local feedback entry on unhandled tool call errors — `tracked()` captures error context as a `feedback` vault entry (tags: `bug`, `auto-captured`) without blocking the original throw (`6b97fef`)
+- Issue #87: Surface tool error counts and recent failures in `context_status` — session-level `ok`/`errors` counts and last-error detail with relative timestamp (`35e9a6f`)
+
+### Changed
+
+- Issue #86: Tool error responses now include `_meta` with `cv_version`, `node_version`, `platform`, `arch` for easier remote diagnosis (`d78670a`)
+- Issue #80: `list_context` now applies the same 30-day auto-window as `get_context` for event queries; both tools surface an explicit `ℹ` notice and better empty-result messaging when the window is active (`50b9149`)
+
 ## [2.9.0] — 2026-02-22
 
 ### Changed

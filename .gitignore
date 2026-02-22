@@ -10,7 +10,8 @@ config.json
 .archive/
 .agent/
 .agents/
-.claude/
+.claude/issue-batch.json
+.claude/batch-logs/
 .windsurf/
 skills/
 skills-lock.json
