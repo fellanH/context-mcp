@@ -1,5 +1,7 @@
 import { reindex } from "../index/index.js";
+import { captureAndIndex } from "../capture/index.js";
 import { err } from "./helpers.js";
+import pkg from "../../package.json" with { type: "json" };
 
 import * as getContext from "./tools/get-context.js";
 import * as saveContext from "./tools/save-context.js";
@@ -24,7 +26,7 @@ const TOOL_TIMEOUT_MS = 60_000;
 export function registerTools(server, ctx) {
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
 
-  function tracked(handler) {
+  function tracked(handler, toolName) {
     return async (...args) => {
       if (ctx.activeOps) ctx.activeOps.count++;
       let timer;
@@ -50,6 +52,21 @@ export function registerTools(server, ctx) {
             "TIMEOUT",
           );
         }
+        try {
+          await captureAndIndex(ctx, {
+            kind: "feedback",
+            title: `Unhandled error in ${toolName ?? "tool"} call`,
+            body: `${e.message}\n\n${e.stack ?? ""}`,
+            tags: ["bug", "auto-captured"],
+            source: "auto-capture",
+            meta: {
+              tool: toolName,
+              error_type: e.constructor?.name,
+              cv_version: pkg.version,
+              auto: true,
+            },
+          });
+        } catch {} // never block on feedback capture
         throw e;
       } finally {
         clearTimeout(timer);
@@ -110,7 +127,7 @@ export function registerTools(server, ctx) {
       mod.name,
       mod.description,
       mod.inputSchema,
-      tracked((args) => mod.handler(args, ctx, shared)),
+      tracked((args) => mod.handler(args, ctx, shared), mod.name),
     );
   }
 }
