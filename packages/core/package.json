@@ -1,6 +1,6 @@
 {
   "name": "@context-vault/core",
-  "version": "2.10.3",
+  "version": "2.11.0",
   "type": "module",
   "description": "Shared core: capture, index, retrieve, tools, and utilities for context-vault",
   "main": "src/index.js",
