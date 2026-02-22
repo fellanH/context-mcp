@@ -354,6 +354,7 @@ async function runSetup() {
 
       console.log();
       console.log(green("  ✓ Tool configs updated."));
+      console.log(dim("  Restart your AI tools to apply the changes."));
       console.log();
       return;
     }
@@ -541,7 +542,12 @@ async function runSetup() {
     console.log(
       `\n  ${dim("[4/6]")}${bold(" Downloading embedding model...")}`,
     );
-    console.log(dim("  all-MiniLM-L6-v2 (~22MB, one-time download)\n"));
+    console.log(dim("  all-MiniLM-L6-v2 (~22MB, one-time download)"));
+    console.log(
+      dim(
+        `  Slow connection? Re-run with --skip-embeddings (enables FTS-only mode)\n`,
+      ),
+    );
     {
       const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
       let frame = 0;
@@ -731,7 +737,9 @@ async function runSetup() {
   const boxLines = [
     `  ✓ Setup complete — ${passed}/${checks.length} checks passed (${elapsed}s)`,
     ``,
-    `  ${bold("AI Tools")} — open ${toolName} and try:`,
+    `  ${bold("Next:")} restart ${toolName} to activate the vault`,
+    ``,
+    `  ${bold("AI Tools")} — once active, try:`,
     `  "Search my vault for getting started"`,
     `  "Save an insight about [topic]"`,
     `  "Show my vault status"`,

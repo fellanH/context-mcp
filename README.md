@@ -20,7 +20,7 @@ npx context-vault setup
 
 Setup detects your AI tools (Claude Code, Cursor, Codex, Windsurf, etc.), configures MCP, downloads the embedding model (~22MB), and seeds a starter entry. Takes about 2 minutes.
 
-Then open your AI tool and try:
+Then **restart your AI tool** (required to pick up the new MCP server) and try:
 
 > **"Search my vault for getting started"**
 
