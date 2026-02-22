@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.10.1] — 2026-02-22
+
+### Fixed
+
+- `setup` command: Claude Code configuration now places the server name before `-e` flags, fixing "Invalid environment variable format" error caused by `claude mcp add`'s variadic `--env` parser consuming the server name as an env var
+
 ## [2.10.0] — 2026-02-22
 
 ### Added
