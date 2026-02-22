@@ -33,7 +33,7 @@ export function registerTools(server, ctx) {
       let handlerPromise;
       try {
         handlerPromise = Promise.resolve(handler(...args));
-        return await Promise.race([
+        const result = await Promise.race([
           handlerPromise,
           new Promise((_, reject) => {
             timer = setTimeout(
@@ -42,15 +42,33 @@ export function registerTools(server, ctx) {
             );
           }),
         ]);
+        if (ctx.toolStats) ctx.toolStats.ok++;
+        return result;
       } catch (e) {
         if (e.message === "TOOL_TIMEOUT") {
           // Suppress any late rejection from the still-running handler to
           // prevent unhandled promise rejection warnings in the host process.
           handlerPromise?.catch(() => {});
+          if (ctx.toolStats) {
+            ctx.toolStats.errors++;
+            ctx.toolStats.lastError = {
+              tool: toolName,
+              code: "TIMEOUT",
+              timestamp: Date.now(),
+            };
+          }
           return err(
             "Tool timed out after 60s. Try a simpler query or run `context-vault reindex` first.",
             "TIMEOUT",
           );
+        }
+        if (ctx.toolStats) {
+          ctx.toolStats.errors++;
+          ctx.toolStats.lastError = {
+            tool: toolName,
+            code: "UNKNOWN",
+            timestamp: Date.now(),
+          };
         }
         try {
           await captureAndIndex(ctx, {

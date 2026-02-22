@@ -1,6 +1,15 @@
 import { gatherVaultStatus } from "../../core/status.js";
 import { ok } from "../helpers.js";
 
+function relativeTime(ts) {
+  const secs = Math.floor((Date.now() - ts) / 1000);
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+}
+
 export const name = "context_status";
 
 export const description =
@@ -81,6 +90,24 @@ export function handler(_args, ctx) {
       `DB contains ${status.staleCount} paths not matching current vault dir.`,
     );
     lines.push(`Auto-reindex will fix this on next search or save.`);
+  }
+
+  // Health: session-level tool call stats
+  const ts = ctx.toolStats;
+  if (ts) {
+    lines.push(``, `### Health`);
+    lines.push(`- Tool calls (session): ${ts.ok} ok, ${ts.errors} errors`);
+    if (ts.lastError) {
+      const { tool, code, timestamp } = ts.lastError;
+      lines.push(
+        `- Last error: ${tool ?? "unknown"} — ${code} (${relativeTime(timestamp)})`,
+      );
+    }
+    if (status.autoCapturedFeedbackCount > 0) {
+      lines.push(
+        `- Auto-captured feedback entries: ${status.autoCapturedFeedbackCount} (run get_context with kind:feedback tags:auto-captured)`,
+      );
+    }
   }
 
   // Suggested actions

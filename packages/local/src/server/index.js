@@ -106,6 +106,7 @@ async function main() {
       insertVec: (rowid, embedding) => insertVec(stmts, rowid, embedding),
       deleteVec: (rowid) => deleteVec(stmts, rowid),
       activeOps: { count: 0 },
+      toolStats: { ok: 0, errors: 0, lastError: null },
     };
 
     // ── Phase: SERVER ────────────────────────────────────────────────────────

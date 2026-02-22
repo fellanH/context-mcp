@@ -128,6 +128,18 @@ export function gatherVaultStatus(ctx, opts = {}) {
   // Embedding model availability
   const embedModelAvailable = isEmbedAvailable();
 
+  // Count auto-captured feedback entries (written by tracked() on unhandled errors)
+  let autoCapturedFeedbackCount = 0;
+  try {
+    autoCapturedFeedbackCount = db
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE kind = 'feedback' AND tags LIKE '%"auto-captured"%' ${userAnd}`,
+      )
+      .get(...userParams).c;
+  } catch (e) {
+    errors.push(`Auto-captured feedback count failed: ${e.message}`);
+  }
+
   return {
     fileCount,
     subdirs,
@@ -140,6 +152,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
     expiredCount,
     embeddingStatus,
     embedModelAvailable,
+    autoCapturedFeedbackCount,
     resolvedFrom: config.resolvedFrom,
     errors,
   };
