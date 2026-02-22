@@ -15,6 +15,63 @@ import {
   MAX_IDENTITY_KEY_LENGTH,
 } from "../../constants.js";
 
+const DEFAULT_SIMILARITY_THRESHOLD = 0.85;
+
+async function findSimilar(ctx, embedding, threshold, userId) {
+  try {
+    const vecCount = ctx.db
+      .prepare("SELECT COUNT(*) as c FROM vault_vec")
+      .get().c;
+    if (vecCount === 0) return [];
+
+    const vecRows = ctx.db
+      .prepare(
+        `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ?`,
+      )
+      .all(embedding, 10);
+
+    if (!vecRows.length) return [];
+
+    const rowids = vecRows.map((vr) => vr.rowid);
+    const placeholders = rowids.map(() => "?").join(",");
+    const hydrated = ctx.db
+      .prepare(
+        `SELECT rowid, id, title, category, user_id FROM vault WHERE rowid IN (${placeholders})`,
+      )
+      .all(...rowids);
+
+    const byRowid = new Map();
+    for (const row of hydrated) byRowid.set(row.rowid, row);
+
+    const results = [];
+    for (const vr of vecRows) {
+      const similarity = Math.max(0, 1 - vr.distance / 2);
+      if (similarity < threshold) continue;
+      const row = byRowid.get(vr.rowid);
+      if (!row) continue;
+      if (userId !== undefined && row.user_id !== userId) continue;
+      if (row.category === "entity") continue;
+      results.push({ id: row.id, title: row.title, score: similarity });
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+function formatSimilarWarning(similar) {
+  const lines = ["", "⚠ Similar entries already exist:"];
+  for (const e of similar) {
+    const score = e.score.toFixed(2);
+    const title = e.title ? `"${e.title}"` : "(no title)";
+    lines.push(`  - ${title} (${score}) — id: ${e.id}`);
+  }
+  lines.push(
+    "  Consider using `id: <existing>` in save_context to update instead.",
+  );
+  return lines.join("\n");
+}
+
 /**
  * Validate input fields for save_context. Returns an error response or null.
  */
@@ -150,6 +207,20 @@ export const inputSchema = {
       "Required for entity kinds (contact, project, tool, source). The unique identifier for this entity.",
     ),
   expires_at: z.string().optional().describe("ISO date for TTL expiry"),
+  dry_run: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, check for similar entries without saving. Returns similarity results without creating a new entry. Only applies to knowledge and event categories.",
+    ),
+  similarity_threshold: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe(
+      "Cosine similarity threshold for duplicate detection (0–1, default 0.85). Entries above this score are flagged as similar. Only applies to knowledge and event categories.",
+    ),
 };
 
 /**
@@ -169,6 +240,8 @@ export async function handler(
     source,
     identity_key,
     expires_at,
+    dry_run,
+    similarity_threshold,
   },
   ctx,
   { ensureIndexed },
@@ -261,24 +334,44 @@ export async function handler(
     );
   }
 
-  // Hosted tier limit enforcement (skipped in local mode — no checkLimits on ctx)
-  if (ctx.checkLimits) {
-    const usage = ctx.checkLimits();
-    if (usage.entryCount >= usage.maxEntries) {
-      return err(
-        `Entry limit reached (${usage.maxEntries}). Upgrade to Pro for unlimited entries.`,
-        "LIMIT_EXCEEDED",
-      );
-    }
-    if (usage.storageMb >= usage.maxStorageMb) {
-      return err(
-        `Storage limit reached (${usage.maxStorageMb} MB). Upgrade to Pro for more storage.`,
-        "LIMIT_EXCEEDED",
+  await ensureIndexed();
+
+  // ── Similarity check (knowledge + event only) ────────────────────────────
+  const category = categoryFor(normalizedKind);
+  let similarEntries = [];
+
+  if (category === "knowledge" || category === "event") {
+    const threshold = similarity_threshold ?? DEFAULT_SIMILARITY_THRESHOLD;
+    const embeddingText = [title, body].filter(Boolean).join(" ");
+    const queryEmbedding = await ctx.embed(embeddingText);
+    if (queryEmbedding) {
+      similarEntries = await findSimilar(
+        ctx,
+        queryEmbedding,
+        threshold,
+        userId,
       );
     }
   }
 
-  await ensureIndexed();
+  if (dry_run) {
+    const parts = ["(dry run — nothing saved)"];
+    if (similarEntries.length) {
+      parts.push("", "⚠ Similar entries already exist:");
+      for (const e of similarEntries) {
+        const score = e.score.toFixed(2);
+        const titleDisplay = e.title ? `"${e.title}"` : "(no title)";
+        parts.push(`  - ${titleDisplay} (${score}) — id: ${e.id}`);
+      }
+      parts.push(
+        "",
+        "Use save_context with `id: <existing>` to update one, or omit `dry_run` to save as new.",
+      );
+    } else {
+      parts.push("", "No similar entries found. Safe to save.");
+    }
+    return ok(parts.join("\n"));
+  }
 
   const mergedMeta = { ...(meta || {}) };
   if (folder) mergedMeta.folder = folder;
@@ -303,5 +396,8 @@ export async function handler(
   if (title) parts.push(`  title: ${title}`);
   if (tags?.length) parts.push(`  tags: ${tags.join(", ")}`);
   parts.push("", "_Use this id to update or delete later._");
+  if (similarEntries.length) {
+    parts.push(formatSimilarWarning(similarEntries));
+  }
   return ok(parts.join("\n"));
 }

@@ -221,6 +221,59 @@ describe("save_context handler", () => {
     );
     isErr(result, "VAULT_NOT_FOUND");
   }, 30000);
+
+  it("dry_run: true returns without saving", async () => {
+    const before = ctx.db.prepare("SELECT COUNT(*) as c FROM vault").get().c;
+    const result = await saveContextTool.handler(
+      { kind: "insight", body: "Dry run test entry", dry_run: true },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toContain("dry run");
+    const after = ctx.db.prepare("SELECT COUNT(*) as c FROM vault").get().c;
+    expect(after).toBe(before);
+  }, 30000);
+
+  it("dry_run: true on empty vault reports no similar entries", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      const result = await saveContextTool.handler(
+        { kind: "insight", body: "Nothing in vault yet", dry_run: true },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("dry run");
+      expect(text).not.toContain("⚠");
+    } finally {
+      freshCleanup();
+    }
+  }, 30000);
+
+  it("normal save succeeds when embed returns null (graceful degradation)", async () => {
+    const noEmbedCtx = { ...ctx, embed: async () => null };
+    const result = await saveContextTool.handler(
+      {
+        kind: "insight",
+        body: "No embedding available",
+        title: "Offline save",
+      },
+      noEmbedCtx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toContain("✓ Saved insight");
+  }, 30000);
+
+  it("dry_run: true with entity kind still requires identity_key", async () => {
+    const result = await saveContextTool.handler(
+      { kind: "contact", body: "test", dry_run: true },
+      ctx,
+      shared,
+    );
+    isErr(result, "MISSING_IDENTITY_KEY");
+  }, 30000);
 });
 
 // ─── get_context ──────────────────────────────────────────────────────────────
