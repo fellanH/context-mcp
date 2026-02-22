@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.10.2] — 2026-02-22
+
+### Fixed
+
+- `@context-vault/core`: add missing `./core/error-log` export to package.json exports map — fixes `ERR_PACKAGE_PATH_NOT_EXPORTED` crash on MCP server startup after `npx context-vault setup`
+
 ## [2.10.1] — 2026-02-22
 
 ### Fixed

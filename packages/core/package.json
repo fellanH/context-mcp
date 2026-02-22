@@ -19,6 +19,7 @@
     "./core/config": "./src/core/config.js",
     "./core/files": "./src/core/files.js",
     "./core/frontmatter": "./src/core/frontmatter.js",
+    "./core/error-log": "./src/core/error-log.js",
     "./core/status": "./src/core/status.js",
     "./capture/importers": "./src/capture/importers.js",
     "./capture/import-pipeline": "./src/capture/import-pipeline.js",
