@@ -2,12 +2,25 @@
  * helpers.js — Shared MCP response helpers and validation
  */
 
+import pkg from "../../package.json" with { type: "json" };
+
 export function ok(text) {
   return { content: [{ type: "text", text }] };
 }
 
-export function err(text, code = "UNKNOWN") {
-  return { content: [{ type: "text", text }], isError: true, code };
+export function err(text, code = "UNKNOWN", meta = {}) {
+  return {
+    content: [{ type: "text", text }],
+    isError: true,
+    code,
+    _meta: {
+      cv_version: pkg.version,
+      node_version: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      ...meta,
+    },
+  };
 }
 
 export function ensureVaultExists(config) {
