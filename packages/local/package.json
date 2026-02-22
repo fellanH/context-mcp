@@ -1,6 +1,6 @@
 {
   "name": "context-vault",
-  "version": "2.10.1",
+  "version": "2.10.2",
   "type": "module",
   "description": "Persistent memory for AI agents — saves and searches knowledge across sessions",
   "bin": {
@@ -55,7 +55,7 @@
     "@context-vault/core"
   ],
   "dependencies": {
-    "@context-vault/core": "^2.10.1",
+    "@context-vault/core": "^2.10.2",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "sqlite-vec": "^0.1.0"
   }
