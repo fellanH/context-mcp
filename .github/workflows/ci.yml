@@ -25,3 +25,44 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: node scripts/check-constants.js
+
+  build-app:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger app build
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PAT }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: 'context-vault-app',
+              workflow_id: 'ci.yml',
+              ref: 'main',
+            });
+
+  build-extension:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger extension build
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PAT }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: 'context-vault-extension',
+              workflow_id: 'ci.yml',
+              ref: 'main',
+            });
+
+  smoke-check:
+    runs-on: ubuntu-latest
+    needs: [test, check-constants]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke tests
+        run: bash scripts/smoke-test.sh https://app.context-vault.com
