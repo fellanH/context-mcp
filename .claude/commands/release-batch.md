@@ -9,13 +9,20 @@ description: >
 
 ## Steps
 
-1. **Load batch**
-   Read `.claude/issue-batch.json`.
-   If `pending` is empty, report "No issues in batch." and stop.
-
-2. **Generate diff summary**
+1. **Discover committed issues**
    Run: `git log v$(node -p "require('./package.json').version")...HEAD --oneline`
-   Run: `git diff v$(node -p "require('./package.json').version")...HEAD -- packages/`
+   If empty, report "Nothing to release." and stop.
+
+   Run: `git log v$(node -p "require('./package.json').version")...HEAD --format="%H %s"`
+   Extract all issue numbers from commit messages matching `closes #N`.
+   If no issue numbers found, report "No issues found in commits since last release." and stop.
+
+2. **Build issue list**
+   For each extracted issue number N:
+   `gh issue view N --json number,title,labels`
+   Build a structured list: number, title, labels.
+
+   Also run: `git diff v$(node -p "require('./package.json').version")...HEAD -- packages/`
    Produce a structured summary: what changed, what files, which issues.
 
 3. **AI self-review**
@@ -30,12 +37,12 @@ description: >
    Present findings clearly. Flag any blockers before asking for sign-off.
 
 4. **Human sign-off**
-   Present the full review summary and the list of batched issues.
+   Present the full review summary and the issue list from Step 2.
    Wait for the user to explicitly say "approve" or "lgtm" before proceeding.
    If the user requests changes, stop here and let them make corrections.
 
 5. **Determine release type**
-   From all batched issue labels, apply highest-wins rule:
+   From all issue labels from Step 2, apply highest-wins rule:
    - Any label is `breaking` → `major`
    - Any label is `feature` or `enhancement` or `gtm` → `minor`
    - All labels are `bug`, `dx`, `infra`, `user-request` → `patch`
@@ -57,8 +64,5 @@ description: >
    Run: `node scripts/release.mjs <patch|minor|major>`
    The release script handles: version bump → tests → npm publish → git tag → push → GitHub Release.
 
-8. **Clear batch**
-   Write `{"queue":[],"pending":[],"failed":[]}` to `.claude/issue-batch.json`.
-
-9. **Confirm**
-   Report: "Released vX.Y.Z with N issues. Batch cleared."
+8. **Confirm**
+   Report: "Released vX.Y.Z with N issues."

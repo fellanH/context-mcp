@@ -2,6 +2,23 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.12.0] — 2026-02-23
+
+### Added
+
+- Issue #56: In-product feedback prompt after first `save_context` — one-time message to stderr pointing to GitHub Issues; marker file prevents repeat (`7071772`)
+- Issue #93: `setup` checks for updates against npm registry on re-run — up-to-date exits cleanly; outdated shows current → latest diff and upgrade command (`6e146e8`)
+
+### Changed
+
+- Issue #44: Canonical URL constants (`APP_URL`, `API_URL`, `MARKETING_URL`, `GITHUB_ISSUES_URL`) extracted to `packages/core/src/constants.js`; all hardcoded strings replaced across `cli.js` and `telemetry.js`; `check-constants.js` enforces no duplicates (`75d5d30`)
+- Issue #57: Setup completion now shows explicit "restart your AI tools" notice; embedding download step shows `--skip-embeddings` hint for slow connections (`0e702dc`)
+
+### Infrastructure
+
+- Issue #35: CI pipeline now gates production deploy on staging smoke: `test → build → deploy-staging → smoke-staging → deploy-prod → smoke-prod` (`6b349de`)
+- Issue #36: `build-app` and `build-extension` jobs explicitly require `test` and `check-constants` to pass before running (`788a1c6`)
+
 ## [2.11.0] — 2026-02-22
 
 ### Added
