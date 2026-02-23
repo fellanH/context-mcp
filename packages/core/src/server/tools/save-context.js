@@ -4,6 +4,7 @@ import { indexEntry } from "../../index/index.js";
 import { categoryFor } from "../../core/categories.js";
 import { normalizeKind } from "../../core/files.js";
 import { ok, err, ensureVaultExists, ensureValidKind } from "../helpers.js";
+import { maybeShowFeedbackPrompt } from "../../core/telemetry.js";
 import {
   MAX_BODY_LENGTH,
   MAX_TITLE_LENGTH,
@@ -398,6 +399,11 @@ export async function handler(
     supersedes,
     userId,
   });
+
+  if (ctx.config?.dataDir) {
+    maybeShowFeedbackPrompt(ctx.config.dataDir);
+  }
+
   const relPath = entry.filePath
     ? entry.filePath.replace(config.vaultDir + "/", "")
     : entry.filePath;

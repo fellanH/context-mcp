@@ -1,9 +1,10 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { API_URL, MARKETING_URL } from "../constants.js";
+import { API_URL, MARKETING_URL, GITHUB_ISSUES_URL } from "../constants.js";
 
 const TELEMETRY_ENDPOINT = `${API_URL}/telemetry`;
 const NOTICE_MARKER = ".telemetry-notice-shown";
+const FEEDBACK_PROMPT_MARKER = ".feedback-prompt-shown";
 
 export function isTelemetryEnabled(config) {
   const envVal = process.env.CONTEXT_VAULT_TELEMETRY;
@@ -58,6 +59,30 @@ export function maybeShowTelemetryNotice(dataDir) {
     "[context-vault] No vault content, file paths, or personal data is ever sent.",
     '[context-vault] Opt in: set "telemetry": true in ~/.context-mcp/config.json or set CONTEXT_VAULT_TELEMETRY=1.',
     `[context-vault] Full payload schema: ${MARKETING_URL}/telemetry`,
+  ];
+  for (const line of lines) {
+    process.stderr.write(line + "\n");
+  }
+}
+
+/**
+ * Print a one-time feedback prompt after the user's first successful save.
+ * Uses a marker file in dataDir to ensure it's only shown once.
+ * Never throws, never blocks.
+ */
+export function maybeShowFeedbackPrompt(dataDir) {
+  try {
+    const markerPath = join(dataDir, FEEDBACK_PROMPT_MARKER);
+    if (existsSync(markerPath)) return;
+    writeFileSync(markerPath, new Date().toISOString() + "\n");
+  } catch {
+    return;
+  }
+
+  const lines = [
+    "[context-vault] First entry saved — nice work!",
+    "[context-vault] Got feedback, a bug, or a feature request?",
+    `[context-vault] Open an issue: ${GITHUB_ISSUES_URL}`,
   ];
   for (const line of lines) {
     process.stderr.write(line + "\n");
