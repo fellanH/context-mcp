@@ -28,6 +28,7 @@ jobs:
 
   build-app:
     runs-on: ubuntu-latest
+    needs: [test, check-constants]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Trigger app build
@@ -44,6 +45,7 @@ jobs:
 
   build-extension:
     runs-on: ubuntu-latest
+    needs: [test, check-constants]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Trigger extension build
@@ -58,11 +60,54 @@ jobs:
               ref: 'main',
             });
 
-  smoke-check:
+  deploy-staging:
     runs-on: ubuntu-latest
-    needs: [test, check-constants]
+    needs: [build-app, build-extension]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger staging deployment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PAT }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: 'context-vault-app',
+              workflow_id: 'deploy-staging.yml',
+              ref: 'main',
+            });
+
+  smoke-staging:
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      - name: Run smoke tests
+      - name: Run staging smoke tests
+        run: bash scripts/smoke-test.sh https://staging.context-vault.com
+
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: [smoke-staging]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger production deployment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PAT }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: 'context-vault-app',
+              workflow_id: 'deploy-prod.yml',
+              ref: 'main',
+            });
+
+  smoke-prod:
+    runs-on: ubuntu-latest
+    needs: [deploy-prod]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run production smoke tests
         run: bash scripts/smoke-test.sh https://app.context-vault.com
