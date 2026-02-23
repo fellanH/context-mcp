@@ -76,6 +76,23 @@ const SENTINELS = [
     pattern: /["']Xenova\/all-MiniLM-L6-v2["']/,
     canonical: "packages/core/src/index/embed.js",
   },
+  // ── Canonical URLs ───────────────────────────────────────────────────────
+  // Canonical: packages/core/src/constants.js
+  {
+    name: "APP_URL",
+    pattern: /\bconst\s+APP_URL\b/,
+    canonical: "packages/core/src/constants.js",
+  },
+  {
+    name: "API_URL",
+    pattern: /\bconst\s+API_URL\b/,
+    canonical: "packages/core/src/constants.js",
+  },
+  {
+    name: "MARKETING_URL",
+    pattern: /\bconst\s+MARKETING_URL\b/,
+    canonical: "packages/core/src/constants.js",
+  },
 ];
 
 // ─── File discovery ─────────────────────────────────────────────────────────
@@ -83,6 +100,7 @@ const SENTINELS = [
 const SCAN_DIRS = [
   "packages/core/src",
   "packages/local/src",
+  "packages/local/bin",
   "packages/hosted/src",
 ];
 

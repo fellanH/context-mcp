@@ -25,6 +25,7 @@ import { join, resolve, dirname } from "node:path";
 import { homedir, platform } from "node:os";
 import { execSync, execFile, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { APP_URL, API_URL, MARKETING_URL } from "@context-vault/core/constants";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -532,7 +533,7 @@ async function runSetup() {
   console.log(
     dim("  file paths, or personal data is ever sent. Off by default."),
   );
-  console.log(dim("  Full schema: https://contextvault.dev/telemetry"));
+  console.log(dim(`  Full schema: ${MARKETING_URL}/telemetry`));
   console.log();
 
   let telemetryEnabled = vaultConfig.telemetry === true;
@@ -1017,7 +1018,7 @@ This is an example entry showing the decision format. Feel free to delete it.
 
 async function runConnect() {
   const apiKey = getFlag("--key");
-  const hostedUrl = getFlag("--url") || "https://api.context-vault.com";
+  const hostedUrl = getFlag("--url") || API_URL;
 
   if (!apiKey) {
     console.log(`\n  ${bold("context-vault connect")}\n`);
@@ -1026,9 +1027,7 @@ async function runConnect() {
     console.log(`    context-vault connect --key cv_...\n`);
     console.log(`  Options:`);
     console.log(`    --key <key>   API key (required)`);
-    console.log(
-      `    --url <url>   Hosted server URL (default: https://api.context-vault.com)`,
-    );
+    console.log(`    --url <url>   Hosted server URL (default: ${API_URL})`);
     console.log();
     return;
   }
@@ -1270,9 +1269,7 @@ async function runSwitch() {
     );
     console.log(`  Options:`);
     console.log(`    --key <key>   API key for hosted mode (cv_...)`);
-    console.log(
-      `    --url <url>   Hosted server URL (default: https://api.context-vault.com)\n`,
-    );
+    console.log(`    --url <url>   Hosted server URL (default: ${API_URL})\n`);
     return;
   }
 
@@ -1329,10 +1326,7 @@ async function runSwitch() {
     console.log(dim(`  Server: node ${launcherPath}`));
     console.log();
   } else {
-    const hostedUrl =
-      getFlag("--url") ||
-      vaultConfig.hostedUrl ||
-      "https://api.context-vault.com";
+    const hostedUrl = getFlag("--url") || vaultConfig.hostedUrl || API_URL;
     const apiKey = getFlag("--key") || vaultConfig.apiKey;
 
     if (!apiKey) {
@@ -1712,15 +1706,13 @@ async function runMigrate() {
       `    context-vault migrate --to-local   Download hosted vault to local files`,
     );
     console.log(`\n  Options:`);
-    console.log(
-      `    --url <url>      Hosted server URL (default: https://api.context-vault.com)`,
-    );
+    console.log(`    --url <url>      Hosted server URL (default: ${API_URL})`);
     console.log(`    --key <key>      API key (cv_...)`);
     console.log();
     return;
   }
 
-  const hostedUrl = getFlag("--url") || "https://api.context-vault.com";
+  const hostedUrl = getFlag("--url") || API_URL;
   const apiKey = getFlag("--key");
 
   if (!apiKey) {

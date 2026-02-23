@@ -1,3 +1,7 @@
+export const APP_URL = "https://app.context-vault.com";
+export const API_URL = "https://api.context-vault.com";
+export const MARKETING_URL = "https://contextvault.dev";
+
 export const MAX_BODY_LENGTH = 100 * 1024; // 100KB
 export const MAX_TITLE_LENGTH = 500;
 export const MAX_KIND_LENGTH = 64;

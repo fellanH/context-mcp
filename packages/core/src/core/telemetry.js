@@ -1,7 +1,8 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { API_URL, MARKETING_URL } from "../constants.js";
 
-const TELEMETRY_ENDPOINT = "https://api.context-vault.com/telemetry";
+const TELEMETRY_ENDPOINT = `${API_URL}/telemetry`;
 const NOTICE_MARKER = ".telemetry-notice-shown";
 
 export function isTelemetryEnabled(config) {
@@ -56,7 +57,7 @@ export function maybeShowTelemetryNotice(dataDir) {
     "[context-vault] Reports contain only: event type, error code, tool name, version, node version, platform, arch, timestamp.",
     "[context-vault] No vault content, file paths, or personal data is ever sent.",
     '[context-vault] Opt in: set "telemetry": true in ~/.context-mcp/config.json or set CONTEXT_VAULT_TELEMETRY=1.',
-    "[context-vault] Full payload schema: https://contextvault.dev/telemetry",
+    `[context-vault] Full payload schema: ${MARKETING_URL}/telemetry`,
   ];
   for (const line of lines) {
     process.stderr.write(line + "\n");
