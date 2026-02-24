@@ -2,6 +2,22 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.13.0] — 2026-02-24
+
+### Added
+
+- Issue #101: `clear_context` MCP tool — resets active session context without deleting vault entries; optional `scope` param filters subsequent `get_context` calls to a tag/project (`53751e1`)
+- Issue #97: `detect_conflicts` parameter on `get_context` — surfaces superseded entries and stale duplicates (same kind+tags, updated_at diff > 7 days) in a `## Conflict Detection` section (`c816afe`)
+- Issue #102: `context-vault flush` CLI command + `SessionEnd` hook integration — validates DB health and entry count; `hooks install` now offers optional auto-flush at session end (`494d096`)
+
+### Fixed
+
+- Issue #100: MCP server no longer fails silently — uncaught exceptions and unhandled rejections are logged to `~/.context-mcp/error.log` and emitted to stderr; new `context-vault doctor` command diagnoses Node version, config, DB integrity, launcher path, and error log (`215db53`)
+
+### Changed
+
+- Issue #46: Added `docs/distribution/connect-in-2-minutes.md` (was a dead link from the website); cross-linked from root README and `packages/local/README.md`; includes Claude Code, Cursor, and GPT Actions setup sections with `/health` endpoint reference (`28ef516`)
+
 ## [2.12.0] — 2026-02-23
 
 ### Added
