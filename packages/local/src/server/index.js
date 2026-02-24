@@ -265,6 +265,50 @@ async function main() {
   }
 }
 
+// ─── Top-level Safety Net ────────────────────────────────────────────────────
+// Catch any errors that escape the main() try/catch (e.g. thrown in MCP
+// transport callbacks or in unrelated async chains).  Claude Code surfaces
+// stderr when a server exits unexpectedly, so every message written here will
+// be visible to the user.
+
+process.on("uncaughtException", (err) => {
+  const dataDir = join(homedir(), ".context-mcp");
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    error_type: "uncaughtException",
+    message: err.message,
+    stack: err.stack?.split("\n").slice(0, 5).join(" | "),
+    node_version: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    cv_version: pkg.version,
+  };
+  appendErrorLog(dataDir, logEntry);
+  console.error(`[context-vault] Uncaught exception: ${err.message}`);
+  console.error(`[context-vault] Error log: ${join(dataDir, "error.log")}`);
+  console.error(`[context-vault] Run: context-vault doctor`);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const dataDir = join(homedir(), ".context-mcp");
+  const message = reason instanceof Error ? reason.message : String(reason);
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    error_type: "unhandledRejection",
+    message,
+    node_version: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    cv_version: pkg.version,
+  };
+  appendErrorLog(dataDir, logEntry);
+  console.error(`[context-vault] Unhandled rejection: ${message}`);
+  console.error(`[context-vault] Error log: ${join(dataDir, "error.log")}`);
+  console.error(`[context-vault] Run: context-vault doctor`);
+  process.exit(1);
+});
+
 main().catch((err) => {
   console.error(`[context-vault] Unexpected fatal error: ${err.message}`);
   process.exit(1);

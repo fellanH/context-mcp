@@ -240,6 +240,7 @@ ${bold("Commands:")}
   ${cyan("reindex")}               Rebuild search index from knowledge files
   ${cyan("prune")}                 Remove expired entries (use --dry-run to preview)
   ${cyan("status")}                Show vault diagnostics
+  ${cyan("doctor")}                Diagnose and repair common issues
   ${cyan("update")}                Check for and install updates
   ${cyan("uninstall")}             Remove MCP configs and optionally data
   ${cyan("import")} <path>          Import entries from file or directory
@@ -1484,6 +1485,8 @@ async function runStatus() {
   const { resolveConfig } = await import("@context-vault/core/core/config");
   const { initDatabase } = await import("@context-vault/core/index/db");
   const { gatherVaultStatus } = await import("@context-vault/core/core/status");
+  const { errorLogPath, errorLogCount } =
+    await import("@context-vault/core/core/error-log");
 
   const config = resolveConfig();
 
@@ -1565,6 +1568,18 @@ async function runStatus() {
     console.log();
     console.log(yellow("  Stale paths detected in DB."));
     console.log(`  Run ${cyan("context-vault reindex")} to update.`);
+  }
+
+  const logCount = errorLogCount(config.dataDir);
+  if (logCount > 0) {
+    const logPath = errorLogPath(config.dataDir);
+    console.log();
+    console.log(
+      yellow(
+        `  ${logCount} startup error${logCount === 1 ? "" : "s"} logged — run ${cyan("context-vault doctor")} for details`,
+      ),
+    );
+    console.log(`  ${dim(logPath)}`);
   }
   console.log();
 }
@@ -2260,6 +2275,198 @@ ${bold("Commands:")}
   }
 }
 
+async function runDoctor() {
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { errorLogPath, errorLogCount } =
+    await import("@context-vault/core/core/error-log");
+
+  console.log();
+  console.log(`  ${bold("◇ context-vault doctor")} ${dim(`v${VERSION}`)}`);
+  console.log();
+
+  let allOk = true;
+
+  // ── Node.js version ──────────────────────────────────────────────────────
+  const nodeMajor = parseInt(process.versions.node.split(".")[0], 10);
+  if (nodeMajor < 20) {
+    console.log(
+      `  ${red("✘")} Node.js ${process.versions.node} — requires >= 20`,
+    );
+    console.log(
+      `    ${dim("Fix: install a newer Node.js from https://nodejs.org/")}`,
+    );
+    allOk = false;
+  } else {
+    console.log(
+      `  ${green("✓")} Node.js ${process.versions.node} ${dim(`(${process.execPath})`)}`,
+    );
+  }
+
+  // ── Config ───────────────────────────────────────────────────────────────
+  let config;
+  try {
+    config = resolveConfig();
+    const configExists = existsSync(config.configPath);
+    console.log(
+      `  ${green("✓")} Config ${dim(`(${configExists ? "exists" : "using defaults"}: ${config.configPath})`)}`,
+    );
+  } catch (e) {
+    console.log(`  ${red("✘")} Config parse error: ${e.message}`);
+    console.log(
+      `    ${dim(`Fix: delete or repair ${join(HOME, ".context-mcp", "config.json")}`)}`,
+    );
+    allOk = false;
+  }
+
+  if (config) {
+    // ── Data dir ───────────────────────────────────────────────────────────
+    if (existsSync(config.dataDir)) {
+      console.log(`  ${green("✓")} Data dir ${dim(config.dataDir)}`);
+    } else {
+      console.log(
+        `  ${yellow("!")} Data dir missing — will be created on next start`,
+      );
+      console.log(`    ${dim(`mkdir -p "${config.dataDir}"`)}`);
+    }
+
+    // ── Vault dir ─────────────────────────────────────────────────────────
+    if (existsSync(config.vaultDir)) {
+      try {
+        const probe = join(config.vaultDir, ".write-probe");
+        writeFileSync(probe, "");
+        unlinkSync(probe);
+        console.log(`  ${green("✓")} Vault dir ${dim(config.vaultDir)}`);
+      } catch {
+        console.log(`  ${red("✘")} Vault dir not writable: ${config.vaultDir}`);
+        console.log(`    ${dim(`Fix: chmod u+w "${config.vaultDir}"`)}`);
+        allOk = false;
+      }
+    } else {
+      console.log(
+        `  ${yellow("!")} Vault dir missing — will be created on next start`,
+      );
+      console.log(`    ${dim(`mkdir -p "${config.vaultDir}"`)}`);
+    }
+
+    // ── Database ──────────────────────────────────────────────────────────
+    if (existsSync(config.dbPath)) {
+      try {
+        const { initDatabase } = await import("@context-vault/core/index/db");
+        const db = await initDatabase(config.dbPath);
+        db.close();
+        console.log(`  ${green("✓")} Database ${dim(config.dbPath)}`);
+      } catch (e) {
+        console.log(`  ${red("✘")} Database error: ${e.message}`);
+        console.log(
+          `    ${dim(`Fix: rm "${config.dbPath}" (data will be lost)`)}`,
+        );
+        allOk = false;
+      }
+    } else {
+      console.log(
+        `  ${yellow("!")} Database missing — will be created on next start`,
+      );
+    }
+
+    // ── Launcher (server.mjs) ─────────────────────────────────────────────
+    const launcherPath = join(HOME, ".context-mcp", "server.mjs");
+    if (existsSync(launcherPath)) {
+      const launcherContent = readFileSync(launcherPath, "utf-8");
+      const match = launcherContent.match(/import "(.+?)"/);
+      if (match) {
+        const serverEntryPath = match[1];
+        if (existsSync(serverEntryPath)) {
+          console.log(
+            `  ${green("✓")} Launcher ${dim(`→ ${serverEntryPath}`)}`,
+          );
+        } else {
+          console.log(
+            `  ${red("✘")} Launcher points to missing server: ${serverEntryPath}`,
+          );
+          console.log(
+            `    ${dim("Fix: run context-vault setup to reinstall")}`,
+          );
+          allOk = false;
+        }
+      } else {
+        console.log(`  ${green("✓")} Launcher exists ${dim(launcherPath)}`);
+      }
+    } else {
+      console.log(`  ${yellow("!")} Launcher not found at ${launcherPath}`);
+      console.log(`    ${dim("Fix: run context-vault setup")}`);
+      allOk = false;
+    }
+
+    // ── Error log ─────────────────────────────────────────────────────────
+    const logPath = errorLogPath(config.dataDir);
+    const logCount = errorLogCount(config.dataDir);
+    if (logCount > 0) {
+      console.log();
+      console.log(
+        `  ${yellow("!")} Error log has ${logCount} entr${logCount === 1 ? "y" : "ies"}: ${dim(logPath)}`,
+      );
+      try {
+        const lines = readFileSync(logPath, "utf-8")
+          .split("\n")
+          .filter((l) => l.trim());
+        const last = JSON.parse(lines[lines.length - 1]);
+        console.log(`    Last error: ${red(last.message)}`);
+        console.log(
+          `    Phase: ${dim(last.phase || "unknown")}  Time: ${dim(last.timestamp)}`,
+        );
+      } catch {}
+      console.log(`    ${dim(`To clear: rm "${logPath}"`)}`);
+      allOk = false;
+    } else {
+      console.log(`  ${green("✓")} No startup errors logged`);
+    }
+  }
+
+  // ── MCP tool configs ──────────────────────────────────────────────────────
+  console.log();
+  console.log(bold("  Tool Configurations"));
+  const claudeConfigPath = join(HOME, ".claude.json");
+  if (existsSync(claudeConfigPath)) {
+    try {
+      const claudeConfig = JSON.parse(readFileSync(claudeConfigPath, "utf-8"));
+      const servers = claudeConfig?.mcpServers || {};
+      if (servers["context-vault"]) {
+        const srv = servers["context-vault"];
+        const cmd = [srv.command, ...(srv.args || [])].join(" ");
+        console.log(`  ${green("+")} Claude Code: ${dim(cmd)}`);
+      } else {
+        console.log(`  ${dim("-")} Claude Code: context-vault not configured`);
+        console.log(`    ${dim("Fix: run context-vault setup")}`);
+      }
+    } catch {
+      console.log(
+        `  ${yellow("!")} Claude Code: could not read ~/.claude.json`,
+      );
+    }
+  } else {
+    console.log(`  ${dim("-")} Claude Code: ~/.claude.json not found`);
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  console.log();
+  if (allOk) {
+    console.log(
+      `  ${green("✓ All checks passed.")} If the MCP server still fails, try:`,
+    );
+    console.log(
+      `    ${dim("context-vault setup")}  — reconfigure tool integrations`,
+    );
+  } else {
+    console.log(
+      `  ${yellow("Some issues found.")} Address the items above, then restart your AI tool.`,
+    );
+    console.log(
+      `    ${dim("context-vault setup")}  — reconfigure and repair installation`,
+    );
+  }
+  console.log();
+}
+
 async function runServe() {
   await import("../src/server/index.js");
 }
@@ -2320,6 +2527,9 @@ async function main() {
       break;
     case "migrate":
       await runMigrate();
+      break;
+    case "doctor":
+      await runDoctor();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));
