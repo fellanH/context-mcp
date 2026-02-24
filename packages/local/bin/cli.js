@@ -236,6 +236,7 @@ ${bold("Commands:")}
   ${cyan("switch")} local|hosted      Switch between local and hosted MCP modes
   ${cyan("serve")}                 Start the MCP server (used by AI clients)
   ${cyan("hooks")} install|remove  Install or remove Claude Code memory hook
+  ${cyan("flush")}                 Check vault health and confirm DB is accessible
   ${cyan("recall")}                Search vault from a Claude Code hook (reads stdin)
   ${cyan("reindex")}               Rebuild search index from knowledge files
   ${cyan("prune")}                 Remove expired entries (use --dry-run to preview)
@@ -2144,6 +2145,37 @@ async function runRecall() {
   }
 }
 
+async function runFlush() {
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { initDatabase } = await import("@context-vault/core/index/db");
+
+  let db;
+  try {
+    const config = resolveConfig();
+    db = await initDatabase(config.dbPath);
+
+    const { c: entryCount } = db
+      .prepare("SELECT COUNT(*) as c FROM vault")
+      .get();
+
+    const lastSaveRow = db
+      .prepare("SELECT MAX(COALESCE(updated_at, created_at)) as ts FROM vault")
+      .get();
+    const lastSave = lastSaveRow?.ts ?? "n/a";
+
+    console.log(
+      `context-vault ok — ${entryCount} ${entryCount === 1 ? "entry" : "entries"}, last save: ${lastSave}`,
+    );
+  } catch (e) {
+    console.error(red(`context-vault flush failed: ${e.message}`));
+    process.exit(1);
+  } finally {
+    try {
+      db?.close();
+    } catch {}
+  }
+}
+
 /** Returns the path to Claude Code's global settings.json */
 function claudeSettingsPath() {
   return join(HOME, ".claude", "settings.json");
@@ -2187,6 +2219,76 @@ function installClaudeHook() {
   });
 
   mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
+/**
+ * Writes a SessionEnd hook entry for context-vault flush to ~/.claude/settings.json.
+ * Returns true if installed, false if already present.
+ */
+function installSessionEndHook() {
+  const settingsPath = claudeSettingsPath();
+  let settings = {};
+
+  if (existsSync(settingsPath)) {
+    const raw = readFileSync(settingsPath, "utf-8");
+    try {
+      settings = JSON.parse(raw);
+    } catch {
+      const bak = settingsPath + ".bak";
+      copyFileSync(settingsPath, bak);
+      console.log(yellow(`  Backed up corrupted settings to ${bak}`));
+    }
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.SessionEnd) settings.hooks.SessionEnd = [];
+
+  const alreadyInstalled = settings.hooks.SessionEnd.some((h) =>
+    h.hooks?.some((hh) => hh.command?.includes("context-vault flush")),
+  );
+  if (alreadyInstalled) return false;
+
+  settings.hooks.SessionEnd.push({
+    hooks: [
+      {
+        type: "command",
+        command: "npx context-vault flush",
+        timeout: 10,
+      },
+    ],
+  });
+
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
+/**
+ * Removes the context-vault flush SessionEnd hook from ~/.claude/settings.json.
+ * Returns true if removed, false if not found.
+ */
+function removeSessionEndHook() {
+  const settingsPath = claudeSettingsPath();
+  if (!existsSync(settingsPath)) return false;
+
+  let settings;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+  } catch {
+    return false;
+  }
+
+  if (!settings.hooks?.SessionEnd) return false;
+
+  const before = settings.hooks.SessionEnd.length;
+  settings.hooks.SessionEnd = settings.hooks.SessionEnd.filter(
+    (h) => !h.hooks?.some((hh) => hh.command?.includes("context-vault flush")),
+  );
+
+  if (settings.hooks.SessionEnd.length === before) return false;
+
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
   return true;
 }
@@ -2248,6 +2350,44 @@ async function runHooks() {
       process.exit(1);
     }
     console.log();
+
+    // Prompt for optional session auto-flush (SessionEnd) hook
+    const installFlush =
+      flags.has("--flush") ||
+      (await prompt(
+        "  Install session auto-flush hook? (runs context-vault flush at session end) (y/N):",
+        "n",
+      ));
+    const shouldInstallFlush =
+      installFlush === true ||
+      (typeof installFlush === "string" &&
+        installFlush.toLowerCase().startsWith("y"));
+
+    if (shouldInstallFlush) {
+      try {
+        const flushInstalled = installSessionEndHook();
+        if (flushInstalled) {
+          console.log(
+            `\n  ${green("✓")} Session auto-flush hook installed (SessionEnd).\n`,
+          );
+          console.log(
+            dim(
+              "  At the end of each session, context-vault flush confirms the vault is healthy.",
+            ),
+          );
+        } else {
+          console.log(
+            `\n  ${yellow("!")} Session auto-flush hook already installed.\n`,
+          );
+        }
+      } catch (e) {
+        console.error(
+          `\n  ${red("x")} Failed to install session flush hook: ${e.message}\n`,
+        );
+        process.exit(1);
+      }
+      console.log();
+    }
   } else if (sub === "remove") {
     try {
       const removed = removeClaudeHook();
@@ -2260,6 +2400,19 @@ async function runHooks() {
       console.error(`\n  ${red("x")} Failed to remove hook: ${e.message}\n`);
       process.exit(1);
     }
+
+    try {
+      const flushRemoved = removeSessionEndHook();
+      if (flushRemoved) {
+        console.log(
+          `\n  ${green("✓")} Session auto-flush hook removed (SessionEnd).\n`,
+        );
+      }
+    } catch (e) {
+      console.error(
+        `\n  ${red("x")} Failed to remove session flush hook: ${e.message}\n`,
+      );
+    }
   } else {
     console.log(`
   ${bold("context-vault hooks")} <install|remove>
@@ -2270,7 +2423,8 @@ async function runHooks() {
 
 ${bold("Commands:")}
   ${cyan("hooks install")}   Write UserPromptSubmit hook to ~/.claude/settings.json
-  ${cyan("hooks remove")}    Remove the hook from ~/.claude/settings.json
+                  Also prompts to install a SessionEnd auto-flush hook
+  ${cyan("hooks remove")}    Remove the recall hook and SessionEnd flush hook
 `);
   }
 }
@@ -2497,6 +2651,9 @@ async function main() {
       break;
     case "hooks":
       await runHooks();
+      break;
+    case "flush":
+      await runFlush();
       break;
     case "recall":
       await runRecall();
