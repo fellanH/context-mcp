@@ -73,6 +73,8 @@ If you prefer manual setup over `context-vault setup`:
 
 No Node.js required — sign up at [app.context-vault.com](https://app.context-vault.com), get an API key, connect in 2 minutes.
 
+Full setup instructions for Claude Code, Cursor, and GPT Actions: [docs/distribution/connect-in-2-minutes.md](../../docs/distribution/connect-in-2-minutes.md)
+
 ## Troubleshooting
 
 **Install fails (native modules):**

@@ -75,6 +75,8 @@ Kinds: `insight` · `decision` · `pattern` · `reference` · `contact` — deri
 
 Prefer cloud over local? No Node.js required — cloud sync, web dashboard, and team sharing at [app.context-vault.com](https://app.context-vault.com). Sign up, get an API key, and connect in 2 minutes.
 
+Full setup instructions for Claude Code, Cursor, and GPT Actions: [docs/distribution/connect-in-2-minutes.md](docs/distribution/connect-in-2-minutes.md)
+
 ## Configuration
 
 Defaults work out of the box. Override if needed:
