@@ -5,6 +5,87 @@ import { normalizeKind } from "../../core/files.js";
 import { ok, err } from "../helpers.js";
 import { isEmbedAvailable } from "../../index/embed.js";
 
+const STALE_DUPLICATE_DAYS = 7;
+
+/**
+ * Detect conflicts among a set of search result entries.
+ *
+ * Two checks are performed:
+ *   1. Supersession: if entry A's `superseded_by` points to any entry B in the
+ *      result set, A is stale and should be discarded in favour of B.
+ *   2. Stale duplicate: two entries share the same kind and at least one common
+ *      tag, but their `updated_at` timestamps differ by more than
+ *      STALE_DUPLICATE_DAYS days — suggesting the older one may be outdated.
+ *
+ * No LLM calls, no new dependencies — pure in-memory set operations on the
+ * rows already fetched from the DB.
+ *
+ * @param {Array} entries - Result rows (as returned by hybridSearch / filter-only mode)
+ * @param {import('../types.js').BaseCtx} _ctx - Unused for now; reserved for future DB look-ups
+ * @returns {Array<{entry_a_id: string, entry_b_id: string, reason: string, recommendation: string}>}
+ */
+export function detectConflicts(entries, _ctx) {
+  const conflicts = [];
+  const idSet = new Set(entries.map((e) => e.id));
+
+  for (const entry of entries) {
+    if (entry.superseded_by && idSet.has(entry.superseded_by)) {
+      conflicts.push({
+        entry_a_id: entry.id,
+        entry_b_id: entry.superseded_by,
+        reason: "superseded",
+        recommendation: `Discard \`${entry.id}\` — it has been explicitly superseded by \`${entry.superseded_by}\`.`,
+      });
+    }
+  }
+
+  const supersededConflictPairs = new Set(
+    conflicts.map((c) => `${c.entry_a_id}|${c.entry_b_id}`),
+  );
+
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      const a = entries[i];
+      const b = entries[j];
+
+      if (
+        supersededConflictPairs.has(`${a.id}|${b.id}`) ||
+        supersededConflictPairs.has(`${b.id}|${a.id}`)
+      ) {
+        continue;
+      }
+
+      if (a.kind !== b.kind) continue;
+
+      const tagsA = a.tags ? JSON.parse(a.tags) : [];
+      const tagsB = b.tags ? JSON.parse(b.tags) : [];
+
+      if (!tagsA.length || !tagsB.length) continue;
+
+      const tagsSetA = new Set(tagsA);
+      const sharedTag = tagsB.some((t) => tagsSetA.has(t));
+      if (!sharedTag) continue;
+
+      const dateA = new Date(a.updated_at || a.created_at);
+      const dateB = new Date(b.updated_at || b.created_at);
+      if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) continue;
+
+      const diffDays = Math.abs(dateA - dateB) / 86400000;
+      if (diffDays <= STALE_DUPLICATE_DAYS) continue;
+
+      const [older, newer] = dateA < dateB ? [a, b] : [b, a];
+      conflicts.push({
+        entry_a_id: older.id,
+        entry_b_id: newer.id,
+        reason: "stale_duplicate",
+        recommendation: `Verify \`${older.id}\` is still accurate — it shares kind "${older.kind}" and tags with \`${newer.id}\` but was last updated ${Math.round(diffDays)} days earlier.`,
+      });
+    }
+  }
+
+  return conflicts;
+}
+
 export const name = "get_context";
 
 export const description =
@@ -48,6 +129,12 @@ export const inputSchema = {
     .describe(
       "If true, include entries that have been superseded by newer ones. Default: false.",
     ),
+  detect_conflicts: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, compare results for contradicting entries and append a conflicts array. Flags superseded entries still in results and stale duplicates (same kind+tags, updated_at >7 days apart). No LLM calls — pure DB logic.",
+    ),
 };
 
 /**
@@ -66,6 +153,7 @@ export async function handler(
     until,
     limit,
     include_superseded,
+    detect_conflicts,
   },
   ctx,
   { ensureIndexed, reindexFailed },
@@ -227,6 +315,9 @@ export async function handler(
     }
   }
 
+  // Conflict detection
+  const conflicts = detect_conflicts ? detectConflicts(filtered, ctx) : [];
+
   const lines = [];
   if (reindexFailed)
     lines.push(
@@ -265,5 +356,23 @@ export async function handler(
     lines.push(r.body?.slice(0, 300) + (r.body?.length > 300 ? "..." : ""));
     lines.push("");
   }
+
+  if (detect_conflicts) {
+    if (conflicts.length === 0) {
+      lines.push(
+        `## Conflict Detection\n\nNo conflicts detected among results.\n`,
+      );
+    } else {
+      lines.push(`## Conflict Detection (${conflicts.length} flagged)\n`);
+      for (const c of conflicts) {
+        lines.push(
+          `- **${c.reason}**: \`${c.entry_a_id}\` vs \`${c.entry_b_id}\``,
+        );
+        lines.push(`  Recommendation: ${c.recommendation}`);
+      }
+      lines.push("");
+    }
+  }
+
   return ok(lines.join("\n"));
 }

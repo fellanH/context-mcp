@@ -402,6 +402,117 @@ describe("get_context handler", () => {
   }, 30000);
 });
 
+// ─── detect_conflicts ─────────────────────────────────────────────────────────
+
+describe("get_context detect_conflicts", () => {
+  let ctx, cleanup;
+
+  beforeAll(async () => {
+    ({ ctx, cleanup } = await createTestCtx());
+  }, 30000);
+
+  afterAll(() => cleanup());
+
+  it("returns 'No conflicts detected' when all results are distinct", async () => {
+    await captureAndIndex(ctx, {
+      kind: "insight",
+      title: "Conflict test A — no conflict",
+      body: "Entry about topic A with no related entry",
+      tags: ["topicA"],
+    });
+
+    const result = await getContextTool.handler(
+      { kind: "insight", detect_conflicts: true },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toContain("Conflict Detection");
+    expect(text).toContain("No conflicts detected");
+  }, 30000);
+
+  it("flags superseded entry when superseded_by points to another result", async () => {
+    const older = await captureAndIndex(ctx, {
+      kind: "decision",
+      title: "Architecture decision — old",
+      body: "Use REST for the API",
+      tags: ["architecture"],
+    });
+    const newer = await captureAndIndex(ctx, {
+      kind: "decision",
+      title: "Architecture decision — new",
+      body: "Use GraphQL for the API instead",
+      tags: ["architecture"],
+    });
+
+    ctx.stmts.updateSupersededBy.run(newer.id, older.id);
+
+    const result = await getContextTool.handler(
+      { kind: "decision", include_superseded: true, detect_conflicts: true },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toContain("Conflict Detection");
+    expect(text).toContain("superseded");
+    expect(text).toContain(older.id);
+    expect(text).toContain(newer.id);
+  }, 30000);
+
+  it("flags stale duplicate when same kind+tags but updated_at differ >7 days", async () => {
+    const OLD_DATE = "2025-01-01T00:00:00Z";
+    const NEW_DATE = "2025-02-01T00:00:00Z";
+
+    const staleEntry = await captureAndIndex(ctx, {
+      kind: "reference",
+      title: "Stale reference",
+      body: "Deadline is Feb 28",
+      tags: ["neonode", "deadline"],
+    });
+    ctx.db
+      .prepare("UPDATE vault SET updated_at = ? WHERE id = ?")
+      .run(OLD_DATE, staleEntry.id);
+
+    const freshEntry = await captureAndIndex(ctx, {
+      kind: "reference",
+      title: "Fresh reference",
+      body: "Deadline moved to March 10",
+      tags: ["neonode", "deadline"],
+    });
+    ctx.db
+      .prepare("UPDATE vault SET updated_at = ? WHERE id = ?")
+      .run(NEW_DATE, freshEntry.id);
+
+    const result = await getContextTool.handler(
+      { kind: "reference", detect_conflicts: true },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toContain("Conflict Detection");
+    expect(text).toContain("stale_duplicate");
+    expect(text).toContain(staleEntry.id);
+    expect(text).toContain(freshEntry.id);
+  }, 30000);
+
+  it("does not emit conflicts section when detect_conflicts is false", async () => {
+    await captureAndIndex(ctx, {
+      kind: "pattern",
+      title: "Pattern entry",
+      body: "Some pattern",
+      tags: ["patterns"],
+    });
+
+    const result = await getContextTool.handler(
+      { kind: "pattern", detect_conflicts: false },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).not.toContain("Conflict Detection");
+  }, 30000);
+});
+
 // ─── delete_context ───────────────────────────────────────────────────────────
 
 describe("delete_context handler", () => {
