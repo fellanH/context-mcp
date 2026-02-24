@@ -11,6 +11,7 @@ import * as deleteContext from "./tools/delete-context.js";
 import * as submitFeedback from "./tools/submit-feedback.js";
 import * as ingestUrl from "./tools/ingest-url.js";
 import * as contextStatus from "./tools/context-status.js";
+import * as clearContext from "./tools/clear-context.js";
 
 const toolModules = [
   getContext,
@@ -20,6 +21,7 @@ const toolModules = [
   submitFeedback,
   ingestUrl,
   contextStatus,
+  clearContext,
 ];
 
 const TOOL_TIMEOUT_MS = 60_000;

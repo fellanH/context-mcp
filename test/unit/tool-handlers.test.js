@@ -14,6 +14,7 @@ import * as saveContextTool from "../../packages/core/src/server/tools/save-cont
 import * as deleteContextTool from "../../packages/core/src/server/tools/delete-context.js";
 import * as listContextTool from "../../packages/core/src/server/tools/list-context.js";
 import * as contextStatusTool from "../../packages/core/src/server/tools/context-status.js";
+import * as clearContextTool from "../../packages/core/src/server/tools/clear-context.js";
 
 const shared = { ensureIndexed: async () => {}, reindexFailed: false };
 
@@ -618,5 +619,49 @@ describe("context_status handler", () => {
     const result = contextStatusTool.handler({}, ctx);
     const text = isOk(result);
     expect(text).toMatch(/[✓⚠]/);
+  });
+});
+
+// ─── clear_context ────────────────────────────────────────────────────────────
+
+describe("clear_context handler", () => {
+  it("returns ok with reset message when called with no args", () => {
+    const result = clearContextTool.handler({});
+    const text = isOk(result);
+    expect(text).toContain("Context Reset");
+    expect(text).toContain("cleared");
+    expect(text).toContain("no data was deleted");
+  });
+
+  it("returns ok with reset message when called without arguments", () => {
+    const result = clearContextTool.handler();
+    const text = isOk(result);
+    expect(text).toContain("Context Reset");
+  });
+
+  it("includes scope name in response when scope is provided", () => {
+    const result = clearContextTool.handler({ scope: "project-b" });
+    const text = isOk(result);
+    expect(text).toContain("project-b");
+    expect(text).toContain("Active Scope");
+  });
+
+  it("trims whitespace from scope", () => {
+    const result = clearContextTool.handler({ scope: "  my-project  " });
+    const text = isOk(result);
+    expect(text).toContain("my-project");
+    expect(text).toContain("Active Scope");
+  });
+
+  it("treats whitespace-only scope as unset", () => {
+    const result = clearContextTool.handler({ scope: "   " });
+    const text = isOk(result);
+    expect(text).not.toContain("Active Scope");
+    expect(text).toContain("No scope set");
+  });
+
+  it("never returns an error response", () => {
+    const result = clearContextTool.handler({ scope: "anything" });
+    expect(result.isError).toBeFalsy();
   });
 });
