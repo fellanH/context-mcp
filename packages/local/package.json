@@ -17,6 +17,7 @@
     "prepack": "node scripts/prepack.js"
   },
   "files": [
+    "assets/",
     "bin/",
     "src/",
     "scripts/",

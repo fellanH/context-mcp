@@ -2,6 +2,14 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.14.0] — 2026-02-24
+
+### Added
+
+- Issue #96: `create_snapshot` MCP tool — LLM-synthesized context brief from vault entries; pulls relevant entries by topic/tags/kinds, runs a `claude-haiku-4-5-20251001` synthesis pass, saves as `kind: "brief"` with a deterministic `identity_key`, supersedes noise entries (`prompt-history`, `task-notification`)
+- Issue #99: Claude Code skills bundled in package — `assets/skills/compile-context/skill.md` versioned inside the npm package; `npx context-vault setup` now prompts to install skills; `context-vault skills install` standalone command added
+- Issue #92: Claude Code plugin polish — `runRecall()` output upgraded to `<context-vault>` XML block with 400-char per-entry limit and 2000-char total budget; `context-vault claude install|uninstall` aliases added; `docs/claude-code-plugin.md` added
+
 ## [2.13.0] — 2026-02-24
 
 ### Added

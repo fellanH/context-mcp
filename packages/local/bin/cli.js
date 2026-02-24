@@ -235,7 +235,9 @@ ${bold("Commands:")}
   ${cyan("connect")} --key cv_...  Connect AI tools to hosted vault
   ${cyan("switch")} local|hosted      Switch between local and hosted MCP modes
   ${cyan("serve")}                 Start the MCP server (used by AI clients)
-  ${cyan("hooks")} install|remove  Install or remove Claude Code memory hook
+  ${cyan("hooks")} install|uninstall  Install or remove Claude Code memory hook
+  ${cyan("claude")} install|uninstall  Alias for hooks install|uninstall
+  ${cyan("skills")} install          Install bundled Claude Code skills
   ${cyan("flush")}                 Check vault health and confirm DB is accessible
   ${cyan("recall")}                Search vault from a Claude Code hook (reads stdin)
   ${cyan("reindex")}               Rebuild search index from knowledge files
@@ -727,6 +729,37 @@ async function runSetup() {
     } else if (!isNonInteractive && !hookFlag) {
       console.log(
         dim(`  Skipped — install later: context-vault hooks install`),
+      );
+    }
+  }
+
+  // Claude Code skills (opt-in)
+  if (claudeConfigured && !isNonInteractive) {
+    console.log();
+    console.log(dim("  Install Claude Code skills? (recommended)"));
+    console.log(
+      dim("  compile-context — compile vault entries into a project brief"),
+    );
+    console.log();
+    const skillAnswer = await prompt(
+      "  Install Claude Code skills? (Y/n):",
+      "Y",
+    );
+    const installSkillsFlag = skillAnswer.toLowerCase() !== "n";
+    if (installSkillsFlag) {
+      try {
+        const names = installSkills();
+        if (names.length > 0) {
+          for (const name of names) {
+            console.log(`\n  ${green("+")} ${name} skill installed`);
+          }
+        }
+      } catch (e) {
+        console.log(`\n  ${red("x")} Skills install failed: ${e.message}`);
+      }
+    } else {
+      console.log(
+        dim(`  Skipped — install later: context-vault skills install`),
       );
     }
   }
@@ -2126,16 +2159,25 @@ async function runRecall() {
     const results = await hybridSearch(ctx, query, { limit: 5 });
     if (!results.length) return;
 
-    const lines = ["## Context Vault\n"];
+    const MAX_TOTAL = 2000;
+    const ENTRY_BODY_LIMIT = 400;
+    const entries = [];
+    let totalChars = 0;
+
     for (const r of results) {
       const entryTags = r.tags ? JSON.parse(r.tags) : [];
-      lines.push(`### ${r.title || "(untitled)"} [${r.kind}]`);
-      if (entryTags.length) lines.push(`tags: ${entryTags.join(", ")}`);
-      lines.push(r.body?.slice(0, 400) + (r.body?.length > 400 ? "..." : ""));
-      lines.push("");
+      const tagsAttr = entryTags.length ? ` tags="${entryTags.join(",")}"` : "";
+      const body = r.body?.slice(0, ENTRY_BODY_LIMIT) ?? "";
+      const entry = `<entry kind="${r.kind || "knowledge"}"${tagsAttr}>\n${body}\n</entry>`;
+      if (totalChars + entry.length > MAX_TOTAL) break;
+      entries.push(entry);
+      totalChars += entry.length;
     }
 
-    process.stdout.write(lines.join("\n"));
+    if (!entries.length) return;
+
+    const block = `<context-vault>\n${entries.join("\n")}\n</context-vault>\n`;
+    process.stdout.write(block);
   } catch {
     // fail silently — never interrupt the user's workflow
   } finally {
@@ -2174,6 +2216,38 @@ async function runFlush() {
       db?.close();
     } catch {}
   }
+}
+
+/**
+ * Copies all skills from the bundled assets/skills/ directory into ~/.claude/skills/.
+ * Returns an array of installed skill names.
+ */
+function installSkills() {
+  const assetsSkillsDir = join(ROOT, "assets", "skills");
+  const targetDir = join(HOME, ".claude", "skills");
+
+  if (!existsSync(assetsSkillsDir)) return [];
+
+  const skillNames = readdirSync(assetsSkillsDir).filter((name) => {
+    try {
+      return statSync(join(assetsSkillsDir, name)).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+
+  const installed = [];
+  for (const skillName of skillNames) {
+    const srcDir = join(assetsSkillsDir, skillName);
+    const destDir = join(targetDir, skillName);
+    mkdirSync(destDir, { recursive: true });
+    const files = readdirSync(srcDir);
+    for (const file of files) {
+      copyFileSync(join(srcDir, file), join(destDir, file));
+    }
+    installed.push(skillName);
+  }
+  return installed;
 }
 
 /** Returns the path to Claude Code's global settings.json */
@@ -2321,110 +2395,175 @@ function removeClaudeHook() {
   return true;
 }
 
-async function runHooks() {
+async function runSkills() {
   const sub = args[1];
 
   if (sub === "install") {
+    console.log();
     try {
-      const installed = installClaudeHook();
-      if (installed) {
-        console.log(`\n  ${green("✓")} Claude Code memory hook installed.\n`);
-        console.log(
-          dim(
-            "  On every prompt, context-vault searches your vault for relevant entries",
-          ),
-        );
-        console.log(
-          dim(
-            "  and injects them as additional context alongside Claude's native memory.",
-          ),
-        );
-        console.log(
-          dim(`\n  To remove: ${cyan("context-vault hooks remove")}`),
-        );
+      const names = installSkills();
+      if (names.length === 0) {
+        console.log(`  ${yellow("!")} No bundled skills found.\n`);
       } else {
-        console.log(`\n  ${yellow("!")} Hook already installed.\n`);
+        for (const name of names) {
+          console.log(
+            `  ${green("+")} ${name} — installed to ~/.claude/skills/${name}/`,
+          );
+        }
+        console.log();
+        console.log(dim("  Skills are active immediately in Claude Code."));
+        console.log(dim(`  Trigger with: /${names.join(", /")}`));
       }
     } catch (e) {
-      console.error(`\n  ${red("x")} Failed to install hook: ${e.message}\n`);
+      console.error(`  ${red("x")} Skills install failed: ${e.message}\n`);
       process.exit(1);
     }
     console.log();
+  } else {
+    console.log(`
+  ${bold("context-vault skills")} <install>
 
-    // Prompt for optional session auto-flush (SessionEnd) hook
-    const installFlush =
-      flags.has("--flush") ||
-      (await prompt(
-        "  Install session auto-flush hook? (runs context-vault flush at session end) (y/N):",
-        "n",
-      ));
-    const shouldInstallFlush =
-      installFlush === true ||
-      (typeof installFlush === "string" &&
-        installFlush.toLowerCase().startsWith("y"));
+  Manage bundled Claude Code skills.
 
-    if (shouldInstallFlush) {
-      try {
-        const flushInstalled = installSessionEndHook();
-        if (flushInstalled) {
-          console.log(
-            `\n  ${green("✓")} Session auto-flush hook installed (SessionEnd).\n`,
-          );
-          console.log(
-            dim(
-              "  At the end of each session, context-vault flush confirms the vault is healthy.",
-            ),
-          );
-        } else {
-          console.log(
-            `\n  ${yellow("!")} Session auto-flush hook already installed.\n`,
-          );
-        }
-      } catch (e) {
-        console.error(
-          `\n  ${red("x")} Failed to install session flush hook: ${e.message}\n`,
-        );
-        process.exit(1);
-      }
-      console.log();
+${bold("Commands:")}
+  ${cyan("skills install")}   Copy bundled skills into ~/.claude/skills/
+
+${bold("Bundled skills:")}
+  ${cyan("compile-context")}  Compile vault entries into a project brief using create_snapshot
+`);
+  }
+}
+
+async function runHooksInstall() {
+  try {
+    const installed = installClaudeHook();
+    if (installed) {
+      console.log(
+        `\n  ${green("✓")} Hook installed. Context vault will inject relevant entries on every prompt.\n`,
+      );
+      console.log(
+        dim(
+          "  On every prompt, context-vault searches your vault for relevant entries",
+        ),
+      );
+      console.log(
+        dim(
+          "  and injects them as a <context-vault> block before Claude sees your message.",
+        ),
+      );
+      console.log(
+        dim(`\n  To remove: ${cyan("context-vault hooks uninstall")}`),
+      );
+    } else {
+      console.log(`\n  ${yellow("!")} Hook already installed.\n`);
     }
-  } else if (sub === "remove") {
-    try {
-      const removed = removeClaudeHook();
-      if (removed) {
-        console.log(`\n  ${green("✓")} Claude Code memory hook removed.\n`);
-      } else {
-        console.log(`\n  ${yellow("!")} Hook not found — nothing to remove.\n`);
-      }
-    } catch (e) {
-      console.error(`\n  ${red("x")} Failed to remove hook: ${e.message}\n`);
-      process.exit(1);
-    }
+  } catch (e) {
+    console.error(`\n  ${red("x")} Failed to install hook: ${e.message}\n`);
+    process.exit(1);
+  }
+  console.log();
 
+  const installFlush =
+    flags.has("--flush") ||
+    (await prompt(
+      "  Install SessionEnd flush hook? (saves vault health summary at session end) (y/N):",
+      "n",
+    ));
+  const shouldInstallFlush =
+    installFlush === true ||
+    (typeof installFlush === "string" &&
+      installFlush.toLowerCase().startsWith("y"));
+
+  if (shouldInstallFlush) {
     try {
-      const flushRemoved = removeSessionEndHook();
-      if (flushRemoved) {
+      const flushInstalled = installSessionEndHook();
+      if (flushInstalled) {
+        console.log(`\n  ${green("✓")} SessionEnd flush hook installed.\n`);
         console.log(
-          `\n  ${green("✓")} Session auto-flush hook removed (SessionEnd).\n`,
+          dim(
+            "  At the end of each session, context-vault flush confirms the vault is healthy.",
+          ),
+        );
+      } else {
+        console.log(
+          `\n  ${yellow("!")} SessionEnd flush hook already installed.\n`,
         );
       }
     } catch (e) {
       console.error(
-        `\n  ${red("x")} Failed to remove session flush hook: ${e.message}\n`,
+        `\n  ${red("x")} Failed to install session flush hook: ${e.message}\n`,
       );
+      process.exit(1);
     }
+    console.log();
+  }
+}
+
+async function runHooksUninstall() {
+  try {
+    const removed = removeClaudeHook();
+    if (removed) {
+      console.log(`\n  ${green("✓")} Claude Code memory hook removed.\n`);
+    } else {
+      console.log(`\n  ${yellow("!")} Hook not found — nothing to remove.\n`);
+    }
+  } catch (e) {
+    console.error(`\n  ${red("x")} Failed to remove hook: ${e.message}\n`);
+    process.exit(1);
+  }
+
+  try {
+    const flushRemoved = removeSessionEndHook();
+    if (flushRemoved) {
+      console.log(`\n  ${green("✓")} SessionEnd flush hook removed.\n`);
+    }
+  } catch (e) {
+    console.error(
+      `\n  ${red("x")} Failed to remove session flush hook: ${e.message}\n`,
+    );
+  }
+}
+
+async function runHooks() {
+  const sub = args[1];
+
+  if (sub === "install") {
+    await runHooksInstall();
+  } else if (sub === "remove" || sub === "uninstall") {
+    await runHooksUninstall();
   } else {
     console.log(`
-  ${bold("context-vault hooks")} <install|remove>
+  ${bold("context-vault hooks")} <install|uninstall>
 
   Manage the Claude Code memory hook integration.
   When installed, context-vault automatically searches your vault on every user
-  prompt and injects relevant entries as additional context.
+  prompt and injects relevant entries as a <context-vault> XML block.
 
 ${bold("Commands:")}
-  ${cyan("hooks install")}   Write UserPromptSubmit hook to ~/.claude/settings.json
-                  Also prompts to install a SessionEnd auto-flush hook
-  ${cyan("hooks remove")}    Remove the recall hook and SessionEnd flush hook
+  ${cyan("hooks install")}     Write UserPromptSubmit hook to ~/.claude/settings.json
+                    Also prompts to install a SessionEnd flush hook
+  ${cyan("hooks uninstall")}   Remove the recall hook and SessionEnd flush hook
+`);
+  }
+}
+
+async function runClaude() {
+  const sub = args[1];
+
+  if (sub === "install") {
+    await runHooksInstall();
+  } else if (sub === "uninstall" || sub === "remove") {
+    await runHooksUninstall();
+  } else {
+    console.log(`
+  ${bold("context-vault claude")} <install|uninstall>
+
+  Manage the Claude Code memory hook integration.
+  Alias for ${cyan("context-vault hooks install|uninstall")}.
+
+${bold("Commands:")}
+  ${cyan("claude install")}     Write UserPromptSubmit hook to ~/.claude/settings.json
+  ${cyan("claude uninstall")}   Remove the recall hook and SessionEnd flush hook
 `);
   }
 }
@@ -2651,6 +2790,12 @@ async function main() {
       break;
     case "hooks":
       await runHooks();
+      break;
+    case "claude":
+      await runClaude();
+      break;
+    case "skills":
+      await runSkills();
       break;
     case "flush":
       await runFlush();

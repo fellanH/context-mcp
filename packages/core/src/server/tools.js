@@ -12,6 +12,7 @@ import * as submitFeedback from "./tools/submit-feedback.js";
 import * as ingestUrl from "./tools/ingest-url.js";
 import * as contextStatus from "./tools/context-status.js";
 import * as clearContext from "./tools/clear-context.js";
+import * as createSnapshot from "./tools/create-snapshot.js";
 
 const toolModules = [
   getContext,
@@ -22,6 +23,7 @@ const toolModules = [
   ingestUrl,
   contextStatus,
   clearContext,
+  createSnapshot,
 ];
 
 const TOOL_TIMEOUT_MS = 60_000;
