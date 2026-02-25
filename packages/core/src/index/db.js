@@ -63,7 +63,10 @@ export const SCHEMA_DDL = `
     body_encrypted  BLOB,
     title_encrypted BLOB,
     meta_encrypted  BLOB,
-    iv              BLOB
+    iv              BLOB,
+    hit_count       INTEGER DEFAULT 0,
+    last_accessed_at TEXT,
+    source_files    TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_vault_kind ON vault(kind);
@@ -151,13 +154,13 @@ export async function initDatabase(dbPath) {
 
     const freshDb = createDb(dbPath);
     freshDb.exec(SCHEMA_DDL);
-    freshDb.exec("PRAGMA user_version = 9");
+    freshDb.exec("PRAGMA user_version = 11");
     return freshDb;
   }
 
   if (version < 5) {
     db.exec(SCHEMA_DDL);
-    db.exec("PRAGMA user_version = 9");
+    db.exec("PRAGMA user_version = 11");
   } else if (version === 5) {
     // v5 -> v6 migration: add multi-tenancy + encryption columns
     // Wrapped in transaction with duplicate-column guards for idempotent retry
@@ -192,7 +195,9 @@ export async function initDatabase(dbPath) {
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_vault_superseded ON vault(superseded_by) WHERE superseded_by IS NOT NULL`,
       );
-      db.exec("PRAGMA user_version = 9");
+      addColumnSafe(`ALTER TABLE vault ADD COLUMN hit_count INTEGER DEFAULT 0`);
+      addColumnSafe(`ALTER TABLE vault ADD COLUMN last_accessed_at TEXT`);
+      db.exec("PRAGMA user_version = 10");
     });
   } else if (version === 6) {
     // v6 -> v7+v8+v9 migration: add team_id, updated_at, superseded_by columns
@@ -222,7 +227,17 @@ export async function initDatabase(dbPath) {
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_vault_superseded ON vault(superseded_by) WHERE superseded_by IS NOT NULL`,
       );
-      db.exec("PRAGMA user_version = 9");
+      try {
+        db.exec(`ALTER TABLE vault ADD COLUMN hit_count INTEGER DEFAULT 0`);
+      } catch (e) {
+        if (!e.message.includes("duplicate column")) throw e;
+      }
+      try {
+        db.exec(`ALTER TABLE vault ADD COLUMN last_accessed_at TEXT`);
+      } catch (e) {
+        if (!e.message.includes("duplicate column")) throw e;
+      }
+      db.exec("PRAGMA user_version = 10");
     });
   } else if (version === 7) {
     // v7 -> v8+v9 migration: add updated_at, superseded_by columns
@@ -246,7 +261,17 @@ export async function initDatabase(dbPath) {
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_vault_superseded ON vault(superseded_by) WHERE superseded_by IS NOT NULL`,
       );
-      db.exec("PRAGMA user_version = 9");
+      try {
+        db.exec(`ALTER TABLE vault ADD COLUMN hit_count INTEGER DEFAULT 0`);
+      } catch (e) {
+        if (!e.message.includes("duplicate column")) throw e;
+      }
+      try {
+        db.exec(`ALTER TABLE vault ADD COLUMN last_accessed_at TEXT`);
+      } catch (e) {
+        if (!e.message.includes("duplicate column")) throw e;
+      }
+      db.exec("PRAGMA user_version = 10");
     });
   } else if (version === 8) {
     // v8 -> v9 migration: add superseded_by column
@@ -261,6 +286,45 @@ export async function initDatabase(dbPath) {
       );
       db.exec("PRAGMA user_version = 9");
     });
+    // fall through to v9 migration
+    runTransaction(db, () => {
+      const addColumnSafe = (sql) => {
+        try {
+          db.exec(sql);
+        } catch (e) {
+          if (!e.message.includes("duplicate column")) throw e;
+        }
+      };
+      addColumnSafe(`ALTER TABLE vault ADD COLUMN hit_count INTEGER DEFAULT 0`);
+      addColumnSafe(`ALTER TABLE vault ADD COLUMN last_accessed_at TEXT`);
+      db.exec("PRAGMA user_version = 10");
+    });
+  } else if (version === 9) {
+    // v9 -> v10 migration: add hit_count + last_accessed_at columns
+    runTransaction(db, () => {
+      const addColumnSafe = (sql) => {
+        try {
+          db.exec(sql);
+        } catch (e) {
+          if (!e.message.includes("duplicate column")) throw e;
+        }
+      };
+      addColumnSafe(`ALTER TABLE vault ADD COLUMN hit_count INTEGER DEFAULT 0`);
+      addColumnSafe(`ALTER TABLE vault ADD COLUMN last_accessed_at TEXT`);
+      db.exec("PRAGMA user_version = 10");
+    });
+  }
+
+  if (version >= 5 && version <= 10) {
+    // v10 -> v11 migration: add source_files column for stale-linking
+    runTransaction(db, () => {
+      try {
+        db.exec(`ALTER TABLE vault ADD COLUMN source_files TEXT`);
+      } catch (e) {
+        if (!e.message.includes("duplicate column")) throw e;
+      }
+      db.exec("PRAGMA user_version = 11");
+    });
   }
 
   return db;
@@ -270,10 +334,10 @@ export function prepareStatements(db) {
   try {
     return {
       insertEntry: db.prepare(
-        `INSERT INTO vault (id, user_id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO vault (id, user_id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, source_files) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
       insertEntryEncrypted: db.prepare(
-        `INSERT INTO vault (id, user_id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, body_encrypted, title_encrypted, meta_encrypted, iv) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO vault (id, user_id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, body_encrypted, title_encrypted, meta_encrypted, iv, source_files) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
       updateEntry: db.prepare(
         `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, identity_key = ?, expires_at = ?, updated_at = datetime('now') WHERE file_path = ?`,
