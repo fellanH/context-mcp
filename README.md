@@ -91,7 +91,7 @@ Config: `~/.context-mcp/config.json`. Env vars: `CONTEXT_VAULT_VAULT_DIR`, `CONT
 
 ## Requirements
 
-Node.js 20+. No daemon — your AI client spawns the server when a session starts.
+Node.js 24+. No daemon — your AI client spawns the server when a session starts.
 
 ## Troubleshooting
 
