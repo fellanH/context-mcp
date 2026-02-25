@@ -7,9 +7,17 @@
  * Agent Constraint: Read-only access to DB. Never writes.
  */
 
-const FTS_WEIGHT = 0.4;
-const VEC_WEIGHT = 0.6;
 const NEAR_DUP_THRESHOLD = 0.92;
+
+const RRF_K = 60;
+
+const MMR_LAMBDA = 0.7;
+
+const FTS_WEIGHT = 0.35;
+const VEC_WEIGHT = 0.25;
+const RECENCY_WEIGHT = 0.2;
+const RECENCY_DECAY_RATE = 0.05;
+const FREQ_WEIGHT = 0.13;
 
 /**
  * Dot product of two Float32Array vectors (cosine similarity for unit vectors).
@@ -49,6 +57,21 @@ export function recencyBoost(createdAt, category, decayDays = 30) {
   if (category !== "event") return 1.0;
   const ageDays = (Date.now() - new Date(createdAt).getTime()) / 86400000;
   return 1 / (1 + ageDays / decayDays);
+}
+
+/**
+ * Exponential recency decay score based on updated_at.
+ * Score = exp(-decayRate * daysSinceUpdate), normalized to [0, 1].
+ * Entries without updated_at receive a neutral score of 0.5.
+ *
+ * @param {string|null} updatedAt - ISO date string
+ * @param {number} decayRate - default RECENCY_DECAY_RATE (0.05)
+ * @returns {number} score in [0, 1]
+ */
+export function recencyDecayScore(updatedAt, decayRate = RECENCY_DECAY_RATE) {
+  if (!updatedAt) return 0.5;
+  const daysSince = (Date.now() - new Date(updatedAt).getTime()) / 86400000;
+  return Math.exp(-decayRate * Math.max(0, daysSince));
 }
 
 /**
@@ -235,9 +258,21 @@ export async function hybridSearch(
     }
   }
 
-  // Apply category-aware recency boost
+  // Apply category-aware recency boost and additive recency decay
   for (const [, entry] of results) {
     entry.score *= recencyBoost(entry.created_at, entry.category, decayDays);
+    entry.score += recencyDecayScore(entry.updated_at) * RECENCY_WEIGHT;
+  }
+
+  // Frequency signal: log(1 + hit_count) / log(1 + max_hit_count)
+  const allEntries = [...results.values()];
+  const maxHitCount = Math.max(...allEntries.map((e) => e.hit_count || 0), 0);
+  if (maxHitCount > 0) {
+    const logMax = Math.log(1 + maxHitCount);
+    for (const entry of allEntries) {
+      entry.score +=
+        (Math.log(1 + (entry.hit_count || 0)) / logMax) * FREQ_WEIGHT;
+    }
   }
 
   const sorted = [...results.values()].sort((a, b) => b.score - a.score);

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   buildFtsQuery,
   recencyBoost,
+  recencyDecayScore,
   buildFilterClauses,
   hybridSearch,
   dotProduct,
@@ -102,6 +103,48 @@ describe("recencyBoost", () => {
     const oldDate = "2020-01-01T00:00:00Z";
     expect(recencyBoost(oldDate, null)).toBe(1.0);
     expect(recencyBoost(oldDate, undefined)).toBe(1.0);
+  });
+});
+
+// ─── recencyDecayScore ──────────────────────────────────────────────────────
+
+describe("recencyDecayScore", () => {
+  it("returns ~1.0 for an entry updated just now", () => {
+    const now = new Date().toISOString();
+    expect(recencyDecayScore(now)).toBeCloseTo(1.0, 2);
+  });
+
+  it("returns ~0.5 for an entry updated ~14 days ago (decay_rate=0.05)", () => {
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
+    const score = recencyDecayScore(fourteenDaysAgo, 0.05);
+    expect(score).toBeCloseTo(Math.exp(-0.05 * 14), 2);
+  });
+
+  it("returns 0.5 for null updatedAt (neutral score)", () => {
+    expect(recencyDecayScore(null)).toBe(0.5);
+  });
+
+  it("returns 0.5 for undefined updatedAt (neutral score)", () => {
+    expect(recencyDecayScore(undefined)).toBe(0.5);
+  });
+
+  it("returns a lower score for older entries", () => {
+    const recent = new Date(Date.now() - 5 * 86400000).toISOString();
+    const old = new Date(Date.now() - 60 * 86400000).toISOString();
+    expect(recencyDecayScore(recent)).toBeGreaterThan(recencyDecayScore(old));
+  });
+
+  it("score is in [0, 1] range", () => {
+    const dates = [
+      new Date().toISOString(),
+      new Date(Date.now() - 30 * 86400000).toISOString(),
+      new Date(Date.now() - 365 * 86400000).toISOString(),
+    ];
+    for (const d of dates) {
+      const score = recencyDecayScore(d);
+      expect(score).toBeGreaterThanOrEqual(0);
+      expect(score).toBeLessThanOrEqual(1);
+    }
   });
 });
 
