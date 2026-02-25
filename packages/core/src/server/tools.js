@@ -13,6 +13,7 @@ import * as ingestUrl from "./tools/ingest-url.js";
 import * as contextStatus from "./tools/context-status.js";
 import * as clearContext from "./tools/clear-context.js";
 import * as createSnapshot from "./tools/create-snapshot.js";
+import * as sessionStart from "./tools/session-start.js";
 
 const toolModules = [
   getContext,
@@ -24,6 +25,7 @@ const toolModules = [
   contextStatus,
   clearContext,
   createSnapshot,
+  sessionStart,
 ];
 
 const TOOL_TIMEOUT_MS = 60_000;
