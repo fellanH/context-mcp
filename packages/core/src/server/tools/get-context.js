@@ -135,6 +135,12 @@ export const inputSchema = {
     .describe(
       "If true, compare results for contradicting entries and append a conflicts array. Flags superseded entries still in results and stale duplicates (same kind+tags, updated_at >7 days apart). No LLM calls — pure DB logic.",
     ),
+  max_tokens: z
+    .number()
+    .optional()
+    .describe(
+      "Limit output to entries that fit within this token budget (rough estimate: 1 token ≈ 4 chars). Entries are packed greedily by relevance rank. At least 1 result is always returned. Response metadata includes tokens_used and tokens_budget.",
+    ),
 };
 
 /**
@@ -154,6 +160,7 @@ export async function handler(
     limit,
     include_superseded,
     detect_conflicts,
+    max_tokens,
   },
   ctx,
   { ensureIndexed, reindexFailed },
@@ -315,6 +322,25 @@ export async function handler(
     }
   }
 
+  // Token-budgeted packing
+  let tokensBudget = null;
+  let tokensUsed = null;
+  if (max_tokens != null && max_tokens > 0) {
+    tokensBudget = max_tokens;
+    const packed = [];
+    let used = 0;
+    for (const entry of filtered) {
+      const entryTokens = Math.ceil((entry.body?.length || 0) / 4);
+      if (packed.length === 0 || used + entryTokens <= tokensBudget) {
+        packed.push(entry);
+        used += entryTokens;
+      }
+      if (used >= tokensBudget) break;
+    }
+    tokensUsed = used;
+    filtered = packed;
+  }
+
   // Conflict detection
   const conflicts = detect_conflicts ? detectConflicts(filtered, ctx) : [];
 
@@ -329,6 +355,11 @@ export async function handler(
     );
   const heading = hasQuery ? `Results for "${query}"` : "Filtered entries";
   lines.push(`## ${heading} (${filtered.length} matches)\n`);
+  if (tokensBudget != null) {
+    lines.push(
+      `> Token budget: ${tokensUsed} / ${tokensBudget} tokens used.\n`,
+    );
+  }
   if (autoWindowed) {
     const days = config.eventDecayDays || 30;
     lines.push(
@@ -374,5 +405,9 @@ export async function handler(
     }
   }
 
-  return ok(lines.join("\n"));
+  const result = ok(lines.join("\n"));
+  if (tokensBudget != null) {
+    result._meta = { tokens_used: tokensUsed, tokens_budget: tokensBudget };
+  }
+  return result;
 }
