@@ -27,6 +27,7 @@ export function writeEntry(
     identity_key,
     expires_at,
     supersedes,
+    source_files,
     userId,
   },
 ) {
@@ -103,6 +104,7 @@ export function writeEntry(
     identity_key,
     expires_at,
     supersedes,
+    source_files: source_files || null,
     userId: userId || null,
   };
 }
@@ -134,6 +136,12 @@ export function updateEntryFile(ctx, existing, updates) {
     updates.supersedes !== undefined
       ? updates.supersedes
       : fmMeta.supersedes || null;
+  const source_files =
+    updates.source_files !== undefined
+      ? updates.source_files
+      : existing.source_files
+        ? JSON.parse(existing.source_files)
+        : null;
 
   let mergedMeta;
   if (updates.meta !== undefined) {
@@ -179,6 +187,7 @@ export function updateEntryFile(ctx, existing, updates) {
     identity_key: existing.identity_key,
     expires_at,
     supersedes,
+    source_files: source_files || null,
     userId: existing.user_id || null,
   };
 }

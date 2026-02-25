@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { hybridSearch } from "../../retrieve/index.js";
 import { categoryFor } from "../../core/categories.js";
 import { normalizeKind } from "../../core/files.js";
@@ -84,6 +87,47 @@ export function detectConflicts(entries, _ctx) {
   }
 
   return conflicts;
+}
+
+/**
+ * Check if an entry's source files have changed since the entry was saved.
+ * Returns { stale: true, stale_reason } if stale, or null if fresh.
+ * Best-effort: any read/parse failure returns null (no crash).
+ *
+ * @param {object} entry - DB row with source_files JSON column
+ * @returns {{ stale: boolean, stale_reason: string } | null}
+ */
+function checkStaleness(entry) {
+  if (!entry.source_files) return null;
+  let sourceFiles;
+  try {
+    sourceFiles = JSON.parse(entry.source_files);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(sourceFiles) || sourceFiles.length === 0) return null;
+
+  for (const sf of sourceFiles) {
+    try {
+      const absPath = sf.path.startsWith("/")
+        ? sf.path
+        : resolve(process.cwd(), sf.path);
+      if (!existsSync(absPath)) {
+        return { stale: true, stale_reason: "source file not found" };
+      }
+      const contents = readFileSync(absPath);
+      const currentHash = createHash("sha256").update(contents).digest("hex");
+      if (currentHash !== sf.hash) {
+        return {
+          stale: true,
+          stale_reason: "source file modified since observation",
+        };
+      }
+    } catch {
+      // skip this file on any error — best-effort
+    }
+  }
+  return null;
 }
 
 export const name = "get_context";
@@ -384,6 +428,12 @@ export async function handler(
     lines.push(
       `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · ${dateStr} · id: \`${r.id}\``,
     );
+    const stalenessResult = checkStaleness(r);
+    if (stalenessResult) {
+      r.stale = true;
+      r.stale_reason = stalenessResult.stale_reason;
+      lines.push(`> ⚠ **Stale**: ${stalenessResult.stale_reason}`);
+    }
     lines.push(r.body?.slice(0, 300) + (r.body?.length > 300 ? "..." : ""));
     lines.push("");
   }

@@ -214,6 +214,19 @@ export const inputSchema = {
     .describe(
       "Array of entry IDs that this entry supersedes/replaces. Those entries will be marked with superseded_by pointing to this new entry and excluded from future search results by default.",
     ),
+  source_files: z
+    .array(
+      z.object({
+        path: z.string().describe("File path (absolute or relative to cwd)"),
+        hash: z
+          .string()
+          .describe("SHA-256 hash of the file contents at observation time"),
+      }),
+    )
+    .optional()
+    .describe(
+      "Source code files this entry is derived from. When these files change (hash mismatch), the entry will be flagged as stale in get_context results.",
+    ),
   dry_run: z
     .boolean()
     .optional()
@@ -248,6 +261,7 @@ export async function handler(
     identity_key,
     expires_at,
     supersedes,
+    source_files,
     dry_run,
     similarity_threshold,
   },
@@ -313,6 +327,7 @@ export async function handler(
       source,
       expires_at,
       supersedes,
+      source_files,
     });
     await indexEntry(ctx, entry);
     const relPath = entry.filePath
@@ -397,6 +412,7 @@ export async function handler(
     identity_key,
     expires_at,
     supersedes,
+    source_files,
     userId,
   });
 

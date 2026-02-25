@@ -46,6 +46,7 @@ export async function indexEntry(
     createdAt,
     identity_key,
     expires_at,
+    source_files,
     userId,
   },
 ) {
@@ -56,6 +57,7 @@ export async function indexEntry(
 
   const tagsJson = tags ? JSON.stringify(tags) : null;
   const metaJson = meta ? JSON.stringify(meta) : null;
+  const sourceFilesJson = source_files ? JSON.stringify(source_files) : null;
   const cat = category || categoryFor(kind);
   const userIdVal = userId || null;
 
@@ -78,6 +80,7 @@ export async function indexEntry(
         cat,
         filePath,
         expires_at || null,
+        sourceFilesJson,
         kind,
         identity_key,
         userIdVal,
@@ -116,6 +119,7 @@ export async function indexEntry(
           encrypted.title_encrypted,
           encrypted.meta_encrypted,
           encrypted.iv,
+          sourceFilesJson,
         );
       } else {
         ctx.stmts.insertEntry.run(
@@ -133,6 +137,7 @@ export async function indexEntry(
           expires_at || null,
           createdAt,
           createdAt,
+          sourceFilesJson,
         );
       }
     } catch (e) {
@@ -148,6 +153,16 @@ export async function indexEntry(
           expires_at || null,
           filePath,
         );
+        if (sourceFilesJson !== null && ctx.stmts.updateSourceFiles) {
+          const entryRow = ctx.stmts.getRowidByPath.get(filePath);
+          if (entryRow) {
+            const idRow = ctx.db
+              .prepare("SELECT id FROM vault WHERE file_path = ?")
+              .get(filePath);
+            if (idRow)
+              ctx.stmts.updateSourceFiles.run(sourceFilesJson, idRow.id);
+          }
+        }
         wasUpdate = true;
       } else {
         throw e;

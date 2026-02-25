@@ -350,7 +350,10 @@ export function prepareStatements(db) {
         `SELECT * FROM vault WHERE kind = ? AND identity_key = ? AND user_id IS ?`,
       ),
       upsertByIdentityKey: db.prepare(
-        `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, file_path = ?, expires_at = ?, updated_at = datetime('now') WHERE kind = ? AND identity_key = ? AND user_id IS ?`,
+        `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, file_path = ?, expires_at = ?, source_files = ?, updated_at = datetime('now') WHERE kind = ? AND identity_key = ? AND user_id IS ?`,
+      ),
+      updateSourceFiles: db.prepare(
+        `UPDATE vault SET source_files = ? WHERE id = ?`,
       ),
       insertVecStmt: db.prepare(
         `INSERT INTO vault_vec (rowid, embedding) VALUES (?, ?)`,
