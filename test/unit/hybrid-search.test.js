@@ -3,6 +3,9 @@ import {
   buildFtsQuery,
   recencyBoost,
   recencyDecayScore,
+  reciprocalRankFusion,
+  jaccardSimilarity,
+  maximalMarginalRelevance,
   buildFilterClauses,
   hybridSearch,
   dotProduct,
@@ -245,6 +248,156 @@ describe("dotProduct", () => {
     const a = new Float32Array([1, 2, 3]);
     const b = new Float32Array([4, 5, 6]);
     expect(dotProduct(a, b)).toBeCloseTo(32.0);
+  });
+});
+
+// ─── reciprocalRankFusion ────────────────────────────────────────────────────
+
+describe("reciprocalRankFusion", () => {
+  it("scores a document higher when it appears in both lists", () => {
+    const list1 = ["a", "b", "c"];
+    const list2 = ["b", "a", "d"];
+    const scores = reciprocalRankFusion([list1, list2]);
+    // "a" is rank 0 in list1, rank 1 in list2 → 1/61 + 1/62
+    // "b" is rank 1 in list1, rank 0 in list2 → 1/62 + 1/61
+    expect(scores.get("a")).toBeCloseTo(scores.get("b"), 5);
+    // "c" only in list1, "d" only in list2
+    expect(scores.get("a")).toBeGreaterThan(scores.get("c"));
+    expect(scores.get("a")).toBeGreaterThan(scores.get("d"));
+  });
+
+  it("assigns lower score to lower-ranked documents", () => {
+    const list = ["first", "second", "third"];
+    const scores = reciprocalRankFusion([list]);
+    expect(scores.get("first")).toBeGreaterThan(scores.get("second"));
+    expect(scores.get("second")).toBeGreaterThan(scores.get("third"));
+  });
+
+  it("handles empty lists", () => {
+    const scores = reciprocalRankFusion([[], []]);
+    expect(scores.size).toBe(0);
+  });
+
+  it("handles single list with single item", () => {
+    const scores = reciprocalRankFusion([["only"]]);
+    expect(scores.get("only")).toBeCloseTo(1 / 61);
+  });
+
+  it("applies custom k constant", () => {
+    const list = ["a"];
+    const scores = reciprocalRankFusion([list], 0);
+    expect(scores.get("a")).toBeCloseTo(1 / 1);
+  });
+});
+
+// ─── jaccardSimilarity ───────────────────────────────────────────────────────
+
+describe("jaccardSimilarity", () => {
+  it("returns 1.0 for identical strings", () => {
+    expect(jaccardSimilarity("hello world", "hello world")).toBeCloseTo(1.0);
+  });
+
+  it("returns 0.0 for completely different strings", () => {
+    expect(jaccardSimilarity("hello", "world")).toBeCloseTo(0);
+  });
+
+  it("returns partial score for partial overlap", () => {
+    const sim = jaccardSimilarity("the quick brown fox", "the slow brown dog");
+    expect(sim).toBeGreaterThan(0);
+    expect(sim).toBeLessThan(1);
+  });
+
+  it("is case-insensitive", () => {
+    const sim1 = jaccardSimilarity("Hello World", "hello world");
+    expect(sim1).toBeCloseTo(1.0);
+  });
+
+  it("returns 1 for two empty strings", () => {
+    expect(jaccardSimilarity("", "")).toBeCloseTo(1.0);
+  });
+
+  it("returns 0 when one string is empty", () => {
+    expect(jaccardSimilarity("hello", "")).toBeCloseTo(0);
+  });
+});
+
+// ─── maximalMarginalRelevance ─────────────────────────────────────────────────
+
+describe("maximalMarginalRelevance", () => {
+  it("returns empty array for empty candidates", () => {
+    const result = maximalMarginalRelevance([], new Map(), new Map(), 5);
+    expect(result).toHaveLength(0);
+  });
+
+  it("selects the most relevant candidate first", () => {
+    const candidates = [
+      { id: "low", title: "low", body: "low relevance" },
+      { id: "high", title: "high", body: "high relevance" },
+    ];
+    const querySimMap = new Map([
+      ["low", 0.2],
+      ["high", 0.9],
+    ]);
+    const embeddingMap = new Map();
+    const result = maximalMarginalRelevance(
+      candidates,
+      querySimMap,
+      embeddingMap,
+      2,
+    );
+    expect(result[0].id).toBe("high");
+  });
+
+  it("penalises redundant candidates using Jaccard fallback", () => {
+    const candidates = [
+      {
+        id: "a",
+        title: "SQLite WAL",
+        body: "WAL mode concurrent reads writes SQLite",
+      },
+      {
+        id: "b",
+        title: "SQLite WAL",
+        body: "WAL mode concurrent reads writes SQLite identical",
+      },
+      { id: "c", title: "React hooks", body: "useState useEffect React hooks" },
+    ];
+    const querySimMap = new Map([
+      ["a", 0.9],
+      ["b", 0.85],
+      ["c", 0.7],
+    ]);
+    const embeddingMap = new Map();
+    const result = maximalMarginalRelevance(
+      candidates,
+      querySimMap,
+      embeddingMap,
+      2,
+    );
+    // "a" is selected first (highest relevance).
+    // "b" is very similar to "a" (Jaccard), so "c" should be preferred for slot 2.
+    expect(result[0].id).toBe("a");
+    expect(result[1].id).toBe("c");
+  });
+
+  it("respects n limit", () => {
+    const candidates = [
+      { id: "1", title: "one", body: "one" },
+      { id: "2", title: "two", body: "two" },
+      { id: "3", title: "three", body: "three" },
+    ];
+    const querySimMap = new Map([
+      ["1", 0.9],
+      ["2", 0.8],
+      ["3", 0.7],
+    ]);
+    const result = maximalMarginalRelevance(
+      candidates,
+      querySimMap,
+      new Map(),
+      2,
+    );
+    expect(result).toHaveLength(2);
   });
 });
 
