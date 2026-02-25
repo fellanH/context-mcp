@@ -9,6 +9,30 @@ import { ok, err } from "../helpers.js";
 import { isEmbedAvailable } from "../../index/embed.js";
 
 const STALE_DUPLICATE_DAYS = 7;
+const DEFAULT_PIVOT_COUNT = 2;
+const SKELETON_BODY_CHARS = 100;
+
+/**
+ * Truncate a body string to ~SKELETON_BODY_CHARS, breaking at sentence or
+ * word boundary. Returns the truncated string with "..." appended.
+ */
+export function skeletonBody(body) {
+  if (!body) return "";
+  if (body.length <= SKELETON_BODY_CHARS) return body;
+  const slice = body.slice(0, SKELETON_BODY_CHARS);
+  const sentenceEnd = Math.max(
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf(".\n"),
+  );
+  if (sentenceEnd > SKELETON_BODY_CHARS * 0.4) {
+    return slice.slice(0, sentenceEnd + 1) + "...";
+  }
+  const wordEnd = slice.lastIndexOf(" ");
+  if (wordEnd > SKELETON_BODY_CHARS * 0.4) {
+    return slice.slice(0, wordEnd) + "...";
+  }
+  return slice + "...";
+}
 
 /**
  * Detect conflicts among a set of search result entries.
@@ -185,6 +209,12 @@ export const inputSchema = {
     .describe(
       "Limit output to entries that fit within this token budget (rough estimate: 1 token ≈ 4 chars). Entries are packed greedily by relevance rank. At least 1 result is always returned. Response metadata includes tokens_used and tokens_budget.",
     ),
+  pivot_count: z
+    .number()
+    .optional()
+    .describe(
+      "Skeleton mode: top pivot_count entries by relevance are returned with full body. Remaining entries are returned as skeletons (title + tags + first ~100 chars of body). Default: 2. Set to 0 to skeleton all results, or a high number to disable.",
+    ),
 };
 
 /**
@@ -205,6 +235,7 @@ export async function handler(
     include_superseded,
     detect_conflicts,
     max_tokens,
+    pivot_count,
   },
   ctx,
   { ensureIndexed, reindexFailed },
@@ -385,6 +416,9 @@ export async function handler(
     filtered = packed;
   }
 
+  // Skeleton mode: determine pivot threshold
+  const effectivePivot = pivot_count != null ? pivot_count : DEFAULT_PIVOT_COUNT;
+
   // Conflict detection
   const conflicts = detect_conflicts ? detectConflicts(filtered, ctx) : [];
 
@@ -412,21 +446,23 @@ export async function handler(
   }
   for (let i = 0; i < filtered.length; i++) {
     const r = filtered[i];
+    const isSkeleton = i >= effectivePivot;
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
     const tagStr = entryTags.length ? entryTags.join(", ") : "none";
     const relPath =
       r.file_path && config.vaultDir
         ? r.file_path.replace(config.vaultDir + "/", "")
         : r.file_path || "n/a";
+    const skeletonLabel = isSkeleton ? " ⊘ skeleton" : "";
     lines.push(
-      `### [${i + 1}/${filtered.length}] ${r.title || "(untitled)"} [${r.kind}/${r.category}]`,
+      `### [${i + 1}/${filtered.length}] ${r.title || "(untitled)"} [${r.kind}/${r.category}]${skeletonLabel}`,
     );
     const dateStr =
       r.updated_at && r.updated_at !== r.created_at
         ? `${r.created_at} (updated ${r.updated_at})`
         : r.created_at || "";
     lines.push(
-      `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · ${dateStr} · id: \`${r.id}\``,
+      `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · ${dateStr} · skeleton: ${isSkeleton} · id: \`${r.id}\``,
     );
     const stalenessResult = checkStaleness(r);
     if (stalenessResult) {
@@ -434,7 +470,11 @@ export async function handler(
       r.stale_reason = stalenessResult.stale_reason;
       lines.push(`> ⚠ **Stale**: ${stalenessResult.stale_reason}`);
     }
-    lines.push(r.body?.slice(0, 300) + (r.body?.length > 300 ? "..." : ""));
+    if (isSkeleton) {
+      lines.push(skeletonBody(r.body));
+    } else {
+      lines.push(r.body?.slice(0, 300) + (r.body?.length > 300 ? "..." : ""));
+    }
     lines.push("");
   }
 

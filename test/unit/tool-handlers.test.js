@@ -402,6 +402,172 @@ describe("get_context handler", () => {
   }, 30000);
 });
 
+// ─── skeletonBody (unit) ──────────────────────────────────────────────────────
+
+import { skeletonBody } from "../../packages/core/src/server/tools/get-context.js";
+
+describe("skeletonBody", () => {
+  it("returns empty string for null/undefined body", () => {
+    expect(skeletonBody(null)).toBe("");
+    expect(skeletonBody(undefined)).toBe("");
+    expect(skeletonBody("")).toBe("");
+  });
+
+  it("returns full body when under 100 chars", () => {
+    const short = "This is a short body.";
+    expect(skeletonBody(short)).toBe(short);
+  });
+
+  it("truncates at sentence boundary when possible", () => {
+    const body =
+      "First sentence is complete. Second sentence has more detail about the topic that goes on and on past the limit.";
+    const result = skeletonBody(body);
+    expect(result).toContain("First sentence is complete.");
+    expect(result.endsWith("...")).toBe(true);
+    expect(result.length).toBeLessThan(body.length);
+  });
+
+  it("truncates at word boundary when no sentence boundary", () => {
+    const body = "A " + "word ".repeat(25);
+    const result = skeletonBody(body);
+    expect(result.endsWith("...")).toBe(true);
+    expect(result).not.toMatch(/\s\.\.\.$/);
+  });
+
+  it("hard-truncates at 100 chars when no good boundary", () => {
+    const body = "x".repeat(200);
+    const result = skeletonBody(body);
+    expect(result).toBe("x".repeat(100) + "...");
+  });
+});
+
+// ─── get_context skeleton mode ───────────────────────────────────────────────
+
+describe("get_context skeleton mode", () => {
+  let ctx, cleanup;
+
+  beforeAll(async () => {
+    ({ ctx, cleanup } = await createTestCtx());
+    for (let i = 1; i <= 5; i++) {
+      await captureAndIndex(ctx, {
+        kind: "insight",
+        title: `Skeleton test entry ${i}`,
+        body: `Entry number ${i} has a moderately long body. It contains multiple sentences about the topic. This is sentence three with additional detail that pushes it well past the skeleton truncation threshold of about one hundred characters.`,
+        tags: ["skeleton-test"],
+        source: "test",
+      });
+    }
+  }, 60000);
+
+  afterAll(() => cleanup());
+
+  it("applies default pivot_count=2: first 2 full, rest skeleton", async () => {
+    const result = await getContextTool.handler(
+      { kind: "insight", limit: 5 },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    const skeletonMatches = text.match(/skeleton: true/g) || [];
+    const fullMatches = text.match(/skeleton: false/g) || [];
+    expect(fullMatches.length).toBe(2);
+    expect(skeletonMatches.length).toBe(3);
+  }, 30000);
+
+  it("marks skeleton entries with skeleton label in heading", async () => {
+    const result = await getContextTool.handler(
+      { kind: "insight", limit: 5 },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toContain("skeleton");
+    const skeletonLabels = text.match(/⊘ skeleton/g) || [];
+    expect(skeletonLabels.length).toBe(3);
+  }, 30000);
+
+  it("skeleton entries have truncated body (~100 chars)", async () => {
+    const result = await getContextTool.handler(
+      { kind: "insight", limit: 5 },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    const sections = text.split("###").filter((s) => s.includes("skeleton: true"));
+    for (const section of sections) {
+      const lines = section.split("\n").filter((l) => l.trim());
+      const bodyLine = lines.find(
+        (l) => !l.startsWith("[") && !l.match(/^\d+\.\d+/) && !l.startsWith(">") && l.length > 5,
+      );
+      if (bodyLine) {
+        expect(bodyLine.length).toBeLessThanOrEqual(120);
+      }
+    }
+  }, 30000);
+
+  it("pivot_count=0 skeletons all entries", async () => {
+    const result = await getContextTool.handler(
+      { kind: "insight", limit: 5, pivot_count: 0 },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    const fullMatches = text.match(/skeleton: false/g) || [];
+    expect(fullMatches.length).toBe(0);
+    const skeletonMatches = text.match(/skeleton: true/g) || [];
+    expect(skeletonMatches.length).toBe(5);
+  }, 30000);
+
+  it("pivot_count larger than result count returns all full", async () => {
+    const result = await getContextTool.handler(
+      { kind: "insight", limit: 5, pivot_count: 100 },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    const skeletonMatches = text.match(/skeleton: true/g) || [];
+    expect(skeletonMatches.length).toBe(0);
+    const fullMatches = text.match(/skeleton: false/g) || [];
+    expect(fullMatches.length).toBe(5);
+  }, 30000);
+
+  it("pivot_count=1 returns only first entry full, rest skeleton", async () => {
+    const result = await getContextTool.handler(
+      { kind: "insight", limit: 3, pivot_count: 1 },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    const fullMatches = text.match(/skeleton: false/g) || [];
+    const skeletonMatches = text.match(/skeleton: true/g) || [];
+    expect(fullMatches.length).toBe(1);
+    expect(skeletonMatches.length).toBe(2);
+  }, 30000);
+
+  it("works with max_tokens and pivot_count together", async () => {
+    const result = await getContextTool.handler(
+      { kind: "insight", limit: 5, pivot_count: 1, max_tokens: 10000 },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toContain("Token budget:");
+    expect(text).toContain("skeleton: true");
+    expect(text).toContain("skeleton: false");
+  }, 30000);
+
+  it("works with query-based search", async () => {
+    const result = await getContextTool.handler(
+      { query: "skeleton test entry", pivot_count: 1, limit: 5 },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    const fullMatches = text.match(/skeleton: false/g) || [];
+    expect(fullMatches.length).toBe(1);
+  }, 30000);
+});
+
 // ─── detect_conflicts ─────────────────────────────────────────────────────────
 
 describe("get_context detect_conflicts", () => {
