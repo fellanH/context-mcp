@@ -2156,20 +2156,29 @@ async function runRecall() {
     const stmts = prepareStatements(db);
     const ctx = { db, config, stmts, embed };
 
-    const results = await hybridSearch(ctx, query, { limit: 5 });
-    if (!results.length) return;
+    const rc = config.recall || {};
+    const maxResults = rc.maxResults ?? 5;
+    const minScore = rc.minScore ?? 0.15;
+    const maxTotal = rc.maxOutputChars ?? 2000;
+    const bodyLimit = rc.bodyTruncateChars ?? 400;
+    const excludeKinds = rc.excludeKinds ?? [];
 
-    const MAX_TOTAL = 2000;
-    const ENTRY_BODY_LIMIT = 400;
+    const allResults = await hybridSearch(ctx, query, { limit: maxResults + 3 });
+    const filtered = allResults
+      .filter((r) => r.score >= minScore)
+      .filter((r) => !excludeKinds.includes(r.kind))
+      .slice(0, maxResults);
+    if (!filtered.length) return;
+
     const entries = [];
     let totalChars = 0;
 
-    for (const r of results) {
+    for (const r of filtered) {
       const entryTags = r.tags ? JSON.parse(r.tags) : [];
       const tagsAttr = entryTags.length ? ` tags="${entryTags.join(",")}"` : "";
-      const body = r.body?.slice(0, ENTRY_BODY_LIMIT) ?? "";
+      const body = r.body?.slice(0, bodyLimit) ?? "";
       const entry = `<entry kind="${r.kind || "knowledge"}"${tagsAttr}>\n${body}\n</entry>`;
-      if (totalChars + entry.length > MAX_TOTAL) break;
+      if (totalChars + entry.length > maxTotal) break;
       entries.push(entry);
       totalChars += entry.length;
     }

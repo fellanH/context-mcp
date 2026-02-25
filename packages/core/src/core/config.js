@@ -73,6 +73,7 @@ export function resolveConfig() {
           };
       }
       if (fc.telemetry != null) config.telemetry = fc.telemetry === true;
+      if (fc.recall) config.recall = fc.recall;
       // Hosted account linking (Phase 4)
       if (fc.hostedUrl) config.hostedUrl = fc.hostedUrl;
       if (fc.apiKey) config.apiKey = fc.apiKey;
