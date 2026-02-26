@@ -240,6 +240,7 @@ ${bold("Commands:")}
   ${cyan("skills")} install          Install bundled Claude Code skills
   ${cyan("flush")}                 Check vault health and confirm DB is accessible
   ${cyan("recall")}                Search vault from a Claude Code hook (reads stdin)
+  ${cyan("session-capture")}       Save a session summary entry (reads JSON from stdin)
   ${cyan("reindex")}               Rebuild search index from knowledge files
   ${cyan("prune")}                 Remove expired entries (use --dry-run to preview)
   ${cyan("status")}                Show vault diagnostics
@@ -2156,20 +2157,27 @@ async function runRecall() {
     const stmts = prepareStatements(db);
     const ctx = { db, config, stmts, embed };
 
-    const results = await hybridSearch(ctx, query, { limit: 5 });
+    const { categoryFor } = await import("@context-vault/core/core/categories");
+    const recall = config.recall;
+
+    const results = await hybridSearch(ctx, query, {
+      limit: recall.maxResults,
+    });
     if (!results.length) return;
 
-    const MAX_TOTAL = 2000;
-    const ENTRY_BODY_LIMIT = 400;
     const entries = [];
     let totalChars = 0;
 
     for (const r of results) {
+      if (r.score != null && r.score < recall.minRelevanceScore) continue;
+      const kind = r.kind || "knowledge";
+      if (recall.excludeKinds.includes(kind)) continue;
+      if (recall.excludeCategories.includes(categoryFor(kind))) continue;
       const entryTags = r.tags ? JSON.parse(r.tags) : [];
       const tagsAttr = entryTags.length ? ` tags="${entryTags.join(",")}"` : "";
-      const body = r.body?.slice(0, ENTRY_BODY_LIMIT) ?? "";
-      const entry = `<entry kind="${r.kind || "knowledge"}"${tagsAttr}>\n${body}\n</entry>`;
-      if (totalChars + entry.length > MAX_TOTAL) break;
+      const body = r.body?.slice(0, recall.bodyTruncateChars) ?? "";
+      const entry = `<entry kind="${kind}"${tagsAttr}>\n${body}\n</entry>`;
+      if (totalChars + entry.length > recall.maxOutputBytes) break;
       entries.push(entry);
       totalChars += entry.length;
     }
@@ -2211,6 +2219,57 @@ async function runFlush() {
   } catch (e) {
     console.error(red(`context-vault flush failed: ${e.message}`));
     process.exit(1);
+  } finally {
+    try {
+      db?.close();
+    } catch {}
+  }
+}
+
+async function runSessionCapture() {
+  let db;
+  try {
+    const raw = await new Promise((resolve) => {
+      let data = "";
+      process.stdin.on("data", (chunk) => (data += chunk));
+      process.stdin.on("end", () => resolve(data));
+    });
+    if (!raw.trim()) return;
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const { kind, title, body, tags, source } = payload;
+    if (!kind || !body) return;
+    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const config = resolveConfig();
+    if (!config.vaultDirExists) return;
+    const { initDatabase, prepareStatements, insertVec, deleteVec } =
+      await import("@context-vault/core/index/db");
+    const { embed } = await import("@context-vault/core/index/embed");
+    const { captureAndIndex } = await import("@context-vault/core/capture");
+    db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+    const ctx = {
+      db,
+      config,
+      stmts,
+      embed,
+      insertVec: (rowid, embedding) => insertVec(stmts, rowid, embedding),
+      deleteVec: (rowid) => deleteVec(stmts, rowid),
+    };
+    const entry = await captureAndIndex(ctx, {
+      kind,
+      title: title || "Session summary",
+      body,
+      tags: tags || ["session", "auto-captured"],
+      source: source || "session-end-hook",
+    });
+    console.log(`context-vault session captured — id: ${entry.id}`);
+  } catch {
+    // fail silently — never block session end
   } finally {
     try {
       db?.close();
@@ -2395,6 +2454,81 @@ function removeClaudeHook() {
   return true;
 }
 
+function sessionEndHookPath() {
+  return resolve(ROOT, "src", "hooks", "session-end.mjs");
+}
+
+/**
+ * Writes a SessionEnd hook entry for session capture to ~/.claude/settings.json.
+ * Returns true if installed, false if already present.
+ */
+function installSessionCaptureHook() {
+  const settingsPath = claudeSettingsPath();
+  let settings = {};
+
+  if (existsSync(settingsPath)) {
+    const raw = readFileSync(settingsPath, "utf-8");
+    try {
+      settings = JSON.parse(raw);
+    } catch {
+      const bak = settingsPath + ".bak";
+      copyFileSync(settingsPath, bak);
+      console.log(yellow(`  Backed up corrupted settings to ${bak}`));
+    }
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.SessionEnd) settings.hooks.SessionEnd = [];
+
+  const alreadyInstalled = settings.hooks.SessionEnd.some((h) =>
+    h.hooks?.some((hh) => hh.command?.includes("session-end.mjs")),
+  );
+  if (alreadyInstalled) return false;
+
+  const hookScript = sessionEndHookPath();
+  settings.hooks.SessionEnd.push({
+    hooks: [
+      {
+        type: "command",
+        command: `node ${hookScript}`,
+        timeout: 30,
+      },
+    ],
+  });
+
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
+/**
+ * Removes the session capture SessionEnd hook from ~/.claude/settings.json.
+ * Returns true if removed, false if not found.
+ */
+function removeSessionCaptureHook() {
+  const settingsPath = claudeSettingsPath();
+  if (!existsSync(settingsPath)) return false;
+
+  let settings;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+  } catch {
+    return false;
+  }
+
+  if (!settings.hooks?.SessionEnd) return false;
+
+  const before = settings.hooks.SessionEnd.length;
+  settings.hooks.SessionEnd = settings.hooks.SessionEnd.filter(
+    (h) => !h.hooks?.some((hh) => hh.command?.includes("session-end.mjs")),
+  );
+
+  if (settings.hooks.SessionEnd.length === before) return false;
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
 async function runSkills() {
   const sub = args[1];
 
@@ -2463,6 +2597,47 @@ async function runHooksInstall() {
   }
   console.log();
 
+  const installCapture =
+    flags.has("--session-capture") ||
+    (await prompt(
+      "  Install SessionEnd capture hook? (auto-saves session summaries to vault) (Y/n):",
+      "Y",
+    ));
+  const shouldInstallCapture =
+    installCapture === true ||
+    (typeof installCapture === "string" &&
+      !installCapture.toLowerCase().startsWith("n"));
+
+  if (shouldInstallCapture) {
+    try {
+      const captureInstalled = installSessionCaptureHook();
+      if (captureInstalled) {
+        console.log(`\n  ${green("✓")} SessionEnd capture hook installed.\n`);
+        console.log(
+          dim(
+            "  At the end of each session, context-vault will save a session summary",
+          ),
+        );
+        console.log(
+          dim("  including files touched, tools used, and searches performed."),
+        );
+        console.log(
+          dim(`\n  To remove: ${cyan("context-vault hooks uninstall")}`),
+        );
+      } else {
+        console.log(
+          `\n  ${yellow("!")} SessionEnd capture hook already installed.\n`,
+        );
+      }
+    } catch (e) {
+      console.error(
+        `\n  ${red("x")} Failed to install session capture hook: ${e.message}\n`,
+      );
+      process.exit(1);
+    }
+    console.log();
+  }
+
   const installFlush =
     flags.has("--flush") ||
     (await prompt(
@@ -2513,6 +2688,17 @@ async function runHooksUninstall() {
   }
 
   try {
+    const captureRemoved = removeSessionCaptureHook();
+    if (captureRemoved) {
+      console.log(`\n  ${green("✓")} SessionEnd capture hook removed.\n`);
+    }
+  } catch (e) {
+    console.error(
+      `\n  ${red("x")} Failed to remove session capture hook: ${e.message}\n`,
+    );
+  }
+
+  try {
     const flushRemoved = removeSessionEndHook();
     if (flushRemoved) {
       console.log(`\n  ${green("✓")} SessionEnd flush hook removed.\n`);
@@ -2541,8 +2727,8 @@ async function runHooks() {
 
 ${bold("Commands:")}
   ${cyan("hooks install")}     Write UserPromptSubmit hook to ~/.claude/settings.json
-                    Also prompts to install a SessionEnd flush hook
-  ${cyan("hooks uninstall")}   Remove the recall hook and SessionEnd flush hook
+                    Also prompts to install SessionEnd capture and flush hooks
+  ${cyan("hooks uninstall")}   Remove the recall hook, SessionEnd capture hook, and flush hook
 `);
   }
 }
@@ -2802,6 +2988,9 @@ async function main() {
       break;
     case "recall":
       await runRecall();
+      break;
+    case "session-capture":
+      await runSessionCapture();
       break;
     case "import":
       await runImport();

@@ -11,6 +11,9 @@ import { isEmbedAvailable } from "../../index/embed.js";
 const STALE_DUPLICATE_DAYS = 7;
 const DEFAULT_PIVOT_COUNT = 2;
 const SKELETON_BODY_CHARS = 100;
+const CONSOLIDATION_TAG_THRESHOLD = 10;
+const CONSOLIDATION_SNAPSHOT_MAX_AGE_DAYS = 7;
+const BRIEF_SCORE_BOOST = 0.05;
 
 /**
  * Truncate a body string to ~SKELETON_BODY_CHARS, breaking at sentence or
@@ -111,6 +114,90 @@ export function detectConflicts(entries, _ctx) {
   }
 
   return conflicts;
+}
+
+/**
+ * Detect tag clusters that would benefit from consolidation via create_snapshot.
+ * A suggestion is emitted when a tag appears on threshold+ entries in the full
+ * vault AND no recent brief (kind='brief') exists for that tag within the
+ * staleness window.
+ *
+ * Tag counts are derived from the full vault (not just the search result set)
+ * so the check reflects the true size of the knowledge cluster. Only tags that
+ * appear in the current search results are evaluated — this keeps the check
+ * targeted to what the user is actually working with.
+ *
+ * @param {Array} entries - Search result rows (used to select candidate tags)
+ * @param {import('node:sqlite').DatabaseSync} db - Database handle for vault-wide counts and brief lookups
+ * @param {number|undefined} userId - Optional user_id scope
+ * @param {{ tagThreshold?: number, maxAgeDays?: number }} opts - Configurable thresholds
+ * @returns {Array<{tag: string, entry_count: number, last_snapshot_age_days: number|null}>}
+ */
+export function detectConsolidationHints(entries, db, userId, opts = {}) {
+  const tagThreshold = opts.tagThreshold ?? CONSOLIDATION_TAG_THRESHOLD;
+  const maxAgeDays = opts.maxAgeDays ?? CONSOLIDATION_SNAPSHOT_MAX_AGE_DAYS;
+
+  const candidateTags = new Set();
+  for (const entry of entries) {
+    if (entry.kind === "brief") continue;
+    const entryTags = entry.tags ? JSON.parse(entry.tags) : [];
+    for (const tag of entryTags) candidateTags.add(tag);
+  }
+
+  if (candidateTags.size === 0) return [];
+
+  const suggestions = [];
+  const cutoff = new Date(Date.now() - maxAgeDays * 86400000).toISOString();
+
+  for (const tag of candidateTags) {
+    let vaultCount = 0;
+    try {
+      const userClause =
+        userId !== undefined ? " AND user_id = ?" : " AND user_id IS NULL";
+      const countParams =
+        userId !== undefined ? [`%"${tag}"%`, userId] : [`%"${tag}"%`];
+      const countRow = db
+        .prepare(
+          `SELECT COUNT(*) as c FROM vault WHERE kind != 'brief' AND tags LIKE ?${userClause} AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL`,
+        )
+        .get(...countParams);
+      vaultCount = countRow?.c ?? 0;
+    } catch {
+      continue;
+    }
+
+    if (vaultCount < tagThreshold) continue;
+
+    let lastSnapshotAgeDays = null;
+    try {
+      const userClause =
+        userId !== undefined ? " AND user_id = ?" : " AND user_id IS NULL";
+      const params =
+        userId !== undefined ? [`%"${tag}"%`, userId] : [`%"${tag}"%`];
+      const recentBrief = db
+        .prepare(
+          `SELECT created_at FROM vault WHERE kind = 'brief' AND tags LIKE ?${userClause} ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get(...params);
+
+      if (recentBrief) {
+        lastSnapshotAgeDays = Math.round(
+          (Date.now() - new Date(recentBrief.created_at).getTime()) / 86400000,
+        );
+        if (recentBrief.created_at >= cutoff) continue;
+      }
+    } catch {
+      continue;
+    }
+
+    suggestions.push({
+      tag,
+      entry_count: vaultCount,
+      last_snapshot_age_days: lastSnapshotAgeDays,
+    });
+  }
+
+  return suggestions;
 }
 
 /**
@@ -369,6 +456,13 @@ export async function handler(
     for (const r of filtered) r.score = 0;
   }
 
+  // Brief score boost: briefs rank slightly higher so consolidated snapshots
+  // surface above the individual entries they summarize.
+  for (const r of filtered) {
+    if (r.kind === "brief") r.score = (r.score || 0) + BRIEF_SCORE_BOOST;
+  }
+  filtered.sort((a, b) => b.score - a.score);
+
   if (!filtered.length) {
     if (autoWindowed) {
       const days = config.eventDecayDays || 30;
@@ -417,7 +511,8 @@ export async function handler(
   }
 
   // Skeleton mode: determine pivot threshold
-  const effectivePivot = pivot_count != null ? pivot_count : DEFAULT_PIVOT_COUNT;
+  const effectivePivot =
+    pivot_count != null ? pivot_count : DEFAULT_PIVOT_COUNT;
 
   // Conflict detection
   const conflicts = detect_conflicts ? detectConflicts(filtered, ctx) : [];
@@ -495,9 +590,46 @@ export async function handler(
     }
   }
 
+  // Consolidation suggestion detection — lazy, opportunistic, vault-wide
+  const consolidationOpts = {
+    tagThreshold:
+      config.consolidation?.tagThreshold ?? CONSOLIDATION_TAG_THRESHOLD,
+    maxAgeDays:
+      config.consolidation?.maxAgeDays ?? CONSOLIDATION_SNAPSHOT_MAX_AGE_DAYS,
+  };
+  const consolidationSuggestions = detectConsolidationHints(
+    filtered,
+    ctx.db,
+    userId,
+    consolidationOpts,
+  );
+
+  // Auto-consolidate: fire-and-forget create_snapshot for eligible tags
+  if (
+    config.consolidation?.autoConsolidate &&
+    consolidationSuggestions.length > 0
+  ) {
+    const { handler: snapshotHandler } = await import("./create-snapshot.js");
+    for (const suggestion of consolidationSuggestions) {
+      snapshotHandler(
+        { topic: suggestion.tag, tags: [suggestion.tag] },
+        ctx,
+        { ensureIndexed: async () => {} },
+      ).catch(() => {});
+    }
+  }
+
   const result = ok(lines.join("\n"));
+  const meta = {};
   if (tokensBudget != null) {
-    result._meta = { tokens_used: tokensUsed, tokens_budget: tokensBudget };
+    meta.tokens_used = tokensUsed;
+    meta.tokens_budget = tokensBudget;
+  }
+  if (consolidationSuggestions.length > 0) {
+    meta.consolidation_suggestions = consolidationSuggestions;
+  }
+  if (Object.keys(meta).length > 0) {
+    result._meta = meta;
   }
   return result;
 }

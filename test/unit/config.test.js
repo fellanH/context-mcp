@@ -400,4 +400,115 @@ describe("resolveConfig", () => {
     const cfg = resolveConfig();
     expect(cfg.vaultDirExists).toBe(true);
   });
+
+  // --- recall defaults ---
+
+  it("recall defaults are set when no config file exists", () => {
+    const cfg = resolveConfig();
+    expect(cfg.recall.maxResults).toBe(5);
+    expect(cfg.recall.maxOutputBytes).toBe(2000);
+    expect(cfg.recall.minRelevanceScore).toBe(0.3);
+    expect(cfg.recall.excludeKinds).toEqual([]);
+    expect(cfg.recall.excludeCategories).toEqual(["event"]);
+    expect(cfg.recall.bodyTruncateChars).toBe(400);
+  });
+
+  it("config file recall block overrides defaults", () => {
+    const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
+    mockFiles[configPath] = JSON.stringify({
+      recall: {
+        maxResults: 3,
+        maxOutputBytes: 1000,
+        minRelevanceScore: 0.5,
+        excludeKinds: ["prompt-history"],
+        excludeCategories: [],
+        bodyTruncateChars: 200,
+      },
+    });
+
+    const cfg = resolveConfig();
+    expect(cfg.recall.maxResults).toBe(3);
+    expect(cfg.recall.maxOutputBytes).toBe(1000);
+    expect(cfg.recall.minRelevanceScore).toBe(0.5);
+    expect(cfg.recall.excludeKinds).toEqual(["prompt-history"]);
+    expect(cfg.recall.excludeCategories).toEqual([]);
+    expect(cfg.recall.bodyTruncateChars).toBe(200);
+  });
+
+  it("partial recall config only overrides specified recall keys", () => {
+    const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
+    mockFiles[configPath] = JSON.stringify({
+      recall: {
+        minRelevanceScore: 0.6,
+      },
+    });
+
+    const cfg = resolveConfig();
+    expect(cfg.recall.minRelevanceScore).toBe(0.6);
+    expect(cfg.recall.maxResults).toBe(5);
+    expect(cfg.recall.excludeCategories).toEqual(["event"]);
+  });
+
+  it("recall excludeKinds must be an array to override", () => {
+    const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
+    mockFiles[configPath] = JSON.stringify({
+      recall: {
+        excludeKinds: "not-an-array",
+      },
+    });
+
+    const cfg = resolveConfig();
+    expect(cfg.recall.excludeKinds).toEqual([]);
+  });
+
+  // --- consolidation defaults ---
+
+  it("consolidation defaults are set when no config file exists", () => {
+    const cfg = resolveConfig();
+    expect(cfg.consolidation.tagThreshold).toBe(10);
+    expect(cfg.consolidation.maxAgeDays).toBe(7);
+    expect(cfg.consolidation.autoConsolidate).toBe(false);
+  });
+
+  it("config file consolidation block overrides defaults", () => {
+    const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
+    mockFiles[configPath] = JSON.stringify({
+      consolidation: {
+        tagThreshold: 20,
+        maxAgeDays: 14,
+        autoConsolidate: true,
+      },
+    });
+
+    const cfg = resolveConfig();
+    expect(cfg.consolidation.tagThreshold).toBe(20);
+    expect(cfg.consolidation.maxAgeDays).toBe(14);
+    expect(cfg.consolidation.autoConsolidate).toBe(true);
+  });
+
+  it("partial consolidation config only overrides specified keys", () => {
+    const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
+    mockFiles[configPath] = JSON.stringify({
+      consolidation: {
+        tagThreshold: 5,
+      },
+    });
+
+    const cfg = resolveConfig();
+    expect(cfg.consolidation.tagThreshold).toBe(5);
+    expect(cfg.consolidation.maxAgeDays).toBe(7);
+    expect(cfg.consolidation.autoConsolidate).toBe(false);
+  });
+
+  it("consolidation autoConsolidate must be exactly true to enable", () => {
+    const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
+    mockFiles[configPath] = JSON.stringify({
+      consolidation: {
+        autoConsolidate: "yes",
+      },
+    });
+
+    const cfg = resolveConfig();
+    expect(cfg.consolidation.autoConsolidate).toBe(false);
+  });
 });
