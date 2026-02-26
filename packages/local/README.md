@@ -10,7 +10,7 @@ Persistent memory for AI agents — saves and searches knowledge across sessions
 ## Quick Start
 
 ```bash
-npx context-vault setup
+npx context-vault
 ```
 
 One command — no global install required. Setup detects your AI tools (Claude Code, Codex, Claude Desktop, Cursor, Windsurf, Cline, and more), downloads the embedding model (~22MB), seeds your vault, and configures MCP.
