@@ -2,6 +2,19 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.15.0] — 2026-02-26
+
+### Added
+
+- Issue #136: Auto-detect existing vault via `.context-vault` marker file — setup now writes a marker file to the vault root and scans `~/vault`, `~/omni/vault`, cwd, and config path on subsequent runs; prompts to reuse existing vaults instead of creating new ones
+- Issue #137: Session capture and auto-capture hooks integrated into setup wizard — when the recall hook is installed, users are now prompted to also install SessionEnd capture (session summaries) and PostToolCall auto-capture (tool call logging) hooks
+
+### Changed
+
+- Issue #138: `npx context-vault` (no subcommand) now runs setup on first run or shows status if a vault exists — matches the documented behavior, no code change needed
+- Issue #135: `--vault-dir <path>` flag documented in `--help` output — the flag was already functional but not listed in help text
+- Install command across READMEs updated from `npx context-vault setup` to `npx context-vault`
+
 ## [2.14.0] — 2026-02-24
 
 ### Added
