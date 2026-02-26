@@ -800,12 +800,13 @@ async function runSetup() {
     }
   }
 
-  // Claude Code memory hook (opt-in)
+  // Claude Code hooks (opt-in)
   const claudeConfigured = results.some(
     (r) => r.ok && r.tool.id === "claude-code",
   );
   const hookFlag = flags.has("--hooks");
   if (claudeConfigured) {
+    // 1. Recall hook (UserPromptSubmit)
     let installHook = hookFlag;
     if (!hookFlag && !isNonInteractive) {
       console.log();
@@ -833,6 +834,72 @@ async function runSetup() {
         }
       } catch (e) {
         console.log(`\n  ${red("x")} Hook install failed: ${e.message}`);
+      }
+
+      // 2. Session capture hook (SessionEnd) — only offer if recall hook was installed
+      if (!isNonInteractive) {
+        console.log();
+        console.log(
+          dim("  Auto-save session summaries when Claude Code exits?"),
+        );
+        console.log(
+          dim(
+            "  Captures files touched, tools used, and decisions made per session.",
+          ),
+        );
+        console.log();
+        const captureAnswer = await prompt(
+          "  Install session capture hook? (Y/n):",
+          "Y",
+        );
+        if (captureAnswer.toLowerCase() !== "n") {
+          try {
+            const captureInstalled = installSessionCaptureHook();
+            if (captureInstalled) {
+              console.log(`  ${green("+")} Session capture hook installed`);
+            }
+          } catch (e) {
+            console.log(
+              `  ${red("x")} Session capture hook failed: ${e.message}`,
+            );
+          }
+        }
+      } else if (hookFlag) {
+        try {
+          installSessionCaptureHook();
+        } catch {}
+      }
+
+      // 3. Auto-capture hook (PostToolCall) — only offer if recall hook was installed
+      if (!isNonInteractive) {
+        console.log();
+        console.log(
+          dim("  Passively log tool calls for richer session summaries?"),
+        );
+        console.log(
+          dim(
+            "  Records tool names and file paths after each tool call (lightweight).",
+          ),
+        );
+        console.log();
+        const autoCaptureAnswer = await prompt(
+          "  Install auto-capture hook? (Y/n):",
+          "Y",
+        );
+        if (autoCaptureAnswer.toLowerCase() !== "n") {
+          try {
+            const acInstalled = installPostToolCallHook();
+            if (acInstalled) {
+              console.log(`  ${green("+")} Auto-capture hook installed`);
+            }
+          } catch (e) {
+            console.log(`  ${red("x")} Auto-capture hook failed: ${e.message}`);
+          }
+        }
+      } else if (hookFlag) {
+        try {
+          installPostToolCallHook();
+        } catch {}
       }
     } else if (!isNonInteractive && !hookFlag) {
       console.log(
