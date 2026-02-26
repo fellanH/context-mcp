@@ -324,6 +324,7 @@ ${bold("Options:")}
   --version             Show version
   --vault-dir <path>    Set vault directory (setup/serve)
   --yes                 Non-interactive mode (accept all defaults)
+  --force               Overwrite existing config without confirmation
   --skip-embeddings     Skip embedding model download (FTS-only mode)
 `);
 }
@@ -539,6 +540,20 @@ async function runSetup() {
 
   // Scan for existing vaults via marker file
   let defaultVaultDir = getFlag("--vault-dir") || join(HOME, "vault");
+
+  // Prefer existing config vaultDir over ~/vault (prevents accidental overwrite)
+  if (!getFlag("--vault-dir")) {
+    const existingCfgPath = join(HOME, ".context-mcp", "config.json");
+    if (existsSync(existingCfgPath)) {
+      try {
+        const cfg = JSON.parse(readFileSync(existingCfgPath, "utf-8"));
+        if (cfg.vaultDir && existsSync(resolve(cfg.vaultDir))) {
+          defaultVaultDir = cfg.vaultDir;
+        }
+      } catch {}
+    }
+  }
+
   if (!getFlag("--vault-dir") && !isNonInteractive) {
     const existingVaults = scanForVaults();
     if (existingVaults.length === 1) {
@@ -576,7 +591,7 @@ async function runSetup() {
   const vaultDir = isNonInteractive
     ? defaultVaultDir
     : await prompt(`  Vault directory:`, defaultVaultDir);
-  const resolvedVaultDir = resolve(vaultDir);
+  let resolvedVaultDir = resolve(vaultDir);
 
   // Guard: vault dir path must not be an existing file
   if (existsSync(resolvedVaultDir)) {
@@ -626,6 +641,57 @@ async function runSetup() {
       Object.assign(vaultConfig, JSON.parse(readFileSync(configPath, "utf-8")));
     } catch {}
   }
+
+  const existingVaultDir = vaultConfig.vaultDir;
+  if (
+    existingVaultDir &&
+    resolve(existingVaultDir) !== resolvedVaultDir &&
+    !flags.has("--force")
+  ) {
+    let entryCount = 0;
+    try {
+      const knowledgeDir = join(resolve(existingVaultDir), "knowledge");
+      if (existsSync(knowledgeDir)) {
+        const countMd = (d) => {
+          let n = 0;
+          for (const e of readdirSync(d, { withFileTypes: true })) {
+            if (e.isDirectory()) n += countMd(join(d, e.name));
+            else if (e.name.endsWith(".md")) n++;
+          }
+          return n;
+        };
+        entryCount = countMd(knowledgeDir);
+      }
+    } catch {}
+
+    console.log();
+    console.log(
+      yellow(`  ⚠ Existing config points to: ${resolve(existingVaultDir)}`) +
+        (entryCount > 0 ? dim(` (${entryCount} entries)`) : ""),
+    );
+    console.log(`  Setup would change vaultDir to: ${resolvedVaultDir}`);
+
+    if (isNonInteractive) {
+      console.log();
+      console.log(
+        red("  Refusing to overwrite vaultDir in non-interactive mode."),
+      );
+      console.log(
+        dim("  Use --force to override, or --vault-dir to set explicitly."),
+      );
+      process.exit(1);
+    }
+
+    console.log();
+    const overwrite = await prompt("  Overwrite? (y/N):", "N");
+    if (overwrite.toLowerCase() !== "y" && overwrite.toLowerCase() !== "yes") {
+      console.log(
+        dim(`  Keeping existing vaultDir: ${resolve(existingVaultDir)}`),
+      );
+      resolvedVaultDir = resolve(existingVaultDir);
+    }
+  }
+
   vaultConfig.vaultDir = resolvedVaultDir;
   vaultConfig.dataDir = dataDir;
   vaultConfig.dbPath = join(dataDir, "vault.db");

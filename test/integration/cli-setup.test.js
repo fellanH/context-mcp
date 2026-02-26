@@ -630,3 +630,92 @@ describe("vault marker file", () => {
     }
   });
 });
+
+describe("setup config overwrite protection", () => {
+  it("refuses to overwrite vaultDir in --yes mode when existing config differs", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-overwrite-"));
+    const customVault = join(tmpHome, "my-custom-vault");
+    mkdirSync(customVault, { recursive: true });
+
+    const configDir = join(tmpHome, ".context-mcp");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ vaultDir: customVault, mode: "local" }, null, 2) + "\n",
+    );
+
+    try {
+      const { exitCode, stdout } = runCli(
+        `setup --yes --skip-embeddings --vault-dir ${join(tmpHome, "other-vault")}`,
+        { env: { HOME: tmpHome }, timeout: 60000 },
+      );
+      expect(exitCode).toBe(1);
+      expect(stdout).toContain("Refusing to overwrite vaultDir");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("allows overwrite in --yes mode with --force flag", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-force-"));
+    const customVault = join(tmpHome, "my-custom-vault");
+    mkdirSync(customVault, { recursive: true });
+
+    const configDir = join(tmpHome, ".context-mcp");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ vaultDir: customVault, mode: "local" }, null, 2) + "\n",
+    );
+
+    const newVault = join(tmpHome, "new-vault");
+
+    try {
+      const { exitCode } = runCli(
+        `setup --yes --force --skip-embeddings --vault-dir ${newVault}`,
+        { env: { HOME: tmpHome }, timeout: 60000 },
+      );
+      expect(exitCode).toBe(0);
+
+      const config = JSON.parse(
+        readFileSync(join(configDir, "config.json"), "utf-8"),
+      );
+      expect(config.vaultDir).toBe(newVault);
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves existing vaultDir as default in --yes mode", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-preserve-"));
+    const customVault = join(tmpHome, "my-custom-vault");
+    mkdirSync(customVault, { recursive: true });
+
+    const configDir = join(tmpHome, ".context-mcp");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ vaultDir: customVault, mode: "local" }, null, 2) + "\n",
+    );
+
+    try {
+      const { exitCode } = runCli("setup --yes --skip-embeddings", {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+      expect(exitCode).toBe(0);
+
+      const config = JSON.parse(
+        readFileSync(join(configDir, "config.json"), "utf-8"),
+      );
+      expect(config.vaultDir).toBe(customVault);
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("shows --force in help text", () => {
+    const { stdout } = runCli("--help");
+    expect(stdout).toContain("--force");
+  });
+});
