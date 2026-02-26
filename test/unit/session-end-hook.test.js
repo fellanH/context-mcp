@@ -9,11 +9,13 @@ import {
   parseTranscriptLines,
   buildSummary,
   formatDuration,
+  extractInsights,
 } from "../../packages/local/src/hooks/session-end.mjs";
 import {
   existsSync as fsExistsSync,
   readFileSync as fsReadFileSync,
   mkdirSync as fsMkdirSync,
+  writeFileSync as fsWriteFileSync,
   rmSync as fsRmSync,
 } from "node:fs";
 import { join as pathJoin } from "node:path";
@@ -278,6 +280,246 @@ describe("formatDuration", () => {
   });
 });
 
+// ─── extractInsights ──────────────────────────────────────────────────────────
+
+function makeTmpTranscript(entries) {
+  const dir = pathJoin(osTmpdir(), `cv-insights-test-${Date.now()}`);
+  fsMkdirSync(dir, { recursive: true });
+  const filePath = pathJoin(dir, "transcript.jsonl");
+  const lines = entries.map((e) => JSON.stringify(e));
+  fsWriteFileSync(filePath, lines.join("\n"), "utf-8");
+  return { filePath, dir };
+}
+
+function makeAssistantEntry(text) {
+  return {
+    timestamp: "2025-01-01T10:00:00.000Z",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text }],
+    },
+  };
+}
+
+describe("extractInsights", () => {
+  it("returns empty array when path is null", () => {
+    expect(extractInsights(null)).toEqual([]);
+  });
+
+  it("returns empty array when file does not exist", () => {
+    expect(extractInsights("/nonexistent/path/transcript.jsonl")).toEqual([]);
+  });
+
+  it("returns empty array for transcript with no insight patterns", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      makeAssistantEntry("Here is the code you asked for."),
+    ]);
+    try {
+      expect(extractInsights(filePath)).toEqual([]);
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects ★ star pattern", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      makeAssistantEntry(
+        "★ React hooks must be called at the top level of components",
+      ),
+    ]);
+    try {
+      const insights = extractInsights(filePath);
+      expect(insights.length).toBe(1);
+      expect(insights[0].body).toContain("React hooks");
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects **Insight:** pattern", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      makeAssistantEntry(
+        "**Insight:** The auth flow uses JWT with 15min expiry\n\nSome other content",
+      ),
+    ]);
+    try {
+      const insights = extractInsights(filePath);
+      expect(insights.length).toBe(1);
+      expect(insights[0].body).toContain("JWT");
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects **Key insight:** pattern", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      makeAssistantEntry(
+        "**Key insight:** SQLite FTS5 requires trigram tokenizer for substring search\n\n",
+      ),
+    ]);
+    try {
+      const insights = extractInsights(filePath);
+      expect(insights.length).toBe(1);
+      expect(insights[0].body).toContain("SQLite");
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects **Key Finding:** pattern", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      makeAssistantEntry(
+        "**Key Finding:** The bottleneck is in the database layer\n\n",
+      ),
+    ]);
+    try {
+      const insights = extractInsights(filePath);
+      expect(insights.length).toBe(1);
+      expect(insights[0].body).toContain("bottleneck");
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects > **Note:** pattern", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      makeAssistantEntry(
+        "> **Note:** Always close database connections in finally blocks",
+      ),
+    ]);
+    try {
+      const insights = extractInsights(filePath);
+      expect(insights.length).toBe(1);
+      expect(insights[0].body).toContain("database connections");
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects > **Important:** pattern", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      makeAssistantEntry(
+        "> **Important:** Never store secrets in environment variables committed to git",
+      ),
+    ]);
+    try {
+      const insights = extractInsights(filePath);
+      expect(insights.length).toBe(1);
+      expect(insights[0].body).toContain("secrets");
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores non-assistant messages", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      {
+        timestamp: "2025-01-01T10:00:00.000Z",
+        message: {
+          role: "user",
+          content: [
+            { type: "text", text: "★ This is from a user, not assistant" },
+          ],
+        },
+      },
+    ]);
+    try {
+      expect(extractInsights(filePath)).toEqual([]);
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores tool_use blocks — only scans text blocks", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      {
+        timestamp: "2025-01-01T10:00:00.000Z",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              name: "Read",
+              input: { file_path: "★ not an insight" },
+            },
+          ],
+        },
+      },
+    ]);
+    try {
+      expect(extractInsights(filePath)).toEqual([]);
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("caps results at 10 insights", () => {
+    const lines = [];
+    for (let i = 0; i < 15; i++) {
+      lines.push(
+        makeAssistantEntry(
+          `★ Insight number ${i} — something worth remembering here`,
+        ),
+      );
+    }
+    const { filePath, dir } = makeTmpTranscript(lines);
+    try {
+      const insights = extractInsights(filePath);
+      expect(insights.length).toBe(10);
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("truncates insight body to 300 chars", () => {
+    const longText = "★ " + "x".repeat(400);
+    const { filePath, dir } = makeTmpTranscript([makeAssistantEntry(longText)]);
+    try {
+      const insights = extractInsights(filePath);
+      expect(insights.length).toBe(1);
+      expect(insights[0].body.length).toBeLessThanOrEqual(300);
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips insights with body shorter than 10 chars", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      makeAssistantEntry("★ short"),
+    ]);
+    try {
+      expect(extractInsights(filePath)).toEqual([]);
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns empty array for an empty transcript file", () => {
+    const dir = pathJoin(osTmpdir(), `cv-insights-empty-${Date.now()}`);
+    fsMkdirSync(dir, { recursive: true });
+    const filePath = pathJoin(dir, "transcript.jsonl");
+    fsWriteFileSync(filePath, "", "utf-8");
+    try {
+      expect(extractInsights(filePath)).toEqual([]);
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("extracts insights from multiple messages", () => {
+    const { filePath, dir } = makeTmpTranscript([
+      makeAssistantEntry("★ First insight about performance tuning"),
+      makeAssistantEntry("★ Second insight about memory management"),
+    ]);
+    try {
+      const insights = extractInsights(filePath);
+      expect(insights.length).toBe(2);
+    } finally {
+      fsRmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ─── buildSummary ─────────────────────────────────────────────────────────────
 
 describe("buildSummary", () => {
@@ -430,6 +672,73 @@ describe("buildSummary", () => {
     expect(result).toMatch(/Searches.*\(3\)/);
     expect(result).toContain("Read: 12");
     expect(result).toContain("Bash: 8");
+  });
+
+  it("omits insights section when no insights provided", () => {
+    const result = buildSummary({
+      filesRead: new Set(),
+      filesModified: new Set(),
+      searchPatterns: new Set(),
+      toolCounts: {},
+      startTime: null,
+      endTime: null,
+    });
+    expect(result).not.toContain("Insights captured");
+  });
+
+  it("omits insights section when insights array is empty", () => {
+    const result = buildSummary({
+      filesRead: new Set(),
+      filesModified: new Set(),
+      searchPatterns: new Set(),
+      toolCounts: {},
+      startTime: null,
+      endTime: null,
+      insights: [],
+    });
+    expect(result).not.toContain("Insights captured");
+  });
+
+  it("renders insights section with count and bodies", () => {
+    const result = buildSummary({
+      filesRead: new Set(),
+      filesModified: new Set(),
+      searchPatterns: new Set(),
+      toolCounts: {},
+      startTime: null,
+      endTime: null,
+      insights: [
+        {
+          title: "React hooks rule",
+          body: "React hooks must be called at top level",
+        },
+        {
+          title: "JWT expiry",
+          body: "The auth flow uses JWT with 15min expiry",
+        },
+      ],
+    });
+    expect(result).toContain("**Insights captured** (2)");
+    expect(result).toContain("React hooks must be called at top level");
+    expect(result).toContain("JWT with 15min expiry");
+  });
+
+  it("renders correct count in insights heading", () => {
+    const insights = [
+      { title: "A", body: "First insight body text here" },
+      { title: "B", body: "Second insight body text here" },
+      { title: "C", body: "Third insight body text here" },
+    ];
+    const result = buildSummary({
+      filesRead: new Set(),
+      filesModified: new Set(),
+      searchPatterns: new Set(),
+      toolCounts: {},
+      startTime: null,
+      endTime: null,
+      insights,
+    });
+    expect(result).toMatch(/Insights captured.*\(3\)/);
   });
 });
 

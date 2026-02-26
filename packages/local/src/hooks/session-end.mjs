@@ -322,6 +322,75 @@ function formatToolCounts(toolCounts) {
   return entries.map(([name, count]) => `  - ${name}: ${count}`).join("\n");
 }
 
+const INSIGHT_PATTERNS = [
+  /★\s*(.+?)(?:\n|$)/g,
+  /\*\*(?:Key )?[Ii]nsight[:\*]*\*?\*?\s*(.+?)(?:\n\n|\n(?=[#*-]))/gs,
+  /\*\*(?:Key )?[Ff]inding[:\*]*\*?\*?\s*(.+?)(?:\n\n|\n(?=[#*-]))/gs,
+  />\s*\*\*(?:Note|Important|Key)[:\*]*\*?\*?\s*(.+?)(?:\n|$)/g,
+];
+
+const MAX_INSIGHTS = 10;
+const MAX_INSIGHT_BODY = 300;
+
+export function extractInsights(transcriptPath) {
+  if (!transcriptPath || !existsSync(transcriptPath)) return [];
+
+  let lines;
+  try {
+    const raw = readFileSync(transcriptPath, "utf-8");
+    lines = raw.split("\n").filter((l) => l.trim());
+  } catch {
+    return [];
+  }
+
+  const insights = [];
+
+  for (const line of lines) {
+    if (insights.length >= MAX_INSIGHTS) break;
+
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    const msg = entry.message;
+    if (!msg || msg.role !== "assistant") continue;
+
+    const contentBlocks = msg.content;
+    if (!Array.isArray(contentBlocks)) continue;
+
+    for (const block of contentBlocks) {
+      if (insights.length >= MAX_INSIGHTS) break;
+      if (block.type !== "text" || !block.text) continue;
+
+      const text = block.text;
+
+      for (const pattern of INSIGHT_PATTERNS) {
+        if (insights.length >= MAX_INSIGHTS) break;
+
+        pattern.lastIndex = 0;
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+          if (insights.length >= MAX_INSIGHTS) break;
+
+          const captured = match[1];
+          if (!captured) continue;
+
+          const body = captured.trim().slice(0, MAX_INSIGHT_BODY);
+          if (!body || body.length < 10) continue;
+
+          const title = body.split(/[.\n]/)[0].trim().slice(0, 80);
+          insights.push({ title, body });
+        }
+      }
+    }
+  }
+
+  return insights;
+}
+
 export function buildSummary({
   filesRead,
   filesModified,
@@ -329,6 +398,7 @@ export function buildSummary({
   toolCounts,
   startTime,
   endTime,
+  insights = [],
 }) {
   const sections = ["## Session Summary"];
 
@@ -347,6 +417,13 @@ export function buildSummary({
     `- **Searches** (${searchPatterns.size}):\n${formatList(searchPatterns)}`,
   );
   sections.push(`- **Tools used**:\n${formatToolCounts(toolCounts)}`);
+
+  if (insights.length > 0) {
+    const lines = insights.map((ins) => `  - "${ins.body}"`);
+    sections.push(
+      `- **Insights captured** (${insights.length}):\n${lines.join("\n")}`,
+    );
+  }
 
   return sections.join("\n");
 }
@@ -380,7 +457,8 @@ async function main() {
       process.exit(0);
     }
 
-    const body = buildSummary(data);
+    const insights = extractInsights(transcript_path);
+    const body = buildSummary({ ...data, insights });
     const tags = ["session", "auto-captured"];
     if (project) tags.unshift(project);
 
