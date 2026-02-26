@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { basename } from "node:path";
 import { execSync, execFileSync } from "node:child_process";
 
@@ -173,6 +175,125 @@ export function parseTranscriptLines(lines) {
   };
 }
 
+export function parseSessionLog(sessionId) {
+  if (!sessionId) return null;
+
+  const logFile = join(
+    homedir(),
+    ".context-mcp",
+    "sessions",
+    `${sessionId}.jsonl`,
+  );
+  if (!existsSync(logFile)) return null;
+
+  let raw;
+  try {
+    raw = readFileSync(logFile, "utf-8");
+  } catch {
+    return null;
+  }
+
+  const lines = raw.split("\n").filter((l) => l.trim());
+
+  const filesRead = new Set();
+  const filesModified = new Set();
+  const searchPatterns = new Set();
+  const toolCounts = {};
+  let startTime = null;
+  let endTime = null;
+
+  for (const line of lines) {
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    if (entry.ts) {
+      const ts = new Date(entry.ts);
+      if (!isNaN(ts.getTime())) {
+        if (!startTime || ts < startTime) startTime = ts;
+        if (!endTime || ts > endTime) endTime = ts;
+      }
+    }
+
+    const toolName = entry.tool;
+    if (!toolName) continue;
+
+    toolCounts[toolName] = (toolCounts[toolName] || 0) + 1;
+
+    const input = entry.input || {};
+
+    if (
+      toolName === "Read" ||
+      toolName === "read_file" ||
+      toolName === "read"
+    ) {
+      const fp = input.file_path || input.path;
+      if (fp) filesRead.add(fp);
+    }
+
+    if (
+      toolName === "Write" ||
+      toolName === "Edit" ||
+      toolName === "write_file" ||
+      toolName === "edit_file" ||
+      toolName === "write" ||
+      toolName === "edit"
+    ) {
+      const fp = input.file_path || input.path;
+      if (fp) filesModified.add(fp);
+    }
+
+    if (toolName === "NotebookEdit" || toolName === "notebook_edit") {
+      const fp = input.notebook_path || input.path;
+      if (fp) filesModified.add(fp);
+    }
+
+    if (
+      toolName === "Grep" ||
+      toolName === "grep" ||
+      toolName === "search" ||
+      toolName === "Search"
+    ) {
+      const pattern = input.pattern || input.query || input.regex;
+      if (pattern) searchPatterns.add(pattern);
+    }
+
+    if (toolName === "Glob" || toolName === "glob") {
+      const pattern = input.pattern;
+      if (pattern) searchPatterns.add(pattern);
+    }
+
+    if (toolName === "Bash" || toolName === "bash") {
+      const cmd = input.command || "";
+      const grepMatch = cmd.match(/\bgrep\s+(?:-[^\s]+\s+)*['"]?([^'"|\s]+)/);
+      if (grepMatch) searchPatterns.add(grepMatch[1]);
+      const rgMatch = cmd.match(/\brg\s+(?:-[^\s]+\s+)*['"]?([^'"|\s]+)/);
+      if (rgMatch) searchPatterns.add(rgMatch[1]);
+    }
+
+    if (toolName === "WebSearch" || toolName === "web_search") {
+      const q = input.query;
+      if (q) searchPatterns.add(q);
+    }
+  }
+
+  try {
+    unlinkSync(logFile);
+  } catch {}
+
+  return {
+    filesRead,
+    filesModified,
+    searchPatterns,
+    toolCounts,
+    startTime,
+    endTime,
+  };
+}
+
 export function formatDuration(startTime, endTime) {
   if (!startTime || !endTime) return null;
   const ms = endTime - startTime;
@@ -244,7 +365,12 @@ async function main() {
 
     const { transcript_path, cwd, session_id } = hookInput;
     const project = detectProject(cwd);
-    const data = parseTranscript(transcript_path);
+
+    const sessionLog = parseSessionLog(session_id);
+    const data =
+      sessionLog && Object.values(sessionLog.toolCounts).length > 0
+        ? sessionLog
+        : parseTranscript(transcript_path);
 
     const totalToolCalls = Object.values(data.toolCounts).reduce(
       (a, b) => a + b,

@@ -2701,6 +2701,10 @@ function sessionEndHookPath() {
   return resolve(ROOT, "src", "hooks", "session-end.mjs");
 }
 
+function postToolCallHookPath() {
+  return resolve(ROOT, "src", "hooks", "post-tool-call.mjs");
+}
+
 /**
  * Writes a SessionEnd hook entry for session capture to ~/.claude/settings.json.
  * Returns true if installed, false if already present.
@@ -2767,6 +2771,77 @@ function removeSessionCaptureHook() {
   );
 
   if (settings.hooks.SessionEnd.length === before) return false;
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
+/**
+ * Writes a PostToolCall hook entry for passive auto-capture to ~/.claude/settings.json.
+ * Returns true if installed, false if already present.
+ */
+function installPostToolCallHook() {
+  const settingsPath = claudeSettingsPath();
+  let settings = {};
+
+  if (existsSync(settingsPath)) {
+    const raw = readFileSync(settingsPath, "utf-8");
+    try {
+      settings = JSON.parse(raw);
+    } catch {
+      const bak = settingsPath + ".bak";
+      copyFileSync(settingsPath, bak);
+      console.log(yellow(`  Backed up corrupted settings to ${bak}`));
+    }
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.PostToolCall) settings.hooks.PostToolCall = [];
+
+  const alreadyInstalled = settings.hooks.PostToolCall.some((h) =>
+    h.hooks?.some((hh) => hh.command?.includes("post-tool-call.mjs")),
+  );
+  if (alreadyInstalled) return false;
+
+  const hookScript = postToolCallHookPath();
+  settings.hooks.PostToolCall.push({
+    hooks: [
+      {
+        type: "command",
+        command: `node ${hookScript}`,
+        timeout: 5,
+      },
+    ],
+  });
+
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  return true;
+}
+
+/**
+ * Removes the PostToolCall auto-capture hook from ~/.claude/settings.json.
+ * Returns true if removed, false if not found.
+ */
+function removePostToolCallHook() {
+  const settingsPath = claudeSettingsPath();
+  if (!existsSync(settingsPath)) return false;
+
+  let settings;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+  } catch {
+    return false;
+  }
+
+  if (!settings.hooks?.PostToolCall) return false;
+
+  const before = settings.hooks.PostToolCall.length;
+  settings.hooks.PostToolCall = settings.hooks.PostToolCall.filter(
+    (h) => !h.hooks?.some((hh) => hh.command?.includes("post-tool-call.mjs")),
+  );
+
+  if (settings.hooks.PostToolCall.length === before) return false;
 
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
   return true;
@@ -2915,6 +2990,51 @@ async function runHooksInstall() {
     }
     console.log();
   }
+
+  const installAutoCapture =
+    flags.has("--auto-capture") ||
+    (await prompt(
+      "  Install PostToolCall auto-capture hook? (passively logs tool calls for richer session summaries) (Y/n):",
+      "Y",
+    ));
+  const shouldInstallAutoCapture =
+    installAutoCapture === true ||
+    (typeof installAutoCapture === "string" &&
+      !installAutoCapture.toLowerCase().startsWith("n"));
+
+  if (shouldInstallAutoCapture) {
+    try {
+      const autoCaptureInstalled = installPostToolCallHook();
+      if (autoCaptureInstalled) {
+        console.log(
+          `\n  ${green("✓")} PostToolCall auto-capture hook installed.\n`,
+        );
+        console.log(
+          dim(
+            "  After every tool call, context-vault logs the tool name and file paths.",
+          ),
+        );
+        console.log(
+          dim(
+            "  Session summaries will use this log as the primary data source.",
+          ),
+        );
+        console.log(
+          dim(`\n  To remove: ${cyan("context-vault hooks uninstall")}`),
+        );
+      } else {
+        console.log(
+          `\n  ${yellow("!")} PostToolCall auto-capture hook already installed.\n`,
+        );
+      }
+    } catch (e) {
+      console.error(
+        `\n  ${red("x")} Failed to install auto-capture hook: ${e.message}\n`,
+      );
+      process.exit(1);
+    }
+    console.log();
+  }
 }
 
 async function runHooksUninstall() {
@@ -2949,6 +3069,19 @@ async function runHooksUninstall() {
   } catch (e) {
     console.error(
       `\n  ${red("x")} Failed to remove session flush hook: ${e.message}\n`,
+    );
+  }
+
+  try {
+    const autoCaptureRemoved = removePostToolCallHook();
+    if (autoCaptureRemoved) {
+      console.log(
+        `\n  ${green("✓")} PostToolCall auto-capture hook removed.\n`,
+      );
+    }
+  } catch (e) {
+    console.error(
+      `\n  ${red("x")} Failed to remove auto-capture hook: ${e.message}\n`,
     );
   }
 }
