@@ -405,3 +405,12 @@ export function deleteVec(stmts, rowid) {
   if (safeRowid < 1n) throw new Error(`Invalid rowid: ${rowid}`);
   stmts.deleteVecStmt.run(safeRowid);
 }
+
+export function testConnection(db) {
+  try {
+    db.prepare("SELECT 1").get();
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -238,6 +238,8 @@ ${bold("Commands:")}
   ${cyan("hooks")} install|uninstall  Install or remove Claude Code memory hook
   ${cyan("claude")} install|uninstall  Alias for hooks install|uninstall
   ${cyan("skills")} install          Install bundled Claude Code skills
+  ${cyan("health")}                Quick health check — vault, DB, entry count
+  ${cyan("restart")}               Stop running MCP server processes (client auto-restarts)
   ${cyan("flush")}                 Check vault health and confirm DB is accessible
   ${cyan("recall")}                Search vault from a Claude Code hook (reads stdin)
   ${cyan("session-capture")}       Save a session summary entry (reads JSON from stdin)
@@ -3187,6 +3189,194 @@ async function runDoctor() {
   console.log();
 }
 
+async function runHealth() {
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { initDatabase, testConnection } =
+    await import("@context-vault/core/index/db");
+
+  let config;
+  let healthy = true;
+  const lines = [];
+
+  try {
+    config = resolveConfig();
+  } catch (e) {
+    console.log(red(`context-vault health — FAILED`));
+    console.log(`  config: ${red(`cannot resolve (${e.message})`)}`);
+    console.log(`  status: ${red("unhealthy")}`);
+    process.exit(1);
+  }
+
+  const vaultOk = existsSync(config.vaultDir);
+  const dbExists = existsSync(config.dbPath);
+
+  lines.push(
+    `  vault: ${config.vaultDir} ${vaultOk ? green("(exists)") : red("(missing!)")}`,
+  );
+
+  if (!vaultOk) healthy = false;
+
+  let db;
+  let entryCount = null;
+  let lastSave = null;
+  let dbOk = false;
+
+  if (dbExists) {
+    try {
+      db = await initDatabase(config.dbPath);
+      dbOk = testConnection(db);
+      if (dbOk) {
+        const row = db.prepare("SELECT COUNT(*) as c FROM vault").get();
+        entryCount = row.c;
+        const lastRow = db
+          .prepare(
+            "SELECT MAX(COALESCE(updated_at, created_at)) as ts FROM vault",
+          )
+          .get();
+        lastSave = lastRow?.ts ?? null;
+      }
+    } catch {
+      dbOk = false;
+    } finally {
+      try {
+        db?.close();
+      } catch {}
+    }
+  }
+
+  if (dbOk) {
+    lines.push(
+      `  database: ${config.dbPath} ${green(`(${entryCount} ${entryCount === 1 ? "entry" : "entries"})`)}`,
+    );
+    lines.push(`  last save: ${lastSave ?? dim("n/a")}`);
+  } else {
+    healthy = false;
+    lines.push(
+      `  database: ${config.dbPath} ${red(dbExists ? "(cannot connect)" : "(missing!)")}`,
+    );
+  }
+
+  if (healthy) {
+    console.log(green(`context-vault health — OK`));
+  } else {
+    console.log(red(`context-vault health — FAILED`));
+  }
+
+  for (const line of lines) {
+    console.log(line);
+  }
+
+  console.log(`  status: ${healthy ? green("healthy") : red("unhealthy")}`);
+
+  if (!healthy) process.exit(1);
+}
+
+async function runRestart() {
+  const force = flags.has("--force");
+
+  console.log();
+  console.log(`  ${bold("◇ context-vault restart")}`);
+  console.log();
+
+  let psOutput;
+  try {
+    psOutput = execSync("ps aux", { encoding: "utf-8", timeout: 5000 });
+  } catch (e) {
+    console.error(red(`  Failed to list processes: ${e.message}`));
+    process.exit(1);
+  }
+
+  const currentPid = process.pid;
+  const lines = psOutput.split("\n");
+
+  const serverPids = [];
+  for (const line of lines) {
+    const match = line.match(/^\S+\s+(\d+)\s/);
+    if (!match) continue;
+    const pid = parseInt(match[1], 10);
+    if (pid === currentPid) continue;
+    if (
+      /context-vault.*(serve|stdio|server\/index)/.test(line) ||
+      /server\/index\.js.*context-vault/.test(line)
+    ) {
+      serverPids.push(pid);
+    }
+  }
+
+  if (serverPids.length === 0) {
+    console.log(dim("  No running context-vault MCP server processes found."));
+    console.log(
+      dim(
+        "  The MCP client will start the server automatically on the next tool call.",
+      ),
+    );
+    console.log();
+    return;
+  }
+
+  console.log(
+    `  Found ${serverPids.length} server process${serverPids.length === 1 ? "" : "es"}: ${dim(serverPids.join(", "))}`,
+  );
+  console.log();
+
+  const signal = force ? "SIGKILL" : "SIGTERM";
+  const killed = [];
+  const failed = [];
+
+  for (const pid of serverPids) {
+    try {
+      process.kill(pid, signal);
+      killed.push(pid);
+      console.log(`  ${green("✓")} Sent ${signal} to PID ${pid}`);
+    } catch (e) {
+      if (e.code === "ESRCH") {
+        console.log(`  ${dim("-")} PID ${pid} already gone`);
+      } else {
+        failed.push(pid);
+        console.log(`  ${red("✘")} Failed to signal PID ${pid}: ${e.message}`);
+      }
+    }
+  }
+
+  if (!force && killed.length > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    for (const pid of killed) {
+      try {
+        process.kill(pid, 0);
+        console.log(
+          `  ${yellow("!")} PID ${pid} still running — sending SIGKILL`,
+        );
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {}
+      } catch {
+        // process is gone — expected
+      }
+    }
+  }
+
+  console.log();
+
+  if (failed.length > 0) {
+    console.log(
+      red(
+        `  Could not stop ${failed.length} process${failed.length === 1 ? "" : "es"}. Try --force.`,
+      ),
+    );
+    process.exit(1);
+  } else {
+    console.log(
+      green("  Server stopped.") +
+        dim(
+          " The MCP client will restart it automatically on the next tool call.",
+        ),
+    );
+  }
+
+  console.log();
+}
+
 async function runServe() {
   await import("../src/server/index.js");
 }
@@ -3268,6 +3458,12 @@ async function main() {
       break;
     case "doctor":
       await runDoctor();
+      break;
+    case "health":
+      await runHealth();
+      break;
+    case "restart":
+      await runRestart();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));
