@@ -15,6 +15,7 @@ import * as clearContext from "./tools/clear-context.js";
 import * as createSnapshot from "./tools/create-snapshot.js";
 import * as sessionStart from "./tools/session-start.js";
 import * as listBuckets from "./tools/list-buckets.js";
+import * as ingestProject from "./tools/ingest-project.js";
 
 const toolModules = [
   getContext,
@@ -23,6 +24,7 @@ const toolModules = [
   deleteContext,
   submitFeedback,
   ingestUrl,
+  ingestProject,
   contextStatus,
   clearContext,
   createSnapshot,

@@ -254,6 +254,7 @@ ${bold("Commands:")}
   ${cyan("import")} <path>          Import entries from file or directory
   ${cyan("export")}                Export vault to JSON or CSV
   ${cyan("ingest")} <url>          Fetch URL and save as vault entry
+  ${cyan("ingest-project")} <path>  Scan project directory and register as project entity
   ${cyan("migrate")}               Migrate vault between local and hosted
   ${cyan("consolidate")}           Find hot tags and cold entries for maintenance
 
@@ -2125,6 +2126,189 @@ async function runIngest() {
   console.log();
 }
 
+async function runIngestProject() {
+  const rawPath = args[1];
+  if (!rawPath) {
+    console.log(`\n  ${bold("context-vault ingest-project")} <path>\n`);
+    console.log(`  Scan a local project directory and register it as a project entity.\n`);
+    console.log(`  Options:`);
+    console.log(`    --tags t1,t2     Comma-separated additional tags`);
+    console.log(`    --pillar <name>  Parent pillar/domain name (creates a bucket:<name> tag)`);
+    console.log();
+    return;
+  }
+
+  // Resolve path (handle ~, relative)
+  let projectPath = rawPath;
+  if (projectPath.startsWith("~")) {
+    projectPath = join(HOME, projectPath.slice(1));
+  } else if (!projectPath.startsWith("/")) {
+    projectPath = resolve(process.cwd(), projectPath);
+  }
+
+  if (!existsSync(projectPath)) {
+    console.error(red(`\n  Directory not found: ${projectPath}`));
+    process.exit(1);
+  }
+
+  const tagsStr = getFlag("--tags");
+  const tags = tagsStr ? tagsStr.split(",").map((t) => t.trim()) : undefined;
+  const pillar = getFlag("--pillar") || undefined;
+
+  console.log(dim(`  Scanning ${projectPath}...`));
+
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { initDatabase, prepareStatements, insertVec, deleteVec } =
+    await import("@context-vault/core/index/db");
+  const { embed } = await import("@context-vault/core/index/embed");
+  const { captureAndIndex } = await import("@context-vault/core/capture");
+  const { existsSync: fsExists, readFileSync: fsRead } = await import("node:fs");
+  const { join: pathJoin, basename: pathBasename } = await import("node:path");
+  const { execSync: childExec } = await import("node:child_process");
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red(`\n  Vault directory not found: ${config.vaultDir}`));
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+  const stmts = prepareStatements(db);
+  const ctx = {
+    db,
+    config,
+    stmts,
+    embed,
+    insertVec: (r, e) => insertVec(stmts, r, e),
+    deleteVec: (r) => deleteVec(stmts, r),
+  };
+
+  function safeExecLocal(cmd, cwd) {
+    try {
+      return childExec(cmd, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    } catch {
+      return null;
+    }
+  }
+
+  // Read package.json
+  let pkgJson = null;
+  const pkgPath = pathJoin(projectPath, "package.json");
+  if (fsExists(pkgPath)) {
+    try { pkgJson = JSON.parse(fsRead(pkgPath, "utf-8")); } catch { pkgJson = null; }
+  }
+
+  // Project name
+  let projectName = pathBasename(projectPath);
+  if (pkgJson?.name) projectName = pkgJson.name.replace(/^@[^/]+\//, "");
+
+  const identityKey = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+
+  // Description
+  let description = pkgJson?.description || null;
+  if (!description) {
+    const readmeRaw = (() => { try { return fsRead(pathJoin(projectPath, "README.md"), "utf-8"); } catch { try { return fsRead(pathJoin(projectPath, "readme.md"), "utf-8"); } catch { return null; } } })();
+    if (readmeRaw) {
+      for (const line of readmeRaw.split("\n")) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        description = t.slice(0, 200);
+        break;
+      }
+    }
+  }
+
+  // Tech stack
+  const techStack = [];
+  if (fsExists(pathJoin(projectPath, "pyproject.toml")) || fsExists(pathJoin(projectPath, "setup.py"))) techStack.push("python");
+  if (fsExists(pathJoin(projectPath, "Cargo.toml"))) techStack.push("rust");
+  if (fsExists(pathJoin(projectPath, "go.mod"))) techStack.push("go");
+  if (pkgJson) {
+    techStack.push("javascript");
+    const allDeps = { ...(pkgJson.dependencies || {}), ...(pkgJson.devDependencies || {}) };
+    if (allDeps.typescript || fsExists(pathJoin(projectPath, "tsconfig.json"))) techStack.push("typescript");
+    if (allDeps.react || allDeps["react-dom"]) techStack.push("react");
+    if (allDeps.next) techStack.push("nextjs");
+    if (allDeps.vue) techStack.push("vue");
+    if (allDeps.svelte) techStack.push("svelte");
+    if (allDeps.express) techStack.push("express");
+    if (allDeps.fastify) techStack.push("fastify");
+    if (allDeps.hono) techStack.push("hono");
+    if (allDeps.vite) techStack.push("vite");
+    if (allDeps.electron) techStack.push("electron");
+    if (allDeps.tauri || allDeps["@tauri-apps/api"]) techStack.push("tauri");
+  }
+
+  const isGitRepo = fsExists(pathJoin(projectPath, ".git"));
+  const repoUrl = isGitRepo ? safeExecLocal("git remote get-url origin", projectPath) : null;
+  const lastCommit = isGitRepo ? safeExecLocal("git log -1 --format=%ci", projectPath) : null;
+  const hasClaudeMd = fsExists(pathJoin(projectPath, "CLAUDE.md"));
+
+  const bucketTag = `bucket:${identityKey}`;
+  const autoTags = [bucketTag];
+  if (pillar) autoTags.push(`bucket:${pillar}`);
+  const allTags = [...new Set([...autoTags, ...(tags || [])])];
+
+  const bodyLines = [`## ${projectName}`];
+  if (description) bodyLines.push("", description);
+  bodyLines.push("", "### Metadata");
+  bodyLines.push(`- **Path**: \`${projectPath}\``);
+  if (repoUrl) bodyLines.push(`- **Repo**: ${repoUrl}`);
+  if (techStack.length) bodyLines.push(`- **Stack**: ${techStack.join(", ")}`);
+  if (lastCommit) bodyLines.push(`- **Last commit**: ${lastCommit}`);
+  bodyLines.push(`- **CLAUDE.md**: ${hasClaudeMd ? "yes" : "no"}`);
+  const body = bodyLines.join("\n");
+
+  const meta = {
+    path: projectPath,
+    ...(repoUrl ? { repo_url: repoUrl } : {}),
+    ...(techStack.length ? { tech_stack: techStack } : {}),
+    has_claude_md: hasClaudeMd,
+  };
+
+  const projectResult = await captureAndIndex(ctx, {
+    kind: "project",
+    title: projectName,
+    body,
+    tags: allTags,
+    identity_key: identityKey,
+    meta,
+  });
+
+  const bucketExists = db
+    .prepare("SELECT 1 FROM vault WHERE kind = 'bucket' AND identity_key = ? LIMIT 1")
+    .get(bucketTag);
+
+  let bucketResult = null;
+  if (!bucketExists) {
+    bucketResult = await captureAndIndex(ctx, {
+      kind: "bucket",
+      title: projectName,
+      body: `Bucket for project: ${projectName}`,
+      tags: allTags,
+      identity_key: bucketTag,
+      meta: { project_path: projectPath },
+    });
+  }
+
+  db.close();
+
+  const relPath = projectResult.filePath.replace(config.vaultDir + "/", "");
+  console.log(`\n  ${green("✓")} Project → ${relPath}`);
+  console.log(`    id: ${projectResult.id}`);
+  console.log(`    tags: ${allTags.join(", ")}`);
+  if (techStack.length) console.log(`    stack: ${techStack.join(", ")}`);
+  if (repoUrl) console.log(`    repo: ${repoUrl}`);
+  if (bucketResult) {
+    const bRelPath = bucketResult.filePath.replace(config.vaultDir + "/", "");
+    console.log(`\n  ${green("✓")} Bucket → ${bRelPath}`);
+    console.log(`    id: ${bucketResult.id}`);
+  } else {
+    console.log(`\n    ${dim(`(bucket '${bucketTag}' already exists — skipped)`)}`);
+  }
+  console.log();
+}
+
 async function runRecall() {
   let query;
 
@@ -3704,6 +3888,9 @@ async function main() {
       break;
     case "ingest":
       await runIngest();
+      break;
+    case "ingest-project":
+      await runIngestProject();
       break;
     case "reindex":
       await runReindex();
