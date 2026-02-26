@@ -268,7 +268,9 @@ export const inputSchema = {
   tags: z
     .array(z.string())
     .optional()
-    .describe("Filter by tags (entries must match at least one)"),
+    .describe(
+      "Filter by tags (entries must match at least one). Use 'bucket:' prefixed tags for project-scoped retrieval (e.g., ['bucket:autohub']).",
+    ),
   since: z
     .string()
     .optional()

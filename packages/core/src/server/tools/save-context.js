@@ -267,7 +267,9 @@ export const inputSchema = {
   tags: z
     .array(z.string())
     .optional()
-    .describe("Tags for categorization and search"),
+    .describe(
+      "Tags for categorization and search. Use 'bucket:' prefix for project/domain scoping (e.g., 'bucket:autohub') to enable project-scoped retrieval.",
+    ),
   meta: z
     .any()
     .optional()
@@ -546,6 +548,15 @@ export async function handler(
   if (tags?.length) parts.push(`  tags: ${tags.join(", ")}`);
   parts.push(`  tier: ${effectiveTier}`);
   parts.push("", "_Use this id to update or delete later._");
+  const hasBucketTag = (tags || []).some(
+    (t) => typeof t === "string" && t.startsWith("bucket:"),
+  );
+  if (tags && tags.length > 0 && !hasBucketTag) {
+    parts.push(
+      "",
+      "_Tip: Consider adding a `bucket:` tag (e.g., `bucket:myproject`) for project-scoped retrieval._",
+    );
+  }
   if (similarEntries.length) {
     if (suggestMode) {
       const candidates = buildConflictCandidates(similarEntries);
