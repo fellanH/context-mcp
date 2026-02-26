@@ -21,6 +21,7 @@ const KIND_CATEGORY = {
   project: "entity",
   tool: "entity",
   source: "entity",
+  bucket: "entity",
   // Event — append-only, decaying
   conversation: "event",
   message: "event",
