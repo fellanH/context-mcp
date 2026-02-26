@@ -557,6 +557,25 @@ export async function handler(
       "_Tip: Consider adding a `bucket:` tag (e.g., `bucket:myproject`) for project-scoped retrieval._",
     );
   }
+  const bucketTags = (tags || []).filter(
+    (t) => typeof t === "string" && t.startsWith("bucket:"),
+  );
+  for (const bt of bucketTags) {
+    const bucketUserClause = userId !== undefined ? "AND user_id = ?" : "";
+    const bucketParams =
+      userId !== undefined ? [bt, userId] : [bt];
+    const exists = ctx.db
+      .prepare(
+        `SELECT 1 FROM vault WHERE kind = 'bucket' AND identity_key = ? ${bucketUserClause} LIMIT 1`,
+      )
+      .get(...bucketParams);
+    if (!exists) {
+      parts.push(
+        ``,
+        `_Note: bucket '${bt}' is not registered. Use save_context(kind: "bucket", identity_key: "${bt}") to register it._`,
+      );
+    }
+  }
   if (similarEntries.length) {
     if (suggestMode) {
       const candidates = buildConflictCandidates(similarEntries);

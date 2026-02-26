@@ -14,6 +14,7 @@ import * as contextStatus from "./tools/context-status.js";
 import * as clearContext from "./tools/clear-context.js";
 import * as createSnapshot from "./tools/create-snapshot.js";
 import * as sessionStart from "./tools/session-start.js";
+import * as listBuckets from "./tools/list-buckets.js";
 
 const toolModules = [
   getContext,
@@ -26,6 +27,7 @@ const toolModules = [
   clearContext,
   createSnapshot,
   sessionStart,
+  listBuckets,
 ];
 
 const TOOL_TIMEOUT_MS = 60_000;
