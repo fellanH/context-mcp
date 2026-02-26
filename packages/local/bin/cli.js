@@ -228,7 +228,9 @@ function showHelp() {
   ${dim("Persistent memory for AI agents")}
 
 ${bold("Usage:")}
-  context-vault <command> [options]
+  context-vault [command] [options]
+
+  ${dim("No command → runs setup (first time) or shows status (existing vault)")}
 
 ${bold("Commands:")}
   ${cyan("setup")}                 Interactive MCP server installer
@@ -2130,10 +2132,14 @@ async function runIngestProject() {
   const rawPath = args[1];
   if (!rawPath) {
     console.log(`\n  ${bold("context-vault ingest-project")} <path>\n`);
-    console.log(`  Scan a local project directory and register it as a project entity.\n`);
+    console.log(
+      `  Scan a local project directory and register it as a project entity.\n`,
+    );
     console.log(`  Options:`);
     console.log(`    --tags t1,t2     Comma-separated additional tags`);
-    console.log(`    --pillar <name>  Parent pillar/domain name (creates a bucket:<name> tag)`);
+    console.log(
+      `    --pillar <name>  Parent pillar/domain name (creates a bucket:<name> tag)`,
+    );
     console.log();
     return;
   }
@@ -2162,7 +2168,8 @@ async function runIngestProject() {
     await import("@context-vault/core/index/db");
   const { embed } = await import("@context-vault/core/index/embed");
   const { captureAndIndex } = await import("@context-vault/core/capture");
-  const { existsSync: fsExists, readFileSync: fsRead } = await import("node:fs");
+  const { existsSync: fsExists, readFileSync: fsRead } =
+    await import("node:fs");
   const { join: pathJoin, basename: pathBasename } = await import("node:path");
   const { execSync: childExec } = await import("node:child_process");
 
@@ -2185,7 +2192,11 @@ async function runIngestProject() {
 
   function safeExecLocal(cmd, cwd) {
     try {
-      return childExec(cmd, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+      return childExec(cmd, {
+        cwd,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      }).trim();
     } catch {
       return null;
     }
@@ -2195,19 +2206,37 @@ async function runIngestProject() {
   let pkgJson = null;
   const pkgPath = pathJoin(projectPath, "package.json");
   if (fsExists(pkgPath)) {
-    try { pkgJson = JSON.parse(fsRead(pkgPath, "utf-8")); } catch { pkgJson = null; }
+    try {
+      pkgJson = JSON.parse(fsRead(pkgPath, "utf-8"));
+    } catch {
+      pkgJson = null;
+    }
   }
 
   // Project name
   let projectName = pathBasename(projectPath);
   if (pkgJson?.name) projectName = pkgJson.name.replace(/^@[^/]+\//, "");
 
-  const identityKey = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  const identityKey = projectName
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 
   // Description
   let description = pkgJson?.description || null;
   if (!description) {
-    const readmeRaw = (() => { try { return fsRead(pathJoin(projectPath, "README.md"), "utf-8"); } catch { try { return fsRead(pathJoin(projectPath, "readme.md"), "utf-8"); } catch { return null; } } })();
+    const readmeRaw = (() => {
+      try {
+        return fsRead(pathJoin(projectPath, "README.md"), "utf-8");
+      } catch {
+        try {
+          return fsRead(pathJoin(projectPath, "readme.md"), "utf-8");
+        } catch {
+          return null;
+        }
+      }
+    })();
     if (readmeRaw) {
       for (const line of readmeRaw.split("\n")) {
         const t = line.trim();
@@ -2220,13 +2249,21 @@ async function runIngestProject() {
 
   // Tech stack
   const techStack = [];
-  if (fsExists(pathJoin(projectPath, "pyproject.toml")) || fsExists(pathJoin(projectPath, "setup.py"))) techStack.push("python");
+  if (
+    fsExists(pathJoin(projectPath, "pyproject.toml")) ||
+    fsExists(pathJoin(projectPath, "setup.py"))
+  )
+    techStack.push("python");
   if (fsExists(pathJoin(projectPath, "Cargo.toml"))) techStack.push("rust");
   if (fsExists(pathJoin(projectPath, "go.mod"))) techStack.push("go");
   if (pkgJson) {
     techStack.push("javascript");
-    const allDeps = { ...(pkgJson.dependencies || {}), ...(pkgJson.devDependencies || {}) };
-    if (allDeps.typescript || fsExists(pathJoin(projectPath, "tsconfig.json"))) techStack.push("typescript");
+    const allDeps = {
+      ...(pkgJson.dependencies || {}),
+      ...(pkgJson.devDependencies || {}),
+    };
+    if (allDeps.typescript || fsExists(pathJoin(projectPath, "tsconfig.json")))
+      techStack.push("typescript");
     if (allDeps.react || allDeps["react-dom"]) techStack.push("react");
     if (allDeps.next) techStack.push("nextjs");
     if (allDeps.vue) techStack.push("vue");
@@ -2240,8 +2277,12 @@ async function runIngestProject() {
   }
 
   const isGitRepo = fsExists(pathJoin(projectPath, ".git"));
-  const repoUrl = isGitRepo ? safeExecLocal("git remote get-url origin", projectPath) : null;
-  const lastCommit = isGitRepo ? safeExecLocal("git log -1 --format=%ci", projectPath) : null;
+  const repoUrl = isGitRepo
+    ? safeExecLocal("git remote get-url origin", projectPath)
+    : null;
+  const lastCommit = isGitRepo
+    ? safeExecLocal("git log -1 --format=%ci", projectPath)
+    : null;
   const hasClaudeMd = fsExists(pathJoin(projectPath, "CLAUDE.md"));
 
   const bucketTag = `bucket:${identityKey}`;
@@ -2276,7 +2317,9 @@ async function runIngestProject() {
   });
 
   const bucketExists = db
-    .prepare("SELECT 1 FROM vault WHERE kind = 'bucket' AND identity_key = ? LIMIT 1")
+    .prepare(
+      "SELECT 1 FROM vault WHERE kind = 'bucket' AND identity_key = ? LIMIT 1",
+    )
     .get(bucketTag);
 
   let bucketResult = null;
@@ -2304,7 +2347,9 @@ async function runIngestProject() {
     console.log(`\n  ${green("✓")} Bucket → ${bRelPath}`);
     console.log(`    id: ${bucketResult.id}`);
   } else {
-    console.log(`\n    ${dim(`(bucket '${bucketTag}' already exists — skipped)`)}`);
+    console.log(
+      `\n    ${dim(`(bucket '${bucketTag}' already exists — skipped)`)}`,
+    );
   }
   console.log();
 }
@@ -3838,8 +3883,18 @@ async function main() {
     return;
   }
 
-  if (flags.has("--help") || command === "help" || !command) {
+  if (flags.has("--help") || command === "help") {
     showHelp();
+    return;
+  }
+
+  if (!command) {
+    const configExists = existsSync(join(HOME, ".context-mcp", "config.json"));
+    if (configExists) {
+      await runStatus();
+    } else {
+      await runSetup();
+    }
     return;
   }
 
