@@ -53,6 +53,9 @@ export { indexEntry, reindex, pruneExpired } from "./index/index.js";
 // Retrieve layer
 export { hybridSearch } from "./retrieve/index.js";
 
+// Consolidation utilities
+export { findHotTags, findColdEntries } from "./consolidation/index.js";
+
 // Server tools & helpers
 export { registerTools } from "./server/tools.js";
 export {

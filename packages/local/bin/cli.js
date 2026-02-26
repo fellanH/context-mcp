@@ -255,6 +255,7 @@ ${bold("Commands:")}
   ${cyan("export")}                Export vault to JSON or CSV
   ${cyan("ingest")} <url>          Fetch URL and save as vault entry
   ${cyan("migrate")}               Migrate vault between local and hosted
+  ${cyan("consolidate")}           Find hot tags and cold entries for maintenance
 
 ${bold("Options:")}
   --help                Show this help
@@ -3510,6 +3511,139 @@ async function runRestart() {
   console.log();
 }
 
+async function runConsolidate() {
+  const dryRun = flags.has("--dry-run");
+  const tagArg = getFlag("--tag");
+
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { initDatabase } = await import("@context-vault/core/index/db");
+  const { findHotTags, findColdEntries } =
+    await import("@context-vault/core/consolidation/index");
+
+  const config = resolveConfig();
+
+  if (!config.vaultDirExists) {
+    console.error(red("  No vault found. Run: context-vault setup"));
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+
+  const { tagThreshold = 10, maxAgeDays = 7 } = config.consolidation ?? {};
+
+  let hotTags;
+  if (tagArg) {
+    const rows = db
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault
+         WHERE superseded_by IS NULL
+           AND tags LIKE ?`,
+      )
+      .get(`%"${tagArg}"%`);
+    const count = rows?.c ?? 0;
+    const lastBrief = db
+      .prepare(
+        `SELECT created_at FROM vault
+         WHERE kind = 'brief'
+           AND tags LIKE ?
+         ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(`%"${tagArg}"%`);
+    let lastSnapshotAge = null;
+    if (lastBrief) {
+      const ms = Date.now() - new Date(lastBrief.created_at).getTime();
+      lastSnapshotAge = Math.floor(ms / (1000 * 60 * 60 * 24));
+    }
+    hotTags = [{ tag: tagArg, entryCount: count, lastSnapshotAge }];
+  } else {
+    hotTags = findHotTags(db, { tagThreshold, maxSnapshotAgeDays: maxAgeDays });
+  }
+
+  const coldIds = findColdEntries(db, { maxAgeDays: 90, maxHitCount: 0 });
+
+  db.close();
+
+  console.log();
+  console.log(`  ${bold("◇ context-vault consolidate")}`);
+  console.log();
+
+  if (hotTags.length === 0 && !tagArg) {
+    console.log(
+      dim(
+        `  No hot tags found. (threshold: ${tagThreshold} entries, snapshot age: ${maxAgeDays} days)`,
+      ),
+    );
+  } else {
+    console.log(
+      bold("  Hot tags") +
+        dim(` (>= ${tagThreshold} entries, no recent snapshot)`),
+    );
+    console.log();
+
+    for (const { tag, entryCount, lastSnapshotAge } of hotTags) {
+      const ageStr =
+        lastSnapshotAge !== null
+          ? dim(` last snapshot ${lastSnapshotAge}d ago`)
+          : dim(" no snapshot yet");
+      console.log(`  ${cyan(tag)}  ${entryCount} entries${ageStr}`);
+      if (!dryRun) {
+        console.log(
+          dim(
+            `    → Run: context-vault search --tags ${tag} --limit 5  (or use create_snapshot MCP tool)`,
+          ),
+        );
+      }
+    }
+
+    if (dryRun) {
+      console.log();
+      console.log(
+        dim(
+          "  Dry run — no snapshots created. Remove --dry-run to see actions.",
+        ),
+      );
+    } else {
+      console.log();
+      console.log(
+        dim(
+          `  To consolidate a tag, use the ${cyan("create_snapshot")} MCP tool from your AI client:`,
+        ),
+      );
+      console.log(
+        dim(
+          `  e.g. "Create a snapshot for the '${hotTags[0]?.tag ?? "<tag>"}' topic"`,
+        ),
+      );
+    }
+  }
+
+  if (coldIds.length > 0) {
+    console.log();
+    console.log(
+      bold("  Cold entries") +
+        dim(` (>= 90 days old, never accessed, not superseded)`),
+    );
+    console.log();
+    console.log(
+      `  ${coldIds.length} cold ${coldIds.length === 1 ? "entry" : "entries"} found`,
+    );
+    if (!dryRun) {
+      console.log(
+        dim(
+          "  These entries have never been accessed and are older than 90 days.",
+        ),
+      );
+      console.log(
+        dim(
+          `  To archive: use context-vault search --kind <kind> and review manually.`,
+        ),
+      );
+    }
+  }
+
+  console.log();
+}
+
 async function runServe() {
   await import("../src/server/index.js");
 }
@@ -3597,6 +3731,9 @@ async function main() {
       break;
     case "restart":
       await runRestart();
+      break;
+    case "consolidate":
+      await runConsolidate();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));
