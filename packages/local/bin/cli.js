@@ -241,6 +241,7 @@ ${bold("Commands:")}
   ${cyan("flush")}                 Check vault health and confirm DB is accessible
   ${cyan("recall")}                Search vault from a Claude Code hook (reads stdin)
   ${cyan("session-capture")}       Save a session summary entry (reads JSON from stdin)
+  ${cyan("save")}                  Save an entry to the vault from CLI
   ${cyan("reindex")}               Rebuild search index from knowledge files
   ${cyan("prune")}                 Remove expired entries (use --dry-run to preview)
   ${cyan("status")}                Show vault diagnostics
@@ -2277,6 +2278,93 @@ async function runSessionCapture() {
   }
 }
 
+async function runSave() {
+  const kind = getFlag("--kind");
+  const title = getFlag("--title");
+  const tags = getFlag("--tags");
+  const source = getFlag("--source") || "cli";
+  const tier = getFlag("--tier");
+  const filePath = getFlag("--file");
+  const bodyFlag = getFlag("--body");
+
+  if (!kind) {
+    console.error(red("Error: --kind is required"));
+    process.exit(1);
+  }
+  if (!title) {
+    console.error(red("Error: --title is required"));
+    process.exit(1);
+  }
+
+  let body;
+  if (bodyFlag) {
+    body = bodyFlag;
+  } else if (filePath) {
+    body = readFileSync(resolve(filePath), "utf-8");
+  } else if (!process.stdin.isTTY) {
+    body = await new Promise((res) => {
+      let data = "";
+      process.stdin.on("data", (chunk) => (data += chunk));
+      process.stdin.on("end", () => res(data));
+    });
+  }
+
+  if (!body?.trim()) {
+    console.error(
+      red("Error: no content provided (use --body, --file, or pipe stdin)"),
+    );
+    process.exit(1);
+  }
+
+  let db;
+  try {
+    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const config = resolveConfig();
+    if (!config.vaultDirExists) {
+      console.error(
+        red("Error: vault not initialised — run `context-vault setup` first"),
+      );
+      process.exit(1);
+    }
+    const { initDatabase, prepareStatements, insertVec, deleteVec } =
+      await import("@context-vault/core/index/db");
+    const { embed } = await import("@context-vault/core/index/embed");
+    const { captureAndIndex } = await import("@context-vault/core/capture");
+    db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+    const ctx = {
+      db,
+      config,
+      stmts,
+      embed,
+      insertVec: (rowid, embedding) => insertVec(stmts, rowid, embedding),
+      deleteVec: (rowid) => deleteVec(stmts, rowid),
+    };
+    const parsedTags = tags
+      ? tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+    const entry = await captureAndIndex(ctx, {
+      kind,
+      title,
+      body: body.trim(),
+      tags: parsedTags,
+      source,
+      ...(tier ? { tier } : {}),
+    });
+    console.log(`${green("✓")} Saved ${kind} — id: ${entry.id}`);
+  } catch (e) {
+    console.error(`${red("x")} Failed to save: ${e.message}`);
+    process.exit(1);
+  } finally {
+    try {
+      db?.close();
+    } catch {}
+  }
+}
+
 /**
  * Copies all skills from the bundled assets/skills/ directory into ~/.claude/skills/.
  * Returns an array of installed skill names.
@@ -2991,6 +3079,9 @@ async function main() {
       break;
     case "session-capture":
       await runSessionCapture();
+      break;
+    case "save":
+      await runSave();
       break;
     case "import":
       await runImport();
