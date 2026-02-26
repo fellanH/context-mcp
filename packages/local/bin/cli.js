@@ -242,6 +242,7 @@ ${bold("Commands:")}
   ${cyan("recall")}                Search vault from a Claude Code hook (reads stdin)
   ${cyan("session-capture")}       Save a session summary entry (reads JSON from stdin)
   ${cyan("save")}                  Save an entry to the vault from CLI
+  ${cyan("search")}                Search vault entries from CLI
   ${cyan("reindex")}               Rebuild search index from knowledge files
   ${cyan("prune")}                 Remove expired entries (use --dry-run to preview)
   ${cyan("status")}                Show vault diagnostics
@@ -2365,6 +2366,157 @@ async function runSave() {
   }
 }
 
+async function runSearch() {
+  const kind = getFlag("--kind");
+  const tagsStr = getFlag("--tags");
+  const limit = parseInt(getFlag("--limit") || "10", 10);
+  const sort = getFlag("--sort") || "relevance";
+  const format = getFlag("--format") || "plain";
+  const showFull = flags.has("--full");
+
+  const valuedFlags = new Set([
+    "--kind",
+    "--tags",
+    "--limit",
+    "--sort",
+    "--format",
+  ]);
+
+  const queryParts = [];
+  for (let i = 1; i < args.length; i++) {
+    if (args[i].startsWith("--")) {
+      if (valuedFlags.has(args[i])) i++;
+      continue;
+    }
+    queryParts.push(args[i]);
+  }
+  const query = queryParts.join(" ");
+
+  if (!query && sort === "relevance" && !kind && !tagsStr) {
+    console.error(
+      red("Error: provide a search query or use --kind/--tags to browse"),
+    );
+    process.exit(1);
+  }
+
+  let db;
+  try {
+    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const config = resolveConfig();
+    if (!config.vaultDirExists) {
+      console.error(red("No vault found. Run: context-vault setup"));
+      process.exit(1);
+    }
+
+    const { initDatabase, prepareStatements } =
+      await import("@context-vault/core/index/db");
+    const { embed } = await import("@context-vault/core/index/embed");
+    const { hybridSearch } = await import("@context-vault/core/retrieve/index");
+
+    db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+    const ctx = { db, config, stmts, embed };
+
+    let results;
+
+    if (query) {
+      results = await hybridSearch(ctx, query, { limit: limit * 2 });
+
+      if (kind) {
+        results = results.filter((r) => r.kind === kind);
+      }
+    } else {
+      let sql =
+        "SELECT id, kind, category, title, body, tags, created_at, updated_at FROM vault WHERE superseded_by IS NULL";
+      const params = [];
+      if (kind) {
+        sql += " AND kind = ?";
+        params.push(kind);
+      }
+      sql += " ORDER BY COALESCE(updated_at, created_at) DESC LIMIT ?";
+      params.push(limit);
+      results = db.prepare(sql).all(...params);
+    }
+
+    if (tagsStr) {
+      const filterTags = tagsStr.split(",").map((t) => t.trim().toLowerCase());
+      results = results.filter((r) => {
+        const entryTags = r.tags
+          ? JSON.parse(r.tags).map((t) => t.toLowerCase())
+          : [];
+        return filterTags.some((ft) => entryTags.includes(ft));
+      });
+    }
+
+    results = results.slice(0, limit);
+
+    if (results.length === 0) {
+      console.log(dim("No results found."));
+      return;
+    }
+
+    if (format === "json") {
+      const output = results.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        title: r.title,
+        tags: r.tags ? JSON.parse(r.tags) : [],
+        score: r.score ?? null,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        body: showFull ? r.body : r.body?.slice(0, 200) || "",
+      }));
+      console.log(JSON.stringify(output, null, 2));
+    } else if (format === "table") {
+      const header = `${"ID".padEnd(28)} ${"Kind".padEnd(12)} ${"Title".padEnd(40)} ${"Score".padEnd(6)}`;
+      console.log(bold(header));
+      console.log("-".repeat(header.length));
+      for (const r of results) {
+        const score = r.score != null ? r.score.toFixed(2) : "—";
+        const title = (r.title || "").slice(0, 38).padEnd(40);
+        console.log(
+          `${(r.id || "").slice(0, 26).padEnd(28)} ${(r.kind || "").padEnd(12)} ${title} ${score}`,
+        );
+      }
+      console.log(
+        dim(`\n${results.length} result${results.length !== 1 ? "s" : ""}`),
+      );
+    } else {
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        const entryTags = r.tags ? JSON.parse(r.tags) : [];
+        const score = r.score != null ? ` (${r.score.toFixed(2)})` : "";
+        console.log(
+          `${bold(`${i + 1}. ${r.title || "(untitled)"}`)}${dim(score)}`,
+        );
+        console.log(
+          `   ${dim(`${r.kind || "knowledge"} · ${entryTags.join(", ") || "no tags"} · ${r.id || ""}`)}`,
+        );
+        if (showFull) {
+          console.log(`   ${r.body || ""}`);
+        } else {
+          const preview = (r.body || "").slice(0, 150).replace(/\n/g, " ");
+          if (preview)
+            console.log(
+              `   ${dim(preview + (r.body?.length > 150 ? "..." : ""))}`,
+            );
+        }
+        if (i < results.length - 1) console.log();
+      }
+      console.log(
+        dim(`\n${results.length} result${results.length !== 1 ? "s" : ""}`),
+      );
+    }
+  } catch (e) {
+    console.error(red(`Search failed: ${e.message}`));
+    process.exit(1);
+  } finally {
+    try {
+      db?.close();
+    } catch {}
+  }
+}
+
 /**
  * Copies all skills from the bundled assets/skills/ directory into ~/.claude/skills/.
  * Returns an array of installed skill names.
@@ -3082,6 +3234,9 @@ async function main() {
       break;
     case "save":
       await runSave();
+      break;
+    case "search":
+      await runSearch();
       break;
     case "import":
       await runImport();
