@@ -26,6 +26,12 @@ export const inputSchema = {
     .describe(
       "Token budget for the capsule (rough estimate: 1 token ~ 4 chars). Default: 4000.",
     ),
+  buckets: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Bucket names to scope the session brief. Each name expands to a 'bucket:<name>' tag filter. When provided, the brief only includes entries from these buckets.",
+    ),
 };
 
 function detectProject() {
@@ -71,7 +77,7 @@ function formatEntry(entry) {
   ].join("\n");
 }
 
-export async function handler({ project, max_tokens }, ctx, { ensureIndexed }) {
+export async function handler({ project, max_tokens, buckets }, ctx, { ensureIndexed }) {
   const { config } = ctx;
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
 
@@ -83,6 +89,13 @@ export async function handler({ project, max_tokens }, ctx, { ensureIndexed }) {
   const effectiveProject = project?.trim() || detectProject();
   const tokenBudget = max_tokens || DEFAULT_MAX_TOKENS;
 
+  const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
+  const effectiveTags = bucketTags.length
+    ? bucketTags
+    : effectiveProject
+      ? [effectiveProject]
+      : [];
+
   const sinceDate = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString();
 
   const sections = [];
@@ -91,12 +104,13 @@ export async function handler({ project, max_tokens }, ctx, { ensureIndexed }) {
   sections.push(
     `# Session Brief${effectiveProject ? ` — ${effectiveProject}` : ""}`,
   );
+  const bucketsLabel = buckets?.length ? ` | buckets: ${buckets.join(", ")}` : "";
   sections.push(
-    `_Generated ${new Date().toISOString().slice(0, 10)} | budget: ${tokenBudget} tokens_\n`,
+    `_Generated ${new Date().toISOString().slice(0, 10)} | budget: ${tokenBudget} tokens${bucketsLabel}_\n`,
   );
   tokensUsed += estimateTokens(sections.join("\n"));
 
-  const lastSession = queryLastSession(ctx, userId, effectiveProject);
+  const lastSession = queryLastSession(ctx, userId, effectiveTags);
   if (lastSession) {
     const sessionBlock = [
       "## Last Session Summary",
@@ -115,7 +129,7 @@ export async function handler({ project, max_tokens }, ctx, { ensureIndexed }) {
     PRIORITY_KINDS,
     sinceDate,
     userId,
-    effectiveProject,
+    effectiveTags,
   );
   if (decisions.length > 0) {
     const header = "## Active Decisions, Insights & Patterns\n";
@@ -136,7 +150,7 @@ export async function handler({ project, max_tokens }, ctx, { ensureIndexed }) {
     }
   }
 
-  const recent = queryRecent(ctx, sinceDate, userId, effectiveProject);
+  const recent = queryRecent(ctx, sinceDate, userId, effectiveTags);
   const seenIds = new Set(decisions.map((d) => d.id));
   if (lastSession) seenIds.add(lastSession.id);
   const deduped = recent.filter((r) => !seenIds.has(r.id));
@@ -176,6 +190,7 @@ export async function handler({ project, max_tokens }, ctx, { ensureIndexed }) {
   const result = ok(sections.join("\n"));
   result._meta = {
     project: effectiveProject || null,
+    buckets: buckets || null,
     tokens_used: tokensUsed,
     tokens_budget: tokenBudget,
     sections: {
@@ -187,7 +202,7 @@ export async function handler({ project, max_tokens }, ctx, { ensureIndexed }) {
   return result;
 }
 
-function queryLastSession(ctx, userId, project) {
+function queryLastSession(ctx, userId, effectiveTags) {
   const clauses = [`kind = '${SESSION_SUMMARY_KIND}'`];
   const params = [];
 
@@ -203,17 +218,17 @@ function queryLastSession(ctx, userId, project) {
     .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 5`)
     .all(...params);
 
-  if (project) {
+  if (effectiveTags.length) {
     const match = rows.find((r) => {
       const tags = r.tags ? JSON.parse(r.tags) : [];
-      return tags.includes(project);
+      return effectiveTags.some((t) => tags.includes(t));
     });
     if (match) return match;
   }
   return rows[0] || null;
 }
 
-function queryByKinds(ctx, kinds, since, userId, project) {
+function queryByKinds(ctx, kinds, since, userId, effectiveTags) {
   const kindPlaceholders = kinds.map(() => "?").join(",");
   const clauses = [`kind IN (${kindPlaceholders})`];
   const params = [...kinds];
@@ -233,17 +248,17 @@ function queryByKinds(ctx, kinds, since, userId, project) {
     .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 50`)
     .all(...params);
 
-  if (project) {
+  if (effectiveTags.length) {
     const tagged = rows.filter((r) => {
       const tags = r.tags ? JSON.parse(r.tags) : [];
-      return tags.includes(project);
+      return effectiveTags.some((t) => tags.includes(t));
     });
     if (tagged.length > 0) return tagged;
   }
   return rows;
 }
 
-function queryRecent(ctx, since, userId, project) {
+function queryRecent(ctx, since, userId, effectiveTags) {
   const clauses = ["created_at >= ?"];
   const params = [since];
 
@@ -259,10 +274,10 @@ function queryRecent(ctx, since, userId, project) {
     .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 50`)
     .all(...params);
 
-  if (project) {
+  if (effectiveTags.length) {
     const tagged = rows.filter((r) => {
       const tags = r.tags ? JSON.parse(r.tags) : [];
-      return tags.includes(project);
+      return effectiveTags.some((t) => tags.includes(t));
     });
     if (tagged.length > 0) return tagged;
   }
