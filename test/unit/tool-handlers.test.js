@@ -493,11 +493,17 @@ describe("get_context skeleton mode", () => {
       shared,
     );
     const text = isOk(result);
-    const sections = text.split("###").filter((s) => s.includes("skeleton: true"));
+    const sections = text
+      .split("###")
+      .filter((s) => s.includes("skeleton: true"));
     for (const section of sections) {
       const lines = section.split("\n").filter((l) => l.trim());
       const bodyLine = lines.find(
-        (l) => !l.startsWith("[") && !l.match(/^\d+\.\d+/) && !l.startsWith(">") && l.length > 5,
+        (l) =>
+          !l.startsWith("[") &&
+          !l.match(/^\d+\.\d+/) &&
+          !l.startsWith(">") &&
+          l.length > 5,
       );
       if (bodyLine) {
         expect(bodyLine.length).toBeLessThanOrEqual(120);

@@ -51,8 +51,17 @@ export const KIND_STALENESS_DAYS = {
   reference: 90,
 };
 
+const DURABLE_KINDS = new Set(["decision", "architecture", "pattern"]);
+const EPHEMERAL_KINDS = new Set(["session", "observation"]);
+
 export function categoryFor(kind) {
   return KIND_CATEGORY[kind] || "knowledge";
+}
+
+export function defaultTierFor(kind) {
+  if (DURABLE_KINDS.has(kind)) return "durable";
+  if (EPHEMERAL_KINDS.has(kind)) return "ephemeral";
+  return "working";
 }
 
 /** Returns the category directory name for a given kind (e.g. "insight" → "knowledge") */

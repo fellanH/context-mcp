@@ -28,6 +28,7 @@ export function writeEntry(
     expires_at,
     supersedes,
     source_files,
+    tier,
     userId,
   },
 ) {
@@ -105,6 +106,7 @@ export function writeEntry(
     expires_at,
     supersedes,
     source_files: source_files || null,
+    tier: tier || null,
     userId: userId || null,
   };
 }

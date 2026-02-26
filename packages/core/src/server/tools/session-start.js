@@ -71,11 +71,7 @@ function formatEntry(entry) {
   ].join("\n");
 }
 
-export async function handler(
-  { project, max_tokens },
-  ctx,
-  { ensureIndexed },
-) {
+export async function handler({ project, max_tokens }, ctx, { ensureIndexed }) {
   const { config } = ctx;
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
 
@@ -87,15 +83,17 @@ export async function handler(
   const effectiveProject = project?.trim() || detectProject();
   const tokenBudget = max_tokens || DEFAULT_MAX_TOKENS;
 
-  const sinceDate = new Date(
-    Date.now() - RECENT_DAYS * 86400000,
-  ).toISOString();
+  const sinceDate = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString();
 
   const sections = [];
   let tokensUsed = 0;
 
-  sections.push(`# Session Brief${effectiveProject ? ` — ${effectiveProject}` : ""}`);
-  sections.push(`_Generated ${new Date().toISOString().slice(0, 10)} | budget: ${tokenBudget} tokens_\n`);
+  sections.push(
+    `# Session Brief${effectiveProject ? ` — ${effectiveProject}` : ""}`,
+  );
+  sections.push(
+    `_Generated ${new Date().toISOString().slice(0, 10)} | budget: ${tokenBudget} tokens_\n`,
+  );
   tokensUsed += estimateTokens(sections.join("\n"));
 
   const lastSession = queryLastSession(ctx, userId, effectiveProject);
@@ -202,9 +200,7 @@ function queryLastSession(ctx, userId, project) {
 
   const where = `WHERE ${clauses.join(" AND ")}`;
   const rows = ctx.db
-    .prepare(
-      `SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 5`,
-    )
+    .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 5`)
     .all(...params);
 
   if (project) {
@@ -234,9 +230,7 @@ function queryByKinds(ctx, kinds, since, userId, project) {
 
   const where = `WHERE ${clauses.join(" AND ")}`;
   const rows = ctx.db
-    .prepare(
-      `SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 50`,
-    )
+    .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 50`)
     .all(...params);
 
   if (project) {
@@ -262,9 +256,7 @@ function queryRecent(ctx, since, userId, project) {
 
   const where = `WHERE ${clauses.join(" AND ")}`;
   const rows = ctx.db
-    .prepare(
-      `SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 50`,
-    )
+    .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 50`)
     .all(...params);
 
   if (project) {

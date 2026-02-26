@@ -10,7 +10,11 @@
 import { readFileSync, readdirSync, existsSync, unlinkSync } from "node:fs";
 import { join, basename } from "node:path";
 import { dirToKind, walkDir, ulid } from "../core/files.js";
-import { categoryFor, CATEGORY_DIRS } from "../core/categories.js";
+import {
+  categoryFor,
+  defaultTierFor,
+  CATEGORY_DIRS,
+} from "../core/categories.js";
 import {
   parseFrontmatter,
   parseEntryFromMarkdown,
@@ -47,6 +51,7 @@ export async function indexEntry(
     identity_key,
     expires_at,
     source_files,
+    tier,
     userId,
   },
 ) {
@@ -59,6 +64,7 @@ export async function indexEntry(
   const metaJson = meta ? JSON.stringify(meta) : null;
   const sourceFilesJson = source_files ? JSON.stringify(source_files) : null;
   const cat = category || categoryFor(kind);
+  const effectiveTier = tier || defaultTierFor(kind);
   const userIdVal = userId || null;
 
   let wasUpdate = false;
@@ -120,6 +126,7 @@ export async function indexEntry(
           encrypted.meta_encrypted,
           encrypted.iv,
           sourceFilesJson,
+          effectiveTier,
         );
       } else {
         ctx.stmts.insertEntry.run(
@@ -138,6 +145,7 @@ export async function indexEntry(
           createdAt,
           createdAt,
           sourceFilesJson,
+          effectiveTier,
         );
       }
     } catch (e) {

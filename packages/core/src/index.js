@@ -8,6 +8,7 @@
 export {
   categoryFor,
   categoryDirFor,
+  defaultTierFor,
   CATEGORY_DIRS,
 } from "./core/categories.js";
 export { parseArgs, resolveConfig } from "./core/config.js";

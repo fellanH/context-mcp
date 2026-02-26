@@ -35,6 +35,19 @@ export function resolveConfig() {
     thresholds: { ...DEFAULT_GROWTH_THRESHOLDS },
     telemetry: false,
     resolvedFrom: "defaults",
+    recall: {
+      maxResults: 5,
+      maxOutputBytes: 2000,
+      minRelevanceScore: 0.3,
+      excludeKinds: [],
+      excludeCategories: ["event"],
+      bodyTruncateChars: 400,
+    },
+    consolidation: {
+      tagThreshold: 10,
+      maxAgeDays: 7,
+      autoConsolidate: false,
+    },
   };
 
   const configPath = join(dataDir, "config.json");
@@ -73,6 +86,30 @@ export function resolveConfig() {
           };
       }
       if (fc.telemetry != null) config.telemetry = fc.telemetry === true;
+      if (fc.recall && typeof fc.recall === "object") {
+        const r = fc.recall;
+        if (r.maxResults != null)
+          config.recall.maxResults = Number(r.maxResults);
+        if (r.maxOutputBytes != null)
+          config.recall.maxOutputBytes = Number(r.maxOutputBytes);
+        if (r.minRelevanceScore != null)
+          config.recall.minRelevanceScore = Number(r.minRelevanceScore);
+        if (Array.isArray(r.excludeKinds))
+          config.recall.excludeKinds = r.excludeKinds;
+        if (Array.isArray(r.excludeCategories))
+          config.recall.excludeCategories = r.excludeCategories;
+        if (r.bodyTruncateChars != null)
+          config.recall.bodyTruncateChars = Number(r.bodyTruncateChars);
+      }
+      if (fc.consolidation && typeof fc.consolidation === "object") {
+        const c = fc.consolidation;
+        if (c.tagThreshold != null)
+          config.consolidation.tagThreshold = Number(c.tagThreshold);
+        if (c.maxAgeDays != null)
+          config.consolidation.maxAgeDays = Number(c.maxAgeDays);
+        if (c.autoConsolidate != null)
+          config.consolidation.autoConsolidate = c.autoConsolidate === true;
+      }
       // Hosted account linking (Phase 4)
       if (fc.hostedUrl) config.hostedUrl = fc.hostedUrl;
       if (fc.apiKey) config.apiKey = fc.apiKey;
