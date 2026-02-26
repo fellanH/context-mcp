@@ -146,6 +146,13 @@ export function handler(_args, ctx) {
     for (const w of growth.warnings) {
       lines.push(`  ${w.message}`);
     }
+    if (growth.kindBreakdown.length) {
+      lines.push("");
+      lines.push("  Breakdown by kind:");
+      for (const { kind, count, pct } of growth.kindBreakdown) {
+        lines.push(`    ${kind}: ${count.toLocaleString()} (${pct}%)`);
+      }
+    }
     if (growth.actions.length) {
       lines.push("", "Suggested growth actions:");
       for (const a of growth.actions) {

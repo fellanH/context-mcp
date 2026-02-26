@@ -511,4 +511,27 @@ describe("resolveConfig", () => {
     const cfg = resolveConfig();
     expect(cfg.consolidation.autoConsolidate).toBe(false);
   });
+
+  // --- growthWarningThreshold convenience key ---
+
+  it("growthWarningThreshold sets totalEntries.warn", () => {
+    const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
+    mockFiles[configPath] = JSON.stringify({
+      growthWarningThreshold: 5000,
+    });
+
+    const cfg = resolveConfig();
+    expect(cfg.thresholds.totalEntries.warn).toBe(5000);
+  });
+
+  it("thresholds.totalEntries.warn overrides growthWarningThreshold", () => {
+    const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
+    mockFiles[configPath] = JSON.stringify({
+      growthWarningThreshold: 3000,
+      thresholds: { totalEntries: { warn: 4000 } },
+    });
+
+    const cfg = resolveConfig();
+    expect(cfg.thresholds.totalEntries.warn).toBe(4000);
+  });
 });
