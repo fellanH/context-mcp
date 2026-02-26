@@ -302,6 +302,12 @@ export const inputSchema = {
     .describe(
       "Skeleton mode: top pivot_count entries by relevance are returned with full body. Remaining entries are returned as skeletons (title + tags + first ~100 chars of body). Default: 2. Set to 0 to skeleton all results, or a high number to disable.",
     ),
+  include_ephemeral: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, include ephemeral tier entries in results. Default: false — only working and durable tiers are returned.",
+    ),
 };
 
 /**
@@ -323,6 +329,7 @@ export async function handler(
     detect_conflicts,
     max_tokens,
     pivot_count,
+    include_ephemeral,
   },
   ctx,
   { ensureIndexed, reindexFailed },
@@ -462,6 +469,11 @@ export async function handler(
     if (r.kind === "brief") r.score = (r.score || 0) + BRIEF_SCORE_BOOST;
   }
   filtered.sort((a, b) => b.score - a.score);
+
+  // Tier filter: exclude ephemeral entries by default (NULL tier treated as working)
+  if (!include_ephemeral) {
+    filtered = filtered.filter((r) => r.tier !== "ephemeral");
+  }
 
   if (!filtered.length) {
     if (autoWindowed) {
@@ -611,11 +623,9 @@ export async function handler(
   ) {
     const { handler: snapshotHandler } = await import("./create-snapshot.js");
     for (const suggestion of consolidationSuggestions) {
-      snapshotHandler(
-        { topic: suggestion.tag, tags: [suggestion.tag] },
-        ctx,
-        { ensureIndexed: async () => {} },
-      ).catch(() => {});
+      snapshotHandler({ topic: suggestion.tag, tags: [suggestion.tag] }, ctx, {
+        ensureIndexed: async () => {},
+      }).catch(() => {});
     }
   }
 

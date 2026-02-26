@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { captureAndIndex, updateEntryFile } from "../../capture/index.js";
 import { indexEntry } from "../../index/index.js";
-import { categoryFor } from "../../core/categories.js";
+import { categoryFor, defaultTierFor } from "../../core/categories.js";
 import { normalizeKind } from "../../core/files.js";
 import { ok, err, ensureVaultExists, ensureValidKind } from "../helpers.js";
 import { maybeShowFeedbackPrompt } from "../../core/telemetry.js";
@@ -241,6 +241,12 @@ export const inputSchema = {
     .describe(
       "Cosine similarity threshold for duplicate detection (0–1, default 0.85). Entries above this score are flagged as similar. Only applies to knowledge and event categories.",
     ),
+  tier: z
+    .enum(["ephemeral", "working", "durable"])
+    .optional()
+    .describe(
+      "Memory tier for lifecycle management. 'ephemeral': short-lived session data. 'working': active context (default). 'durable': long-term reference material. Defaults based on kind when not specified.",
+    ),
 };
 
 /**
@@ -264,6 +270,7 @@ export async function handler(
     source_files,
     dry_run,
     similarity_threshold,
+    tier,
   },
   ctx,
   { ensureIndexed },
@@ -401,6 +408,8 @@ export async function handler(
   if (folder) mergedMeta.folder = folder;
   const finalMeta = Object.keys(mergedMeta).length ? mergedMeta : undefined;
 
+  const effectiveTier = tier ?? defaultTierFor(normalizedKind);
+
   const entry = await captureAndIndex(ctx, {
     kind: normalizedKind,
     title,
@@ -414,6 +423,7 @@ export async function handler(
     supersedes,
     source_files,
     userId,
+    tier: effectiveTier,
   });
 
   if (ctx.config?.dataDir) {

@@ -2175,6 +2175,7 @@ async function runRecall() {
       const kind = r.kind || "knowledge";
       if (recall.excludeKinds.includes(kind)) continue;
       if (recall.excludeCategories.includes(categoryFor(kind))) continue;
+      if (r.tier === "ephemeral") continue;
       const entryTags = r.tags ? JSON.parse(r.tags) : [];
       const tagsAttr = entryTags.length ? ` tags="${entryTags.join(",")}"` : "";
       const body = r.body?.slice(0, recall.bodyTruncateChars) ?? "";
