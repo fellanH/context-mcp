@@ -271,6 +271,12 @@ export const inputSchema = {
     .describe(
       "Filter by tags (entries must match at least one). Use 'bucket:' prefixed tags for project-scoped retrieval (e.g., ['bucket:autohub']).",
     ),
+  buckets: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Filter by project-scoped buckets. Each name expands to a 'bucket:<name>' tag. Composes with 'tags' via OR (entries matching any tag or any bucket are included).",
+    ),
   since: z
     .string()
     .optional()
@@ -324,6 +330,7 @@ export async function handler(
     category,
     identity_key,
     tags,
+    buckets,
     since,
     until,
     limit,
@@ -340,8 +347,11 @@ export async function handler(
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
 
   const hasQuery = query?.trim();
+  // Expand buckets to bucket: prefixed tags and merge with explicit tags
+  const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
+  const effectiveTags = [...(tags ?? []), ...bucketTags];
   const hasFilters =
-    kind || category || tags?.length || since || until || identity_key;
+    kind || category || effectiveTags.length || since || until || identity_key;
   if (!hasQuery && !hasFilters)
     return err(
       "Required: query or at least one filter (kind, category, tags, since, until, identity_key)",
@@ -393,7 +403,7 @@ export async function handler(
   const effectiveLimit = limit || 10;
   // When tag-filtering, over-fetch to compensate for post-filter reduction
   const MAX_FETCH_LIMIT = 500;
-  const fetchLimit = tags?.length
+  const fetchLimit = effectiveTags.length
     ? Math.min(effectiveLimit * 10, MAX_FETCH_LIMIT)
     : effectiveLimit;
 
@@ -412,11 +422,11 @@ export async function handler(
     });
 
     // Post-filter by tags if provided, then apply requested limit
-    filtered = tags?.length
+    filtered = effectiveTags.length
       ? sorted
           .filter((r) => {
             const entryTags = r.tags ? JSON.parse(r.tags) : [];
-            return tags.some((t) => entryTags.includes(t));
+            return effectiveTags.some((t) => entryTags.includes(t));
           })
           .slice(0, effectiveLimit)
       : sorted;
@@ -445,6 +455,9 @@ export async function handler(
       params.push(effectiveUntil);
     }
     clauses.push("(expires_at IS NULL OR expires_at > datetime('now'))");
+    if (!include_superseded) {
+      clauses.push("superseded_by IS NULL");
+    }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     params.push(fetchLimit);
     const rows = ctx.db
@@ -452,11 +465,11 @@ export async function handler(
       .all(...params);
 
     // Post-filter by tags if provided, then apply requested limit
-    filtered = tags?.length
+    filtered = effectiveTags.length
       ? rows
           .filter((r) => {
             const entryTags = r.tags ? JSON.parse(r.tags) : [];
-            return tags.some((t) => entryTags.includes(t));
+            return effectiveTags.some((t) => entryTags.includes(t));
           })
           .slice(0, effectiveLimit)
       : rows;
@@ -637,6 +650,9 @@ export async function handler(
   if (tokensBudget != null) {
     meta.tokens_used = tokensUsed;
     meta.tokens_budget = tokensBudget;
+  }
+  if (buckets?.length) {
+    meta.buckets = buckets;
   }
   if (consolidationSuggestions.length > 0) {
     meta.consolidation_suggestions = consolidationSuggestions;
