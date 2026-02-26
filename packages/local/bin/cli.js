@@ -46,6 +46,65 @@ function isNpx() {
   return ROOT.includes("/_npx/") || ROOT.includes("\\_npx\\");
 }
 
+const MARKER_FILE = ".context-vault";
+
+function writeMarkerFile(vaultDir) {
+  const markerPath = join(vaultDir, MARKER_FILE);
+  if (!existsSync(markerPath)) {
+    writeFileSync(
+      markerPath,
+      JSON.stringify(
+        { version: 1, created: new Date().toISOString() },
+        null,
+        2,
+      ) + "\n",
+    );
+  }
+}
+
+function scanForVaults() {
+  const candidates = [
+    join(HOME, "vault"),
+    join(HOME, "omni", "vault"),
+    process.cwd(),
+  ];
+
+  // Also check existing config
+  const configPath = join(HOME, ".context-mcp", "config.json");
+  if (existsSync(configPath)) {
+    try {
+      const cfg = JSON.parse(readFileSync(configPath, "utf-8"));
+      if (cfg.vaultDir && !candidates.includes(cfg.vaultDir)) {
+        candidates.unshift(cfg.vaultDir);
+      }
+    } catch {}
+  }
+
+  const found = [];
+  for (const dir of candidates) {
+    const markerPath = join(dir, MARKER_FILE);
+    if (existsSync(markerPath)) {
+      let entryCount = 0;
+      try {
+        const knowledgeDir = join(dir, "knowledge");
+        if (existsSync(knowledgeDir)) {
+          const countFiles = (d) => {
+            let count = 0;
+            for (const entry of readdirSync(d, { withFileTypes: true })) {
+              if (entry.isDirectory()) count += countFiles(join(d, entry.name));
+              else if (entry.name.endsWith(".md")) count++;
+            }
+            return count;
+          };
+          entryCount = countFiles(knowledgeDir);
+        }
+      } catch {}
+      found.push({ path: dir, entryCount });
+    }
+  }
+  return found;
+}
+
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
@@ -263,6 +322,7 @@ ${bold("Commands:")}
 ${bold("Options:")}
   --help                Show this help
   --version             Show version
+  --vault-dir <path>    Set vault directory (setup/serve)
   --yes                 Non-interactive mode (accept all defaults)
   --skip-embeddings     Skip embedding model download (FTS-only mode)
 `);
@@ -476,7 +536,43 @@ async function runSetup() {
 
   // Vault directory (content files)
   console.log(dim(`  [2/6]`) + bold(" Configuring vault...\n"));
-  const defaultVaultDir = getFlag("--vault-dir") || join(HOME, "vault");
+
+  // Scan for existing vaults via marker file
+  let defaultVaultDir = getFlag("--vault-dir") || join(HOME, "vault");
+  if (!getFlag("--vault-dir") && !isNonInteractive) {
+    const existingVaults = scanForVaults();
+    if (existingVaults.length === 1) {
+      console.log(
+        `  ${green("+")} Found existing vault at ${existingVaults[0].path}` +
+          dim(` (${existingVaults[0].entryCount} entries)`),
+      );
+      const useExisting = await prompt(`  Use this vault? (Y/n):`, "Y");
+      if (useExisting.toLowerCase() !== "n") {
+        defaultVaultDir = existingVaults[0].path;
+      }
+      console.log();
+    } else if (existingVaults.length > 1) {
+      console.log(`  Found ${existingVaults.length} existing vaults:\n`);
+      for (let i = 0; i < existingVaults.length; i++) {
+        console.log(
+          `    ${i + 1}) ${existingVaults[i].path} ${dim(`(${existingVaults[i].entryCount} entries)`)}`,
+        );
+      }
+      console.log();
+      const choice = await prompt(
+        `  Which vault to use? (1-${existingVaults.length}, or "new"):`,
+        "1",
+      );
+      if (choice !== "new") {
+        const idx = parseInt(choice, 10) - 1;
+        if (idx >= 0 && idx < existingVaults.length) {
+          defaultVaultDir = existingVaults[idx].path;
+        }
+      }
+      console.log();
+    }
+  }
+
   const vaultDir = isNonInteractive
     ? defaultVaultDir
     : await prompt(`  Vault directory:`, defaultVaultDir);
@@ -509,6 +605,9 @@ async function runSetup() {
       process.exit(1);
     }
   }
+
+  // Write marker file for vault auto-detection
+  writeMarkerFile(resolvedVaultDir);
 
   // Ensure data dir exists for DB storage
   const dataDir = join(HOME, ".context-mcp");

@@ -589,3 +589,44 @@ describe("seed entry searchability", () => {
     expect(results[0].title).toContain("Getting Started");
   });
 });
+
+describe("vault marker file", () => {
+  it("creates .context-vault marker file during setup", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-marker-"));
+
+    try {
+      const { exitCode } = runCli("setup --yes --skip-embeddings", {
+        env: { HOME: tmpHome },
+        timeout: 60000,
+      });
+      expect(exitCode).toBe(0);
+
+      const markerPath = join(tmpHome, "vault", ".context-vault");
+      expect(existsSync(markerPath)).toBe(true);
+
+      const marker = JSON.parse(readFileSync(markerPath, "utf-8"));
+      expect(marker.version).toBe(1);
+      expect(marker.created).toBeDefined();
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("creates marker file in custom vault dir", () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "cv-marker-custom-"));
+    const customVault = join(tmpHome, "my-vault");
+
+    try {
+      const { exitCode } = runCli(
+        `setup --yes --skip-embeddings --vault-dir ${customVault}`,
+        { env: { HOME: tmpHome }, timeout: 60000 },
+      );
+      expect(exitCode).toBe(0);
+
+      const markerPath = join(customVault, ".context-vault");
+      expect(existsSync(markerPath)).toBe(true);
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+});
