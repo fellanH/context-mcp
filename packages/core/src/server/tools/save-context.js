@@ -17,8 +17,16 @@ import {
 } from "../../constants.js";
 
 const DEFAULT_SIMILARITY_THRESHOLD = 0.85;
+const SKIP_THRESHOLD = 0.95;
+const UPDATE_THRESHOLD = 0.85;
 
-async function findSimilar(ctx, embedding, threshold, userId) {
+async function findSimilar(
+  ctx,
+  embedding,
+  threshold,
+  userId,
+  { hydrate = false } = {},
+) {
   try {
     const vecCount = ctx.db
       .prepare("SELECT COUNT(*) as c FROM vault_vec")
@@ -35,14 +43,15 @@ async function findSimilar(ctx, embedding, threshold, userId) {
 
     const rowids = vecRows.map((vr) => vr.rowid);
     const placeholders = rowids.map(() => "?").join(",");
-    const hydrated = ctx.db
-      .prepare(
-        `SELECT rowid, id, title, category, user_id FROM vault WHERE rowid IN (${placeholders})`,
-      )
+    const columns = hydrate
+      ? "rowid, id, title, body, kind, tags, category, user_id, updated_at"
+      : "rowid, id, title, category, user_id";
+    const hydratedRows = ctx.db
+      .prepare(`SELECT ${columns} FROM vault WHERE rowid IN (${placeholders})`)
       .all(...rowids);
 
     const byRowid = new Map();
-    for (const row of hydrated) byRowid.set(row.rowid, row);
+    for (const row of hydratedRows) byRowid.set(row.rowid, row);
 
     const results = [];
     for (const vr of vecRows) {
@@ -52,7 +61,14 @@ async function findSimilar(ctx, embedding, threshold, userId) {
       if (!row) continue;
       if (userId !== undefined && row.user_id !== userId) continue;
       if (row.category === "entity") continue;
-      results.push({ id: row.id, title: row.title, score: similarity });
+      const entry = { id: row.id, title: row.title, score: similarity };
+      if (hydrate) {
+        entry.body = row.body;
+        entry.kind = row.kind;
+        entry.tags = row.tags;
+        entry.updated_at = row.updated_at;
+      }
+      results.push(entry);
     }
     return results;
   } catch {
@@ -70,6 +86,68 @@ function formatSimilarWarning(similar) {
   lines.push(
     "  Consider using `id: <existing>` in save_context to update instead.",
   );
+  return lines.join("\n");
+}
+
+export function buildConflictCandidates(similarEntries) {
+  return similarEntries.map((entry) => {
+    let suggested_action;
+    let reasoning_context;
+
+    if (entry.score >= SKIP_THRESHOLD) {
+      suggested_action = "SKIP";
+      reasoning_context =
+        `Near-duplicate detected (${(entry.score * 100).toFixed(0)}% similarity)` +
+        `${entry.title ? ` with "${entry.title}"` : ""}. ` +
+        `Content is nearly identical — saving would create a redundant entry. ` +
+        `Use save_context with id: "${entry.id}" to update instead, or skip saving entirely.`;
+    } else if (entry.score >= UPDATE_THRESHOLD) {
+      suggested_action = "UPDATE";
+      reasoning_context =
+        `High content similarity (${(entry.score * 100).toFixed(0)}%)` +
+        `${entry.title ? ` with "${entry.title}"` : ""}. ` +
+        `Likely the same knowledge — consider updating this entry via save_context with id: "${entry.id}".`;
+    } else {
+      suggested_action = "ADD";
+      reasoning_context =
+        `Moderate similarity (${(entry.score * 100).toFixed(0)}%)` +
+        `${entry.title ? ` with "${entry.title}"` : ""}. ` +
+        `Content is related but distinct enough to coexist.`;
+    }
+
+    let parsedTags = [];
+    if (entry.tags) {
+      try {
+        parsedTags =
+          typeof entry.tags === "string" ? JSON.parse(entry.tags) : entry.tags;
+      } catch {
+        parsedTags = [];
+      }
+    }
+
+    return {
+      id: entry.id,
+      title: entry.title || null,
+      body: entry.body || null,
+      kind: entry.kind || null,
+      tags: parsedTags,
+      score: entry.score,
+      updated_at: entry.updated_at || null,
+      suggested_action,
+      reasoning_context,
+    };
+  });
+}
+
+function formatConflictSuggestions(candidates) {
+  const lines = ["", "── Conflict Resolution Suggestions ──"];
+  for (const c of candidates) {
+    const titleDisplay = c.title ? `"${c.title}"` : "(no title)";
+    lines.push(
+      `  [${c.suggested_action}] ${titleDisplay} (${(c.score * 100).toFixed(0)}%) — id: ${c.id}`,
+    );
+    lines.push(`    ${c.reasoning_context}`);
+  }
   return lines.join("\n");
 }
 
@@ -227,6 +305,12 @@ export const inputSchema = {
     .describe(
       "Source code files this entry is derived from. When these files change (hash mismatch), the entry will be flagged as stale in get_context results.",
     ),
+  tier: z
+    .enum(["ephemeral", "working", "durable"])
+    .optional()
+    .describe(
+      "Memory tier for lifecycle management. 'ephemeral': short-lived session data. 'working': active context (default). 'durable': long-term reference material. Defaults based on kind when not specified.",
+    ),
   dry_run: z
     .boolean()
     .optional()
@@ -246,6 +330,12 @@ export const inputSchema = {
     .optional()
     .describe(
       "Memory tier for lifecycle management. 'ephemeral': short-lived session data. 'working': active context (default). 'durable': long-term reference material. Defaults based on kind when not specified.",
+    ),
+  conflict_resolution: z
+    .enum(["suggest", "off"])
+    .optional()
+    .describe(
+      'Conflict resolution mode. "suggest" (default): when similar entries are found, return structured conflict_candidates with suggested_action (ADD/UPDATE/SKIP) and reasoning_context for the calling agent to decide. Thresholds: score > 0.95 → SKIP (near-duplicate), score > 0.85 → UPDATE (very similar), score < 0.85 → ADD (distinct enough). "off": flag similar entries only (legacy behavior).',
     ),
 };
 
@@ -271,12 +361,14 @@ export async function handler(
     dry_run,
     similarity_threshold,
     tier,
+    conflict_resolution,
   },
   ctx,
   { ensureIndexed },
 ) {
   const { config } = ctx;
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
+  const suggestMode = conflict_resolution !== "off";
 
   const vaultErr = ensureVaultExists(config);
   if (vaultErr) return vaultErr;
@@ -381,6 +473,7 @@ export async function handler(
         queryEmbedding,
         threshold,
         userId,
+        { hydrate: suggestMode },
       );
     }
   }
@@ -388,16 +481,31 @@ export async function handler(
   if (dry_run) {
     const parts = ["(dry run — nothing saved)"];
     if (similarEntries.length) {
-      parts.push("", "⚠ Similar entries already exist:");
-      for (const e of similarEntries) {
-        const score = e.score.toFixed(2);
-        const titleDisplay = e.title ? `"${e.title}"` : "(no title)";
-        parts.push(`  - ${titleDisplay} (${score}) — id: ${e.id}`);
+      if (suggestMode) {
+        const candidates = buildConflictCandidates(similarEntries);
+        parts.push("", "⚠ Similar entries already exist:");
+        for (const e of similarEntries) {
+          const score = e.score.toFixed(2);
+          const titleDisplay = e.title ? `"${e.title}"` : "(no title)";
+          parts.push(`  - ${titleDisplay} (${score}) — id: ${e.id}`);
+        }
+        parts.push(formatConflictSuggestions(candidates));
+        parts.push(
+          "",
+          "Use save_context with `id: <existing>` to update one, or omit `dry_run` to save as new.",
+        );
+      } else {
+        parts.push("", "⚠ Similar entries already exist:");
+        for (const e of similarEntries) {
+          const score = e.score.toFixed(2);
+          const titleDisplay = e.title ? `"${e.title}"` : "(no title)";
+          parts.push(`  - ${titleDisplay} (${score}) — id: ${e.id}`);
+        }
+        parts.push(
+          "",
+          "Use save_context with `id: <existing>` to update one, or omit `dry_run` to save as new.",
+        );
       }
-      parts.push(
-        "",
-        "Use save_context with `id: <existing>` to update one, or omit `dry_run` to save as new.",
-      );
     } else {
       parts.push("", "No similar entries found. Safe to save.");
     }
@@ -436,9 +544,16 @@ export async function handler(
   const parts = [`✓ Saved ${normalizedKind} → ${relPath}`, `  id: ${entry.id}`];
   if (title) parts.push(`  title: ${title}`);
   if (tags?.length) parts.push(`  tags: ${tags.join(", ")}`);
+  parts.push(`  tier: ${effectiveTier}`);
   parts.push("", "_Use this id to update or delete later._");
   if (similarEntries.length) {
-    parts.push(formatSimilarWarning(similarEntries));
+    if (suggestMode) {
+      const candidates = buildConflictCandidates(similarEntries);
+      parts.push(formatSimilarWarning(similarEntries));
+      parts.push(formatConflictSuggestions(candidates));
+    } else {
+      parts.push(formatSimilarWarning(similarEntries));
+    }
   }
 
   const criticalLimit = config.thresholds?.totalEntries?.critical;

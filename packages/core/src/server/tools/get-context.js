@@ -568,8 +568,9 @@ export async function handler(
       r.updated_at && r.updated_at !== r.created_at
         ? `${r.created_at} (updated ${r.updated_at})`
         : r.created_at || "";
+    const tierStr = r.tier ? ` · tier: ${r.tier}` : "";
     lines.push(
-      `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · ${dateStr} · skeleton: ${isSkeleton} · id: \`${r.id}\``,
+      `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · ${dateStr} · skeleton: ${isSkeleton}${tierStr} · id: \`${r.id}\``,
     );
     const stalenessResult = checkStaleness(r);
     if (stalenessResult) {

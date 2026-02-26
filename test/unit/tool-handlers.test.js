@@ -275,6 +275,164 @@ describe("save_context handler", () => {
     );
     isErr(result, "MISSING_IDENTITY_KEY");
   }, 30000);
+
+  it("saves entry with explicit tier and includes tier in success output", async () => {
+    const result = await saveContextTool.handler(
+      {
+        kind: "insight",
+        body: "Durable insight about the architecture",
+        title: "Architecture insight",
+        tier: "durable",
+      },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toContain("✓ Saved insight");
+    expect(text).toContain("tier: durable");
+  }, 30000);
+
+  it("defaults tier based on kind when tier not provided", async () => {
+    const result = await saveContextTool.handler(
+      {
+        kind: "decision",
+        body: "We decided to use SQLite for local storage",
+        title: "SQLite decision",
+      },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toContain("tier: durable");
+  }, 30000);
+
+  it("stores tier in database with correct value", async () => {
+    const result = await saveContextTool.handler(
+      {
+        kind: "insight",
+        body: "Ephemeral session note for testing",
+        tier: "ephemeral",
+      },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    const idMatch = text.match(/id: (\S+)/);
+    expect(idMatch).toBeTruthy();
+    const id = idMatch[1];
+
+    const row = ctx.stmts.getEntryById.get(id);
+    expect(row.tier).toBe("ephemeral");
+  }, 30000);
+});
+
+// ─── buildConflictCandidates (unit) ───────────────────────────────────────────
+
+import { buildConflictCandidates } from "../../packages/core/src/server/tools/save-context.js";
+
+describe("buildConflictCandidates", () => {
+  const baseEntry = {
+    id: "01ABCDEF01234567890ABCDE01",
+    title: "SQLite performance tips",
+    body: "Use WAL mode for concurrent reads.",
+    kind: "insight",
+    tags: '["sqlite","performance"]',
+    updated_at: "2025-01-01T00:00:00Z",
+  };
+
+  it("suggests SKIP for score >= 0.95 (near-duplicate)", () => {
+    const entry = { ...baseEntry, score: 0.97 };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.suggested_action).toBe("SKIP");
+    expect(candidate.reasoning_context).toContain("Near-duplicate");
+    expect(candidate.reasoning_context).toContain(entry.id);
+  });
+
+  it("suggests SKIP at exactly 0.95", () => {
+    const entry = { ...baseEntry, score: 0.95 };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.suggested_action).toBe("SKIP");
+  });
+
+  it("suggests UPDATE for score >= 0.85 and < 0.95", () => {
+    const entry = { ...baseEntry, score: 0.9 };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.suggested_action).toBe("UPDATE");
+    expect(candidate.reasoning_context).toContain("High content similarity");
+    expect(candidate.reasoning_context).toContain(entry.id);
+  });
+
+  it("suggests UPDATE at exactly 0.85", () => {
+    const entry = { ...baseEntry, score: 0.85 };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.suggested_action).toBe("UPDATE");
+  });
+
+  it("suggests ADD for score < 0.85", () => {
+    const entry = { ...baseEntry, score: 0.87 };
+    const [candidate] = buildConflictCandidates([{ ...entry, score: 0.84 }]);
+    expect(candidate.suggested_action).toBe("ADD");
+    expect(candidate.reasoning_context).toContain("Moderate similarity");
+  });
+
+  it("parses JSON-encoded tags string", () => {
+    const entry = { ...baseEntry, score: 0.9, tags: '["sqlite","perf"]' };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.tags).toEqual(["sqlite", "perf"]);
+  });
+
+  it("accepts pre-parsed tags array", () => {
+    const entry = { ...baseEntry, score: 0.9, tags: ["sqlite", "perf"] };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.tags).toEqual(["sqlite", "perf"]);
+  });
+
+  it("sets tags to [] when tags is null/undefined", () => {
+    const entry = { ...baseEntry, score: 0.9, tags: null };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.tags).toEqual([]);
+  });
+
+  it("sets tags to [] when tags is invalid JSON", () => {
+    const entry = { ...baseEntry, score: 0.9, tags: "not-valid-json" };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.tags).toEqual([]);
+  });
+
+  it("includes full entry context (id, title, body, kind, score, updated_at)", () => {
+    const entry = { ...baseEntry, score: 0.9 };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.id).toBe(entry.id);
+    expect(candidate.title).toBe(entry.title);
+    expect(candidate.body).toBe(entry.body);
+    expect(candidate.kind).toBe(entry.kind);
+    expect(candidate.score).toBe(0.9);
+    expect(candidate.updated_at).toBe(entry.updated_at);
+  });
+
+  it("handles entry with no title gracefully", () => {
+    const entry = { ...baseEntry, score: 0.97, title: null };
+    const [candidate] = buildConflictCandidates([entry]);
+    expect(candidate.title).toBeNull();
+    expect(candidate.suggested_action).toBe("SKIP");
+    expect(candidate.reasoning_context).not.toContain('with "');
+  });
+
+  it("processes multiple entries independently", () => {
+    const entries = [
+      { ...baseEntry, id: "id1", score: 0.97 },
+      { ...baseEntry, id: "id2", score: 0.9 },
+      { ...baseEntry, id: "id3", score: 0.84 },
+    ];
+    const candidates = buildConflictCandidates(entries);
+    expect(candidates[0].suggested_action).toBe("SKIP");
+    expect(candidates[1].suggested_action).toBe("UPDATE");
+    expect(candidates[2].suggested_action).toBe("ADD");
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(buildConflictCandidates([])).toEqual([]);
+  });
 });
 
 // ─── get_context ──────────────────────────────────────────────────────────────
@@ -399,6 +557,16 @@ describe("get_context handler", () => {
     });
     // If embed is loaded (test env), the note won't show. Just check it doesn't error.
     isOk(result);
+  }, 30000);
+
+  it("includes tier in search result output", async () => {
+    const result = await getContextTool.handler(
+      { kind: "insight" },
+      ctx,
+      shared,
+    );
+    const text = isOk(result);
+    expect(text).toMatch(/tier: (ephemeral|working|durable)/);
   }, 30000);
 });
 
@@ -682,6 +850,191 @@ describe("get_context detect_conflicts", () => {
     );
     const text = isOk(result);
     expect(text).not.toContain("Conflict Detection");
+  }, 30000);
+});
+
+// ─── consolidation suggestions ────────────────────────────────────────────────
+
+import { detectConsolidationHints } from "../../packages/core/src/server/tools/get-context.js";
+
+describe("detectConsolidationHints", () => {
+  let ctx, cleanup;
+
+  beforeAll(async () => {
+    ({ ctx, cleanup } = await createTestCtx());
+    for (let i = 0; i < 12; i++) {
+      await captureAndIndex(ctx, {
+        kind: "insight",
+        title: `Consolidation test entry ${i}`,
+        body: `Body for consolidation entry ${i}`,
+        tags: ["consolidation-tag"],
+        source: "test",
+      });
+    }
+  }, 60000);
+
+  afterAll(() => cleanup());
+
+  it("returns empty array when candidate tags have fewer than threshold entries in vault", () => {
+    const fakeEntries = [
+      { kind: "insight", tags: JSON.stringify(["rare-tag"]) },
+    ];
+    const hints = detectConsolidationHints(fakeEntries, ctx.db, undefined);
+    expect(hints).toEqual([]);
+  });
+
+  it("returns suggestion when a tag has 10+ entries in vault with no recent brief", () => {
+    const fakeEntries = [
+      { kind: "insight", tags: JSON.stringify(["consolidation-tag"]) },
+    ];
+    const hints = detectConsolidationHints(fakeEntries, ctx.db, undefined);
+    expect(hints.length).toBe(1);
+    expect(hints[0].tag).toBe("consolidation-tag");
+    expect(hints[0].entry_count).toBeGreaterThanOrEqual(10);
+    expect(hints[0].last_snapshot_age_days).toBeNull();
+  });
+
+  it("skips brief entries when collecting candidate tags", () => {
+    const fakeEntries = [
+      { kind: "brief", tags: JSON.stringify(["consolidation-tag"]) },
+    ];
+    const hints = detectConsolidationHints(fakeEntries, ctx.db, undefined);
+    expect(hints).toEqual([]);
+  });
+
+  it("suppresses suggestion when a recent brief exists within maxAgeDays", async () => {
+    await captureAndIndex(ctx, {
+      kind: "brief",
+      title: "Consolidation Tag Brief",
+      body: "Synthesized brief for consolidation-tag",
+      tags: ["snapshot", "consolidation-tag"],
+      source: "test",
+    });
+
+    const fakeEntries = [
+      { kind: "insight", tags: JSON.stringify(["consolidation-tag"]) },
+    ];
+    const hints = detectConsolidationHints(fakeEntries, ctx.db, undefined);
+    expect(hints).toEqual([]);
+  });
+
+  it("uses configurable tagThreshold via opts", () => {
+    const fakeEntries = [
+      { kind: "insight", tags: JSON.stringify(["consolidation-tag"]) },
+    ];
+    const hints = detectConsolidationHints(fakeEntries, ctx.db, undefined, {
+      tagThreshold: 100,
+    });
+    expect(hints).toEqual([]);
+  });
+
+  it("uses configurable maxAgeDays via opts — old brief does not suppress", async () => {
+    const { ctx: ctx2, cleanup: cleanup2 } = await createTestCtx();
+    try {
+      for (let i = 0; i < 12; i++) {
+        await captureAndIndex(ctx2, {
+          kind: "insight",
+          title: `Entry ${i}`,
+          body: `Body ${i}`,
+          tags: ["age-test-tag"],
+          source: "test",
+        });
+      }
+      const brief = await captureAndIndex(ctx2, {
+        kind: "brief",
+        title: "Old brief",
+        body: "An old brief for age-test-tag",
+        tags: ["snapshot", "age-test-tag"],
+        source: "test",
+      });
+      ctx2.db
+        .prepare("UPDATE vault SET created_at = ? WHERE id = ?")
+        .run("2020-01-01T00:00:00Z", brief.id);
+
+      const fakeEntries = [
+        { kind: "insight", tags: JSON.stringify(["age-test-tag"]) },
+      ];
+      const hints = detectConsolidationHints(fakeEntries, ctx2.db, undefined, {
+        maxAgeDays: 7,
+      });
+      expect(hints.length).toBe(1);
+      expect(hints[0].tag).toBe("age-test-tag");
+      expect(hints[0].last_snapshot_age_days).toBeGreaterThan(7);
+    } finally {
+      cleanup2();
+    }
+  }, 60000);
+
+  it("returns empty array when entries list is empty", () => {
+    const hints = detectConsolidationHints([], ctx.db, undefined);
+    expect(hints).toEqual([]);
+  });
+});
+
+describe("get_context consolidation_suggestions in _meta", () => {
+  let ctx, cleanup;
+
+  beforeAll(async () => {
+    ({ ctx, cleanup } = await createTestCtx());
+    ctx.config.consolidation = {
+      tagThreshold: 3,
+      maxAgeDays: 7,
+      autoConsolidate: false,
+    };
+
+    for (let i = 0; i < 4; i++) {
+      await captureAndIndex(ctx, {
+        kind: "insight",
+        title: `Bulk insight ${i}`,
+        body: `Body for bulk insight entry ${i}`,
+        tags: ["bulk-tag"],
+        source: "test",
+      });
+    }
+  }, 60000);
+
+  afterAll(() => cleanup());
+
+  it("includes consolidation_suggestions in _meta when threshold is exceeded", async () => {
+    const result = await getContextTool.handler(
+      { kind: "insight", limit: 10 },
+      ctx,
+      shared,
+    );
+    isOk(result);
+    expect(result._meta?.consolidation_suggestions).toBeDefined();
+    expect(result._meta.consolidation_suggestions.length).toBeGreaterThan(0);
+    const suggestion = result._meta.consolidation_suggestions[0];
+    expect(suggestion).toHaveProperty("tag");
+    expect(suggestion).toHaveProperty("entry_count");
+    expect(suggestion).toHaveProperty("last_snapshot_age_days");
+  }, 30000);
+
+  it("does not include consolidation_suggestions when no tag cluster exceeds threshold", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      freshCtx.config.consolidation = {
+        tagThreshold: 100,
+        maxAgeDays: 7,
+        autoConsolidate: false,
+      };
+      await captureAndIndex(freshCtx, {
+        kind: "insight",
+        title: "Single entry",
+        body: "Only one entry with this tag",
+        tags: ["solo-tag"],
+        source: "test",
+      });
+      const result = await getContextTool.handler(
+        { kind: "insight" },
+        freshCtx,
+        shared,
+      );
+      isOk(result);
+      expect(result._meta?.consolidation_suggestions).toBeUndefined();
+    } finally {
+      freshCleanup();
+    }
   }, 30000);
 });
 
