@@ -20,6 +20,12 @@ export const inputSchema = {
     .array(z.string())
     .optional()
     .describe("Optional tag filters — entries must match at least one"),
+  buckets: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Filter by project-scoped buckets. Each name expands to a 'bucket:<name>' tag. Composes with 'tags' via OR (entries matching any tag or any bucket are included).",
+    ),
   kinds: z
     .array(z.string())
     .optional()
@@ -99,7 +105,7 @@ function slugifyTopic(topic) {
 }
 
 export async function handler(
-  { topic, tags, kinds, identity_key },
+  { topic, tags, buckets, kinds, identity_key },
   ctx,
   { ensureIndexed },
 ) {
@@ -116,6 +122,9 @@ export async function handler(
   await ensureIndexed();
 
   const normalizedKinds = kinds?.map(normalizeKind) ?? [];
+  // Expand buckets to bucket: prefixed tags and merge with explicit tags
+  const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
+  const effectiveTags = [...(tags ?? []), ...bucketTags];
 
   let candidates = [];
 
@@ -143,10 +152,10 @@ export async function handler(
     });
   }
 
-  if (tags?.length) {
+  if (effectiveTags.length) {
     candidates = candidates.filter((r) => {
       const entryTags = r.tags ? JSON.parse(r.tags) : [];
-      return tags.some((t) => entryTags.includes(t));
+      return effectiveTags.some((t) => entryTags.includes(t));
     });
   }
 
