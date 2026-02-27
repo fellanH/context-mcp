@@ -745,7 +745,7 @@ describe("buildSummary", () => {
 // ─── hooks install/uninstall — settings.json manipulation ─────────────────────
 
 describe("hooks install/uninstall — settings.json format", () => {
-  it("session capture hook command references session-end.mjs", () => {
+  it("session capture hook uses CLI command instead of absolute path", () => {
     const tmpHome = pathJoin(osTmpdir(), `cv-hook-test-${Date.now()}`);
     fsMkdirSync(pathJoin(tmpHome, ".claude"), { recursive: true });
     const settingsPath = pathJoin(tmpHome, ".claude", "settings.json");
@@ -761,7 +761,7 @@ describe("hooks install/uninstall — settings.json format", () => {
       const sessionEndHooks = settings.hooks?.SessionEnd ?? [];
       const captureHook = sessionEndHooks
         .flatMap((h) => h.hooks ?? [])
-        .find((hh) => hh.command?.includes("session-end.mjs"));
+        .find((hh) => hh.command?.includes("context-vault session-end"));
 
       expect(captureHook).toBeDefined();
       expect(captureHook.type).toBe("command");
@@ -795,7 +795,7 @@ describe("hooks install/uninstall — settings.json format", () => {
       const settings = JSON.parse(fsReadFileSync(settingsPath, "utf-8"));
       const captureCount = (settings.hooks?.SessionEnd ?? [])
         .flatMap((h) => h.hooks ?? [])
-        .filter((hh) => hh.command?.includes("session-end.mjs")).length;
+        .filter((hh) => hh.command?.includes("context-vault session-end")).length;
 
       expect(captureCount).toBe(1);
     } finally {
@@ -824,7 +824,7 @@ describe("hooks install/uninstall — settings.json format", () => {
         const settings = JSON.parse(fsReadFileSync(settingsPath, "utf-8"));
         const captureHooks = (settings.hooks?.SessionEnd ?? [])
           .flatMap((h) => h.hooks ?? [])
-          .filter((hh) => hh.command?.includes("session-end.mjs"));
+          .filter((hh) => hh.command?.includes("context-vault session-end"));
         expect(captureHooks.length).toBe(1);
       }
 
@@ -834,7 +834,7 @@ describe("hooks install/uninstall — settings.json format", () => {
         const settings = JSON.parse(fsReadFileSync(settingsPath, "utf-8"));
         const captureHooks = (settings.hooks?.SessionEnd ?? [])
           .flatMap((h) => h.hooks ?? [])
-          .filter((hh) => hh.command?.includes("session-end.mjs"));
+          .filter((hh) => hh.command?.includes("context-vault session-end"));
         expect(captureHooks.length).toBe(0);
       }
     } finally {

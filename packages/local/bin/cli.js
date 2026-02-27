@@ -3202,14 +3202,6 @@ function removeClaudeHook() {
   return true;
 }
 
-function sessionEndHookPath() {
-  return resolve(ROOT, "src", "hooks", "session-end.mjs");
-}
-
-function postToolCallHookPath() {
-  return resolve(ROOT, "src", "hooks", "post-tool-call.mjs");
-}
-
 /**
  * Writes a SessionEnd hook entry for session capture to ~/.claude/settings.json.
  * Returns true if installed, false if already present.
