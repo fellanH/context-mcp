@@ -27,7 +27,7 @@ export function resolveConfig() {
       join(HOME, ".context-mcp"),
   );
   const config = {
-    vaultDir: join(HOME, "vault"),
+    vaultDir: join(HOME, ".vault"),
     dataDir,
     dbPath: join(dataDir, "vault.db"),
     devDir: join(HOME, "dev"),

@@ -64,6 +64,7 @@ function writeMarkerFile(vaultDir) {
 
 function scanForVaults() {
   const candidates = [
+    join(HOME, ".vault"),
     join(HOME, "vault"),
     join(HOME, "omni", "vault"),
     process.cwd(),
@@ -538,7 +539,7 @@ async function runSetup() {
   console.log(dim(`  [2/6]`) + bold(" Configuring vault...\n"));
 
   // Scan for existing vaults via marker file
-  let defaultVaultDir = getFlag("--vault-dir") || join(HOME, "vault");
+  let defaultVaultDir = getFlag("--vault-dir") || join(HOME, ".vault");
   if (!getFlag("--vault-dir") && !isNonInteractive) {
     const existingVaults = scanForVaults();
     if (existingVaults.length === 1) {
