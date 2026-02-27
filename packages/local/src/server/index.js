@@ -150,6 +150,7 @@ async function main() {
             `[context-vault] Config reloaded: vaultDir changed to ${fresh.vaultDir}`,
           );
           lastVaultDir = fresh.vaultDir;
+          fresh.vaultDirExists = existsSync(fresh.vaultDir);
         }
         return fresh;
       },
