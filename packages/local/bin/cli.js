@@ -305,6 +305,8 @@ ${bold("Commands:")}
   ${cyan("flush")}                 Check vault health and confirm DB is accessible
   ${cyan("recall")}                Search vault from a Claude Code hook (reads stdin)
   ${cyan("session-capture")}       Save a session summary entry (reads JSON from stdin)
+  ${cyan("session-end")}           Run session-end hook (parse transcript + capture)
+  ${cyan("post-tool-call")}        Run post-tool-call hook (log tool usage)
   ${cyan("save")}                  Save an entry to the vault from CLI
   ${cyan("search")}                Search vault entries from CLI
   ${cyan("reindex")}               Rebuild search index from knowledge files
@@ -1783,7 +1785,18 @@ async function runStatus() {
     } catch {}
   }
 
-  const db = await initDatabase(config.dbPath);
+  let db;
+  try {
+    db = await initDatabase(config.dbPath);
+  } catch (e) {
+    console.log();
+    console.log(`  ${bold("◇ context-vault")} ${dim(`v${VERSION}`)}`);
+    console.log();
+    console.log(`  ${red("✘")} Database not accessible: ${e.message}`);
+    console.log(dim(`  Run ${cyan("context-vault doctor")} for diagnostics`));
+    console.log();
+    process.exit(1);
+  }
 
   const status = gatherVaultStatus({ db, config });
 
@@ -1954,6 +1967,25 @@ async function runUninstall() {
     } catch {
       console.log(`  ${dim("-")} ${tool.name} — could not update config`);
     }
+  }
+
+  // Remove Claude Code hooks
+  const recallRemoved = removeClaudeHook();
+  const captureRemoved = removeSessionCaptureHook();
+  const flushRemoved = removeSessionEndHook();
+  const autoCaptureRemoved = removePostToolCallHook();
+  if (recallRemoved || captureRemoved || flushRemoved || autoCaptureRemoved) {
+    console.log(`  ${green("+")} Removed Claude Code hooks`);
+  } else {
+    console.log(`  ${dim("-")} No Claude Code hooks to remove`);
+  }
+
+  // Remove installed skills
+  const skillsDir = join(HOME, ".claude", "skills", "compile-context");
+  if (existsSync(skillsDir)) {
+    const { rmSync } = await import("node:fs");
+    rmSync(skillsDir, { recursive: true, force: true });
+    console.log(`  ${green("+")} Removed installed skills`);
   }
 
   // Optionally remove data directory
@@ -2745,6 +2777,16 @@ async function runSessionCapture() {
   }
 }
 
+async function runSessionEnd() {
+  const { main } = await import("../src/hooks/session-end.mjs");
+  await main();
+}
+
+async function runPostToolCall() {
+  const { main } = await import("../src/hooks/post-tool-call.mjs");
+  await main();
+}
+
 async function runSave() {
   const kind = getFlag("--kind");
   const title = getFlag("--title");
@@ -3190,17 +3232,29 @@ function installSessionCaptureHook() {
   if (!settings.hooks) settings.hooks = {};
   if (!settings.hooks.SessionEnd) settings.hooks.SessionEnd = [];
 
+  const newCommand = "context-vault session-end";
+
+  // Check if already installed with new CLI-based command
   const alreadyInstalled = settings.hooks.SessionEnd.some((h) =>
-    h.hooks?.some((hh) => hh.command?.includes("session-end.mjs")),
+    h.hooks?.some((hh) => hh.command?.includes(newCommand)),
   );
   if (alreadyInstalled) return false;
 
-  const hookScript = sessionEndHookPath();
+  // Migrate: remove stale absolute-path hooks (node <path>/session-end.mjs)
+  const hadStale = settings.hooks.SessionEnd.some((h) =>
+    h.hooks?.some((hh) => hh.command?.includes("session-end.mjs")),
+  );
+  if (hadStale) {
+    settings.hooks.SessionEnd = settings.hooks.SessionEnd.filter(
+      (h) => !h.hooks?.some((hh) => hh.command?.includes("session-end.mjs")),
+    );
+  }
+
   settings.hooks.SessionEnd.push({
     hooks: [
       {
         type: "command",
-        command: `node ${hookScript}`,
+        command: newCommand,
         timeout: 30,
       },
     ],
@@ -3230,7 +3284,12 @@ function removeSessionCaptureHook() {
 
   const before = settings.hooks.SessionEnd.length;
   settings.hooks.SessionEnd = settings.hooks.SessionEnd.filter(
-    (h) => !h.hooks?.some((hh) => hh.command?.includes("session-end.mjs")),
+    (h) =>
+      !h.hooks?.some(
+        (hh) =>
+          hh.command?.includes("session-end.mjs") ||
+          hh.command?.includes("context-vault session-end"),
+      ),
   );
 
   if (settings.hooks.SessionEnd.length === before) return false;
@@ -3261,17 +3320,29 @@ function installPostToolCallHook() {
   if (!settings.hooks) settings.hooks = {};
   if (!settings.hooks.PostToolCall) settings.hooks.PostToolCall = [];
 
+  const newCommand = "context-vault post-tool-call";
+
+  // Check if already installed with new CLI-based command
   const alreadyInstalled = settings.hooks.PostToolCall.some((h) =>
-    h.hooks?.some((hh) => hh.command?.includes("post-tool-call.mjs")),
+    h.hooks?.some((hh) => hh.command?.includes(newCommand)),
   );
   if (alreadyInstalled) return false;
 
-  const hookScript = postToolCallHookPath();
+  // Migrate: remove stale absolute-path hooks (node <path>/post-tool-call.mjs)
+  const hadStale = settings.hooks.PostToolCall.some((h) =>
+    h.hooks?.some((hh) => hh.command?.includes("post-tool-call.mjs")),
+  );
+  if (hadStale) {
+    settings.hooks.PostToolCall = settings.hooks.PostToolCall.filter(
+      (h) => !h.hooks?.some((hh) => hh.command?.includes("post-tool-call.mjs")),
+    );
+  }
+
   settings.hooks.PostToolCall.push({
     hooks: [
       {
         type: "command",
-        command: `node ${hookScript}`,
+        command: newCommand,
         timeout: 5,
       },
     ],
@@ -3301,7 +3372,12 @@ function removePostToolCallHook() {
 
   const before = settings.hooks.PostToolCall.length;
   settings.hooks.PostToolCall = settings.hooks.PostToolCall.filter(
-    (h) => !h.hooks?.some((hh) => hh.command?.includes("post-tool-call.mjs")),
+    (h) =>
+      !h.hooks?.some(
+        (hh) =>
+          hh.command?.includes("post-tool-call.mjs") ||
+          hh.command?.includes("context-vault post-tool-call"),
+      ),
   );
 
   if (settings.hooks.PostToolCall.length === before) return false;
@@ -3667,16 +3743,20 @@ async function runDoctor() {
     }
 
     // ── Database ──────────────────────────────────────────────────────────
+    let db;
     if (existsSync(config.dbPath)) {
       try {
         const { initDatabase } = await import("@context-vault/core/index/db");
-        const db = await initDatabase(config.dbPath);
-        db.close();
-        console.log(`  ${green("✓")} Database ${dim(config.dbPath)}`);
+        db = await initDatabase(config.dbPath);
+        const schemaRow = db.prepare("PRAGMA user_version").get();
+        const schemaVersion = schemaRow?.user_version ?? "unknown";
+        console.log(
+          `  ${green("✓")} Database ${dim(`${config.dbPath} (schema v${schemaVersion})`)}`,
+        );
       } catch (e) {
         console.log(`  ${red("✘")} Database error: ${e.message}`);
         console.log(
-          `    ${dim(`Fix: rm "${config.dbPath}" (data will be lost)`)}`,
+          `    ${dim(`Fix: rm "${config.dbPath}" and restart (will rebuild from vault files)`)}`,
         );
         allOk = false;
       }
@@ -3685,6 +3765,71 @@ async function runDoctor() {
         `  ${yellow("!")} Database missing — will be created on next start`,
       );
     }
+
+    // ── Embedding model ──────────────────────────────────────────────────
+    try {
+      const { embed } = await import("@context-vault/core/index/embed");
+      const vec = await embed("doctor check");
+      if (vec && vec.length > 0) {
+        console.log(
+          `  ${green("✓")} Embedding model ${dim(`(${vec.length} dimensions)`)}`,
+        );
+      } else {
+        console.log(
+          `  ${yellow("!")} Embedding model unavailable — semantic search disabled (FTS-only)`,
+        );
+        console.log(
+          `    ${dim("Fix: run context-vault setup to download the model")}`,
+        );
+      }
+    } catch {
+      console.log(
+        `  ${yellow("!")} Embedding model unavailable — semantic search disabled (FTS-only)`,
+      );
+      console.log(
+        `    ${dim("Fix: run context-vault setup to download the model")}`,
+      );
+    }
+
+    // ── DB/filesystem consistency ─────────────────────────────────────────
+    if (db && existsSync(config.vaultDir)) {
+      try {
+        const totalRow = db.prepare("SELECT COUNT(*) as c FROM vault").get();
+        const total = totalRow?.c ?? 0;
+        if (total > 0) {
+          const sampleRows = db
+            .prepare("SELECT file_path FROM vault LIMIT 50")
+            .all();
+          let staleCount = 0;
+          for (const row of sampleRows) {
+            if (row.file_path && !existsSync(row.file_path)) {
+              staleCount++;
+            }
+          }
+          if (staleCount > 0) {
+            const pct = Math.round((staleCount / sampleRows.length) * 100);
+            console.log(
+              `  ${yellow("!")} ${staleCount}/${sampleRows.length} sampled DB entries point to missing files (${pct}%)`,
+            );
+            console.log(
+              `    ${dim("Fix: run context-vault reindex to rebuild from vault files")}`,
+            );
+            allOk = false;
+          } else {
+            console.log(
+              `  ${green("✓")} DB/filesystem consistency ${dim(`(${total} entries, sample OK)`)}`,
+            );
+          }
+        }
+      } catch {
+        // non-critical — skip silently
+      }
+    }
+
+    // Close DB if opened
+    try {
+      db?.close();
+    } catch {}
 
     // ── Launcher (server.mjs) ─────────────────────────────────────────────
     const launcherPath = join(HOME, ".context-mcp", "server.mjs");
@@ -3743,6 +3888,9 @@ async function runDoctor() {
   // ── MCP tool configs ──────────────────────────────────────────────────────
   console.log();
   console.log(bold("  Tool Configurations"));
+  let anyToolConfigured = false;
+
+  // Check Claude Code
   const claudeConfigPath = join(HOME, ".claude.json");
   if (existsSync(claudeConfigPath)) {
     try {
@@ -3752,9 +3900,9 @@ async function runDoctor() {
         const srv = servers["context-vault"];
         const cmd = [srv.command, ...(srv.args || [])].join(" ");
         console.log(`  ${green("+")} Claude Code: ${dim(cmd)}`);
+        anyToolConfigured = true;
       } else {
-        console.log(`  ${dim("-")} Claude Code: context-vault not configured`);
-        console.log(`    ${dim("Fix: run context-vault setup")}`);
+        console.log(`  ${dim("-")} Claude Code: not configured`);
       }
     } catch {
       console.log(
@@ -3765,21 +3913,199 @@ async function runDoctor() {
     console.log(`  ${dim("-")} Claude Code: ~/.claude.json not found`);
   }
 
+  // Check all JSON-configured tools
+  for (const tool of TOOLS.filter((t) => t.configType === "json")) {
+    const cfgPath = tool.configPath;
+    if (!cfgPath || !existsSync(cfgPath)) {
+      continue; // tool not installed — skip silently
+    }
+    try {
+      const toolConfig = JSON.parse(readFileSync(cfgPath, "utf-8"));
+      const servers = toolConfig?.[tool.configKey] || {};
+      if (servers["context-vault"]) {
+        const srv = servers["context-vault"];
+        const cmd = [srv.command, ...(srv.args || [])].join(" ");
+        console.log(`  ${green("+")} ${tool.name}: ${dim(cmd)}`);
+        anyToolConfigured = true;
+      } else if (servers["context-mcp"]) {
+        console.log(
+          `  ${yellow("!")} ${tool.name}: using old name "context-mcp"`,
+        );
+        console.log(
+          `    ${dim("Fix: run context-vault setup to update")}`,
+        );
+        anyToolConfigured = true;
+      }
+    } catch {
+      // config exists but unreadable — skip
+    }
+  }
+
+  // Check Codex
+  try {
+    const codexCheck = execSync("codex mcp list 2>/dev/null", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: 5000,
+    });
+    if (codexCheck.includes("context-vault")) {
+      console.log(`  ${green("+")} Codex: ${dim("configured")}`);
+      anyToolConfigured = true;
+    }
+  } catch {
+    // codex not installed or not configured — skip
+  }
+
+  if (!anyToolConfigured) {
+    console.log(
+      `  ${yellow("!")} No AI tools have context-vault configured`,
+    );
+    console.log(`    ${dim("Fix: run context-vault setup")}`);
+    allOk = false;
+  }
+
+  // ── Claude Code hooks ──────────────────────────────────────────────────────
+  console.log();
+  console.log(bold("  Claude Code Hooks"));
+  const settingsPath = claudeSettingsPath();
+  if (existsSync(settingsPath)) {
+    try {
+      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      const hooks = settings.hooks || {};
+      let hookCount = 0;
+      let staleHookCount = 0;
+
+      // Check recall hook
+      const recallHooks = (hooks.UserPromptSubmit || []).filter((h) =>
+        h.hooks?.some((hh) => hh.command?.includes("context-vault recall")),
+      );
+      if (recallHooks.length > 0) {
+        console.log(`  ${green("+")} Recall hook (UserPromptSubmit)`);
+        hookCount++;
+      }
+
+      // Check session-end hooks
+      const sessionHooks = (hooks.SessionEnd || []).filter((h) =>
+        h.hooks?.some(
+          (hh) =>
+            hh.command?.includes("session-end.mjs") ||
+            hh.command?.includes("context-vault session-end"),
+        ),
+      );
+      if (sessionHooks.length > 0) {
+        // Check if using stale absolute path
+        const hasStale = sessionHooks.some((h) =>
+          h.hooks?.some(
+            (hh) =>
+              hh.command?.includes("session-end.mjs") &&
+              !hh.command?.includes("context-vault session-end"),
+          ),
+        );
+        if (hasStale) {
+          const cmd = sessionHooks[0]?.hooks?.[0]?.command || "";
+          const pathMatch = cmd.match(/node\s+(.+session-end\.mjs)/);
+          const hookPath = pathMatch ? pathMatch[1] : "";
+          const pathExists = hookPath && existsSync(hookPath);
+          if (!pathExists) {
+            console.log(
+              `  ${red("✘")} Session capture hook: stale path ${dim(hookPath || "(unknown)")}`,
+            );
+            console.log(
+              `    ${dim("Fix: run context-vault hooks install to update")}`,
+            );
+            staleHookCount++;
+            allOk = false;
+          } else {
+            console.log(
+              `  ${yellow("!")} Session capture hook: uses absolute path (fragile)`,
+            );
+            console.log(
+              `    ${dim("Fix: run context-vault hooks install to update to CLI command")}`,
+            );
+          }
+        } else {
+          console.log(`  ${green("+")} Session capture hook (SessionEnd)`);
+        }
+        hookCount++;
+      }
+
+      // Check flush hook
+      const flushHooks = (hooks.SessionEnd || []).filter((h) =>
+        h.hooks?.some((hh) => hh.command?.includes("context-vault flush")),
+      );
+      if (flushHooks.length > 0) {
+        console.log(`  ${green("+")} Flush hook (SessionEnd)`);
+        hookCount++;
+      }
+
+      // Check post-tool-call hooks
+      const ptcHooks = (hooks.PostToolCall || []).filter((h) =>
+        h.hooks?.some(
+          (hh) =>
+            hh.command?.includes("post-tool-call.mjs") ||
+            hh.command?.includes("context-vault post-tool-call"),
+        ),
+      );
+      if (ptcHooks.length > 0) {
+        const hasStale = ptcHooks.some((h) =>
+          h.hooks?.some(
+            (hh) =>
+              hh.command?.includes("post-tool-call.mjs") &&
+              !hh.command?.includes("context-vault post-tool-call"),
+          ),
+        );
+        if (hasStale) {
+          const cmd = ptcHooks[0]?.hooks?.[0]?.command || "";
+          const pathMatch = cmd.match(/node\s+(.+post-tool-call\.mjs)/);
+          const hookPath = pathMatch ? pathMatch[1] : "";
+          const pathExists = hookPath && existsSync(hookPath);
+          if (!pathExists) {
+            console.log(
+              `  ${red("✘")} Auto-capture hook: stale path ${dim(hookPath || "(unknown)")}`,
+            );
+            console.log(
+              `    ${dim("Fix: run context-vault hooks install to update")}`,
+            );
+            staleHookCount++;
+            allOk = false;
+          } else {
+            console.log(
+              `  ${yellow("!")} Auto-capture hook: uses absolute path (fragile)`,
+            );
+            console.log(
+              `    ${dim("Fix: run context-vault hooks install to update to CLI command")}`,
+            );
+          }
+        } else {
+          console.log(`  ${green("+")} Auto-capture hook (PostToolCall)`);
+        }
+        hookCount++;
+      }
+
+      if (hookCount === 0) {
+        console.log(`  ${dim("-")} No context-vault hooks installed`);
+        console.log(
+          `    ${dim("Optional: run context-vault hooks install")}`,
+        );
+      }
+    } catch {
+      console.log(
+        `  ${yellow("!")} Could not read ${settingsPath}`,
+      );
+    }
+  } else {
+    console.log(`  ${dim("-")} No Claude Code settings found`);
+  }
+
   // ── Summary ───────────────────────────────────────────────────────────────
   console.log();
   if (allOk) {
     console.log(
-      `  ${green("✓ All checks passed.")} If the MCP server still fails, try:`,
-    );
-    console.log(
-      `    ${dim("context-vault setup")}  — reconfigure tool integrations`,
+      `  ${green("All checks passed.")} If the MCP server still fails, try restarting your AI tool.`,
     );
   } else {
     console.log(
-      `  ${yellow("Some issues found.")} Address the items above, then restart your AI tool.`,
-    );
-    console.log(
-      `    ${dim("context-vault setup")}  — reconfigure and repair installation`,
+      `  ${yellow("Some issues found.")} Address the items marked with ${red("✘")} above.`,
     );
   }
   console.log();
@@ -4161,6 +4487,12 @@ async function main() {
       break;
     case "session-capture":
       await runSessionCapture();
+      break;
+    case "session-end":
+      await runSessionEnd();
+      break;
+    case "post-tool-call":
+      await runPostToolCall();
       break;
     case "save":
       await runSave();

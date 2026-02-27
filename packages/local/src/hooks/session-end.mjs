@@ -428,7 +428,7 @@ export function buildSummary({
   return sections.join("\n");
 }
 
-async function main() {
+export async function main() {
   try {
     const raw = await readStdin();
     if (!raw.trim()) process.exit(0);

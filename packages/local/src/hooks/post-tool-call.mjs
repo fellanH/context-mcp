@@ -28,7 +28,7 @@ function extractRelevantInput(toolName, input) {
   return relevant;
 }
 
-async function main() {
+export async function main() {
   try {
     const raw = await readStdin();
     if (!raw.trim()) process.exit(0);
