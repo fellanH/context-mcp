@@ -64,6 +64,7 @@ function writeMarkerFile(vaultDir) {
 
 function scanForVaults() {
   const candidates = [
+    join(HOME, ".vault"),
     join(HOME, "vault"),
     join(HOME, "omni", "vault"),
     process.cwd(),
@@ -539,9 +540,9 @@ async function runSetup() {
   console.log(dim(`  [2/6]`) + bold(" Configuring vault...\n"));
 
   // Scan for existing vaults via marker file
-  let defaultVaultDir = getFlag("--vault-dir") || join(HOME, "vault");
+  let defaultVaultDir = getFlag("--vault-dir") || join(HOME, ".vault");
 
-  // Prefer existing config vaultDir over ~/vault (prevents accidental overwrite)
+  // Prefer existing config vaultDir over default (prevents accidental overwrite)
   if (!getFlag("--vault-dir")) {
     const existingCfgPath = join(HOME, ".context-mcp", "config.json");
     if (existsSync(existingCfgPath)) {

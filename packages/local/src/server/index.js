@@ -138,6 +138,24 @@ async function main() {
       { capabilities: { tools: {} } },
     );
 
+    // Hot-reload config.json on every tool call (Option C from #144).
+    // resolveConfig() re-reads the small file each time — negligible I/O
+    // compared to DB queries and embedding operations that follow.
+    let lastVaultDir = config.vaultDir;
+    Object.defineProperty(ctx, "config", {
+      get() {
+        const fresh = resolveConfig();
+        if (fresh.vaultDir !== lastVaultDir) {
+          console.error(
+            `[context-vault] Config reloaded: vaultDir changed to ${fresh.vaultDir}`,
+          );
+          lastVaultDir = fresh.vaultDir;
+        }
+        return fresh;
+      },
+      configurable: true,
+    });
+
     registerTools(server, ctx);
 
     // ── Graceful Shutdown ────────────────────────────────────────────────────
