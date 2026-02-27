@@ -196,18 +196,20 @@ export async function indexEntry(
     );
   }
 
-  // Embeddings are always generated from plaintext (before encryption)
-  const embeddingText = [title, body].filter(Boolean).join(" ");
-  const embedding = await ctx.embed(embeddingText);
+  // Skip embedding generation for event entries — they are excluded from
+  // default semantic search and don't need vector representations
+  if (cat !== "event") {
+    const embeddingText = [title, body].filter(Boolean).join(" ");
+    const embedding = await ctx.embed(embeddingText);
 
-  // Upsert vec: delete old if exists, then insert new (skip if embedding unavailable)
-  if (embedding) {
-    try {
-      ctx.deleteVec(rowid);
-    } catch {
-      /* no-op if not found */
+    if (embedding) {
+      try {
+        ctx.deleteVec(rowid);
+      } catch {
+        /* no-op if not found */
+      }
+      ctx.insertVec(rowid, embedding);
     }
-    ctx.insertVec(rowid, embedding);
   }
 }
 
@@ -370,15 +372,17 @@ export async function reindex(ctx, opts = {}) {
             fmMeta.updated || created,
           );
           if (result.changes > 0) {
-            const rowidResult = ctx.stmts.getRowid.get(id);
-            if (rowidResult?.rowid) {
-              const embeddingText = [parsed.title, parsed.body]
-                .filter(Boolean)
-                .join(" ");
-              pendingEmbeds.push({
-                rowid: rowidResult.rowid,
-                text: embeddingText,
-              });
+            if (category !== "event") {
+              const rowidResult = ctx.stmts.getRowid.get(id);
+              if (rowidResult?.rowid) {
+                const embeddingText = [parsed.title, parsed.body]
+                  .filter(Boolean)
+                  .join(" ");
+                pendingEmbeds.push({
+                  rowid: rowidResult.rowid,
+                  text: embeddingText,
+                });
+              }
             }
             stats.added++;
           } else {
@@ -407,7 +411,7 @@ export async function reindex(ctx, opts = {}) {
             );
 
             // Queue re-embed if title or body changed (vector ops deferred to Phase 2)
-            if (bodyChanged || titleChanged) {
+            if ((bodyChanged || titleChanged) && category !== "event") {
               const rowid = ctx.stmts.getRowid.get(existing.id)?.rowid;
               if (rowid) {
                 const embeddingText = [parsed.title, parsed.body]

@@ -74,6 +74,7 @@ export function recencyBoost(createdAt, category, decayDays = 30) {
  */
 export function buildFilterClauses({
   categoryFilter,
+  excludeEvents = false,
   since,
   until,
   userIdFilter,
@@ -93,6 +94,9 @@ export function buildFilterClauses({
   if (categoryFilter) {
     clauses.push("e.category = ?");
     params.push(categoryFilter);
+  }
+  if (excludeEvents && !categoryFilter) {
+    clauses.push("e.category != 'event'");
   }
   if (since) {
     clauses.push("e.created_at >= ?");
@@ -242,6 +246,7 @@ export async function hybridSearch(
   {
     kindFilter = null,
     categoryFilter = null,
+    excludeEvents = false,
     since = null,
     until = null,
     limit = 20,
@@ -258,6 +263,7 @@ export async function hybridSearch(
 
   const extraFilters = buildFilterClauses({
     categoryFilter,
+    excludeEvents,
     since,
     until,
     userIdFilter,
@@ -340,6 +346,7 @@ export async function hybridSearch(
             if (teamIdFilter && row.team_id !== teamIdFilter) continue;
             if (kindFilter && row.kind !== kindFilter) continue;
             if (categoryFilter && row.category !== categoryFilter) continue;
+            if (excludeEvents && row.category === "event") continue;
             if (since && row.created_at < since) continue;
             if (until && row.created_at > until) continue;
             if (row.expires_at && new Date(row.expires_at) <= new Date())

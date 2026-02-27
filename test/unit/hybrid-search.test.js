@@ -222,6 +222,24 @@ describe("buildFilterClauses", () => {
     const { clauses } = buildFilterClauses({ userIdFilter: null });
     expect(clauses).toContain("e.user_id = ?");
   });
+
+  it("adds category exclusion when excludeEvents is true", () => {
+    const { clauses } = buildFilterClauses({ excludeEvents: true });
+    expect(clauses).toContain("e.category != 'event'");
+  });
+
+  it("does not add event exclusion when excludeEvents is false", () => {
+    const { clauses } = buildFilterClauses({ excludeEvents: false });
+    expect(clauses.some((c) => c.includes("!= 'event'"))).toBe(false);
+  });
+
+  it("does not add event exclusion when categoryFilter is set", () => {
+    const { clauses } = buildFilterClauses({
+      excludeEvents: true,
+      categoryFilter: "knowledge",
+    });
+    expect(clauses.some((c) => c.includes("!= 'event'"))).toBe(false);
+  });
 });
 
 // ─── dotProduct ─────────────────────────────────────────────────────────────

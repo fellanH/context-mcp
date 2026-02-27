@@ -316,6 +316,12 @@ export const inputSchema = {
     .describe(
       "If true, include ephemeral tier entries in results. Default: false — only working and durable tiers are returned.",
     ),
+  include_events: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, include event category entries in semantic search results. Default: false — events are excluded from query-based search but remain accessible via category/tag filters.",
+    ),
 };
 
 /**
@@ -339,6 +345,7 @@ export async function handler(
     max_tokens,
     pivot_count,
     include_ephemeral,
+    include_events,
   },
   ctx,
   { ensureIndexed, reindexFailed },
@@ -347,6 +354,7 @@ export async function handler(
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
 
   const hasQuery = query?.trim();
+  const shouldExcludeEvents = hasQuery && !include_events && !category;
   // Expand buckets to bucket: prefixed tags and merge with explicit tags
   const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
   const effectiveTags = [...(tags ?? []), ...bucketTags];
@@ -413,6 +421,7 @@ export async function handler(
     const sorted = await hybridSearch(ctx, query, {
       kindFilter,
       categoryFilter: category || null,
+      excludeEvents: shouldExcludeEvents,
       since: effectiveSince,
       until: effectiveUntil,
       limit: fetchLimit,
@@ -488,6 +497,11 @@ export async function handler(
   // Tier filter: exclude ephemeral entries by default (NULL tier treated as working)
   if (!include_ephemeral) {
     filtered = filtered.filter((r) => r.tier !== "ephemeral");
+  }
+
+  // Event category filter: exclude events from semantic search by default
+  if (shouldExcludeEvents) {
+    filtered = filtered.filter((r) => r.category !== "event");
   }
 
   if (!filtered.length) {

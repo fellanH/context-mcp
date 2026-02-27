@@ -570,6 +570,105 @@ describe("get_context handler", () => {
   }, 30000);
 });
 
+// ─── get_context include_events ───────────────────────────────────────────────
+
+describe("get_context include_events", () => {
+  it("excludes event entries from query-based search by default", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "insight",
+        title: "Agent deployment strategy",
+        body: "Deploy agents using sequential strategy for reliability",
+        tags: ["agents"],
+      });
+      await captureAndIndex(freshCtx, {
+        kind: "log",
+        title: "Agent deployment event log",
+        body: "Deployed agent to work on deployment strategy task",
+        tags: ["agents", "prompt-history"],
+      });
+
+      const result = await getContextTool.handler(
+        { query: "agent deployment strategy" },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("Agent deployment strategy");
+      expect(text).not.toContain("event log");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+
+  it("includes event entries when include_events is true", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "log",
+        title: "Searchable event log",
+        body: "This log covered important deployment topics",
+        tags: ["deployment"],
+      });
+
+      const result = await getContextTool.handler(
+        { query: "deployment log", include_events: true },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("Searchable event log");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+
+  it("returns events in filter-only queries without include_events", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "log",
+        title: "Filter-only event log",
+        body: "Log accessible via filters",
+        tags: ["test-filter"],
+      });
+
+      const result = await getContextTool.handler(
+        { category: "event" },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("Filter-only event log");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+
+  it("returns events when filtering by tag without query", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "log",
+        title: "Tagged event log entry",
+        body: "Log with specific tag",
+        tags: ["my-tag"],
+      });
+
+      const result = await getContextTool.handler(
+        { tags: ["my-tag"] },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("Tagged event log entry");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+});
+
 // ─── skeletonBody (unit) ──────────────────────────────────────────────────────
 
 import { skeletonBody } from "../../packages/core/src/server/tools/get-context.js";
