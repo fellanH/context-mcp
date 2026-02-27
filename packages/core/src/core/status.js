@@ -212,7 +212,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
  *
  * @param {object} status — result of gatherVaultStatus()
  * @param {object} thresholds — from config.thresholds
- * @returns {{ warnings: Array, hasCritical: boolean, hasWarnings: boolean, actions: string[] }}
+ * @returns {{ warnings: Array, hasCritical: boolean, hasWarnings: boolean, actions: string[], kindBreakdown: Array }}
  */
 export function computeGrowthWarnings(status, thresholds) {
   if (!thresholds)
@@ -221,6 +221,7 @@ export function computeGrowthWarnings(status, thresholds) {
       hasCritical: false,
       hasWarnings: false,
       actions: [],
+      kindBreakdown: [],
     };
 
   const t = thresholds;
@@ -235,12 +236,16 @@ export function computeGrowthWarnings(status, thresholds) {
     dbSizeBytes = 0,
   } = status;
 
+  let totalExceeded = false;
+
   if (t.totalEntries?.critical != null && total >= t.totalEntries.critical) {
+    totalExceeded = true;
     warnings.push({
       level: "critical",
       message: `Total entries: ${total.toLocaleString()} (exceeds critical limit of ${t.totalEntries.critical.toLocaleString()})`,
     });
   } else if (t.totalEntries?.warn != null && total >= t.totalEntries.warn) {
+    totalExceeded = true;
     warnings.push({
       level: "warn",
       message: `Total entries: ${total.toLocaleString()} (exceeds recommended ${t.totalEntries.warn.toLocaleString()})`,
@@ -320,5 +325,26 @@ export function computeGrowthWarnings(status, thresholds) {
     actions.push("Consider archiving events older than 90 days");
   }
 
-  return { warnings, hasCritical, hasWarnings: warnings.length > 0, actions };
+  const kindBreakdown = totalExceeded
+    ? buildKindBreakdown(status.kindCounts, total)
+    : [];
+
+  return {
+    warnings,
+    hasCritical,
+    hasWarnings: warnings.length > 0,
+    actions,
+    kindBreakdown,
+  };
+}
+
+function buildKindBreakdown(kindCounts, total) {
+  if (!kindCounts?.length || total === 0) return [];
+  return [...kindCounts]
+    .sort((a, b) => b.c - a.c)
+    .map(({ kind, c }) => ({
+      kind,
+      count: c,
+      pct: Math.round((c / total) * 100),
+    }));
 }

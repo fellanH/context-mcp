@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { DEFAULT_GROWTH_THRESHOLDS } from "../constants.js";
+import { DEFAULT_GROWTH_THRESHOLDS, DEFAULT_LIFECYCLE } from "../constants.js";
 
 export function parseArgs(argv) {
   const args = {};
@@ -48,6 +48,7 @@ export function resolveConfig() {
       maxAgeDays: 7,
       autoConsolidate: false,
     },
+    lifecycle: structuredClone(DEFAULT_LIFECYCLE),
   };
 
   const configPath = join(dataDir, "config.json");
@@ -62,6 +63,12 @@ export function resolveConfig() {
       if (fc.dbPath) config.dbPath = fc.dbPath;
       if (fc.devDir) config.devDir = fc.devDir;
       if (fc.eventDecayDays != null) config.eventDecayDays = fc.eventDecayDays;
+      if (fc.growthWarningThreshold != null) {
+        config.thresholds.totalEntries = {
+          ...config.thresholds.totalEntries,
+          warn: Number(fc.growthWarningThreshold),
+        };
+      }
       if (fc.thresholds) {
         const t = fc.thresholds;
         if (t.totalEntries)

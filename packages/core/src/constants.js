@@ -14,8 +14,13 @@ export const MAX_SOURCE_LENGTH = 200;
 export const MAX_IDENTITY_KEY_LENGTH = 200;
 
 export const DEFAULT_GROWTH_THRESHOLDS = {
-  totalEntries: { warn: 1000, critical: 5000 },
-  eventEntries: { warn: 500, critical: 2000 },
+  totalEntries: { warn: 2000, critical: 5000 },
+  eventEntries: { warn: 1000, critical: 3000 },
   vaultSizeBytes: { warn: 50 * 1024 * 1024, critical: 200 * 1024 * 1024 },
   eventsWithoutTtl: { warn: 200 },
+};
+
+export const DEFAULT_LIFECYCLE = {
+  event: { archiveAfterDays: 90 },
+  ephemeral: { archiveAfterDays: 30 },
 };
