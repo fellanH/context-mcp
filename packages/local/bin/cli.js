@@ -3818,6 +3818,36 @@ async function runDoctor() {
       }
     }
 
+    // ── Auto-captured feedback entries ─────────────────────────────────────
+    if (db) {
+      try {
+        const feedbackRow = db
+          .prepare(
+            `SELECT COUNT(*) as c FROM vault WHERE kind = 'feedback' AND tags LIKE '%"auto-captured"%'`,
+          )
+          .get();
+        const feedbackCount = feedbackRow?.c ?? 0;
+        if (feedbackCount > 0) {
+          const recentRows = db
+            .prepare(
+              `SELECT title, created_at FROM vault WHERE kind = 'feedback' AND tags LIKE '%"auto-captured"%' ORDER BY created_at DESC LIMIT 3`,
+            )
+            .all();
+          console.log(
+            `  ${yellow("!")} ${feedbackCount} auto-captured error${feedbackCount === 1 ? "" : "s"} in vault`,
+          );
+          for (const row of recentRows) {
+            console.log(`    ${dim(`${row.created_at} — ${row.title}`)}`);
+          }
+          console.log(
+            `    ${dim('Review: context-vault search --kind feedback --tag auto-captured')}`,
+          );
+        }
+      } catch {
+        // non-critical — skip silently
+      }
+    }
+
     // Close DB if opened
     try {
       db?.close();
