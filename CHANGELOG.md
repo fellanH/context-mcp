@@ -2,6 +2,17 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.16.0] — 2026-02-27
+
+### Added
+
+- Issue #144: Hot-reload `config.json` without server restart — the MCP server re-reads config on every tool call, so changes to `~/.context-mcp/config.json` take effect immediately
+
+### Fixed
+
+- Issue #143: Setup wizard no longer overwrites existing `vaultDir` — when a valid config already exists, setup uses the configured path instead of defaulting to `~/vault`
+- Issue #149: Default `vaultDir` changed from `~/vault` to `~/.vault` — follows dotfolder convention (`.context-mcp`, `.claude`, etc.) and prevents ghost directories; `scanForVaults()` checks both `~/.vault` and `~/vault` for backwards compatibility
+
 ## [2.15.0] — 2026-02-26
 
 ### Added
