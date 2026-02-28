@@ -4,8 +4,6 @@ import {
   recencyBoost,
   recencyDecayScore,
   reciprocalRankFusion,
-  jaccardSimilarity,
-  maximalMarginalRelevance,
   buildFilterClauses,
   hybridSearch,
   dotProduct,
@@ -308,117 +306,6 @@ describe("reciprocalRankFusion", () => {
   });
 });
 
-// ─── jaccardSimilarity ───────────────────────────────────────────────────────
-
-describe("jaccardSimilarity", () => {
-  it("returns 1.0 for identical strings", () => {
-    expect(jaccardSimilarity("hello world", "hello world")).toBeCloseTo(1.0);
-  });
-
-  it("returns 0.0 for completely different strings", () => {
-    expect(jaccardSimilarity("hello", "world")).toBeCloseTo(0);
-  });
-
-  it("returns partial score for partial overlap", () => {
-    const sim = jaccardSimilarity("the quick brown fox", "the slow brown dog");
-    expect(sim).toBeGreaterThan(0);
-    expect(sim).toBeLessThan(1);
-  });
-
-  it("is case-insensitive", () => {
-    const sim1 = jaccardSimilarity("Hello World", "hello world");
-    expect(sim1).toBeCloseTo(1.0);
-  });
-
-  it("returns 1 for two empty strings", () => {
-    expect(jaccardSimilarity("", "")).toBeCloseTo(1.0);
-  });
-
-  it("returns 0 when one string is empty", () => {
-    expect(jaccardSimilarity("hello", "")).toBeCloseTo(0);
-  });
-});
-
-// ─── maximalMarginalRelevance ─────────────────────────────────────────────────
-
-describe("maximalMarginalRelevance", () => {
-  it("returns empty array for empty candidates", () => {
-    const result = maximalMarginalRelevance([], new Map(), new Map(), 5);
-    expect(result).toHaveLength(0);
-  });
-
-  it("selects the most relevant candidate first", () => {
-    const candidates = [
-      { id: "low", title: "low", body: "low relevance" },
-      { id: "high", title: "high", body: "high relevance" },
-    ];
-    const querySimMap = new Map([
-      ["low", 0.2],
-      ["high", 0.9],
-    ]);
-    const embeddingMap = new Map();
-    const result = maximalMarginalRelevance(
-      candidates,
-      querySimMap,
-      embeddingMap,
-      2,
-    );
-    expect(result[0].id).toBe("high");
-  });
-
-  it("penalises redundant candidates using Jaccard fallback", () => {
-    const candidates = [
-      {
-        id: "a",
-        title: "SQLite WAL",
-        body: "WAL mode concurrent reads writes SQLite",
-      },
-      {
-        id: "b",
-        title: "SQLite WAL",
-        body: "WAL mode concurrent reads writes SQLite identical",
-      },
-      { id: "c", title: "React hooks", body: "useState useEffect React hooks" },
-    ];
-    const querySimMap = new Map([
-      ["a", 0.9],
-      ["b", 0.85],
-      ["c", 0.7],
-    ]);
-    const embeddingMap = new Map();
-    const result = maximalMarginalRelevance(
-      candidates,
-      querySimMap,
-      embeddingMap,
-      2,
-    );
-    // "a" is selected first (highest relevance).
-    // "b" is very similar to "a" (Jaccard), so "c" should be preferred for slot 2.
-    expect(result[0].id).toBe("a");
-    expect(result[1].id).toBe("c");
-  });
-
-  it("respects n limit", () => {
-    const candidates = [
-      { id: "1", title: "one", body: "one" },
-      { id: "2", title: "two", body: "two" },
-      { id: "3", title: "three", body: "three" },
-    ];
-    const querySimMap = new Map([
-      ["1", 0.9],
-      ["2", 0.8],
-      ["3", 0.7],
-    ]);
-    const result = maximalMarginalRelevance(
-      candidates,
-      querySimMap,
-      new Map(),
-      2,
-    );
-    expect(result).toHaveLength(2);
-  });
-});
-
 // ─── hybridSearch (integration with real DB) ────────────────────────────────
 
 describe("hybridSearch", () => {
@@ -653,6 +540,55 @@ describe("hybridSearch", () => {
     }
 
     ctx.db.prepare("DELETE FROM vault WHERE id = ?").run("old-insight-1");
+  }, 30000);
+
+  // ── Frequency boost absent ─────────────────────────────────────────────
+
+  it("hit_count does not influence ranking — high hit_count entry ranks same relative to a zero-hit peer", async () => {
+    // Insert two semantically similar entries where one has an inflated hit_count
+    ctx.db
+      .prepare(
+        "INSERT INTO vault (id, kind, category, title, body, tags, source, hit_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "freq-low",
+        "insight",
+        "knowledge",
+        "Postgres connection pooling",
+        "Connection pooling reduces overhead for Postgres database connections",
+        '["postgres"]',
+        "freq-test",
+        0,
+      );
+    ctx.db
+      .prepare(
+        "INSERT INTO vault (id, kind, category, title, body, tags, source, hit_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "freq-high",
+        "insight",
+        "knowledge",
+        "Postgres connection pooling guide",
+        "Connection pooling reduces overhead for Postgres database connections in production",
+        '["postgres"]',
+        "freq-test",
+        9999,
+      );
+
+    const results = await hybridSearch(ctx, "Postgres connection pooling");
+    const low = results.find((r) => r.id === "freq-low");
+    const high = results.find((r) => r.id === "freq-high");
+
+    // Both should appear (or neither, if embeddings push them out)
+    // Key assertion: if both appear, hit_count=9999 does NOT give freq-high
+    // a score advantage disproportionate to its text relevance alone.
+    // Without frequency boost, scores are driven purely by FTS + vector + RRF + recency.
+    if (low && high) {
+      // Scores should be within 0.05 of each other (both entries are near-identical text)
+      expect(Math.abs(high.score - low.score)).toBeLessThan(0.05);
+    }
+
+    ctx.db.prepare("DELETE FROM vault WHERE source = ?").run("freq-test");
   }, 30000);
 
   // ── Edge cases ──────────────────────────────────────────────────────────

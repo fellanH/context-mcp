@@ -11,8 +11,6 @@ const NEAR_DUP_THRESHOLD = 0.92;
 
 const RRF_K = 60;
 
-const MMR_LAMBDA = 0.7;
-
 /**
  * Exponential recency decay score based on updated_at timestamp.
  * Returns e^(-decayRate * ageDays) for valid dates, or 0.5 as a neutral
@@ -133,107 +131,15 @@ export function reciprocalRankFusion(rankedLists, k = RRF_K) {
 }
 
 /**
- * Jaccard similarity between two strings based on word sets.
- * Used as a fallback for MMR when embedding vectors are unavailable.
- *
- * @param {string} a
- * @param {string} b
- * @returns {number} Similarity in [0, 1].
- */
-export function jaccardSimilarity(a, b) {
-  const wordsA = new Set((a ?? "").toLowerCase().split(/\W+/).filter(Boolean));
-  const wordsB = new Set((b ?? "").toLowerCase().split(/\W+/).filter(Boolean));
-  if (wordsA.size === 0 && wordsB.size === 0) return 1;
-  if (wordsA.size === 0 || wordsB.size === 0) return 0;
-  let intersection = 0;
-  for (const w of wordsA) if (wordsB.has(w)) intersection++;
-  return intersection / (wordsA.size + wordsB.size - intersection);
-}
-
-/**
- * Maximal Marginal Relevance reranking.
- *
- * Selects up to n candidates that balance relevance to the query and
- * diversity from already-selected results.
- *
- * MMR_score = lambda * querySim(doc) - (1 - lambda) * max(sim(doc, selected))
- *
- * @param {Array<object>} candidates - Entries with at least {id, title, body}.
- * @param {Map<string, number>} querySimMap - Map of id -> relevance score.
- * @param {Map<string, Float32Array|null>} embeddingMap - Map of id -> embedding (null if unavailable).
- * @param {number} n - Number of results to select.
- * @param {number} lambda - Trade-off weight (default MMR_LAMBDA = 0.7).
- * @returns {Array<object>} Reranked subset of candidates (length <= n).
- */
-export function maximalMarginalRelevance(
-  candidates,
-  querySimMap,
-  embeddingMap,
-  n,
-  lambda = MMR_LAMBDA,
-) {
-  if (candidates.length === 0) return [];
-
-  const remaining = [...candidates];
-  const selected = [];
-  const selectedVecs = [];
-  const selectedEntries = [];
-
-  while (selected.length < n && remaining.length > 0) {
-    let bestIdx = -1;
-    let bestScore = -Infinity;
-
-    for (let i = 0; i < remaining.length; i++) {
-      const candidate = remaining[i];
-      const relevance = querySimMap.get(candidate.id) ?? 0;
-
-      let maxRedundancy = 0;
-      if (selectedVecs.length > 0) {
-        const vec = embeddingMap.get(candidate.id);
-        for (let j = 0; j < selectedVecs.length; j++) {
-          let sim;
-          if (vec && selectedVecs[j]) {
-            sim = dotProduct(vec, selectedVecs[j]);
-          } else {
-            const selEntry = selectedEntries[j];
-            sim = jaccardSimilarity(
-              `${candidate.title} ${candidate.body}`,
-              `${selEntry.title} ${selEntry.body}`,
-            );
-          }
-          if (sim > maxRedundancy) maxRedundancy = sim;
-        }
-      }
-
-      const score = lambda * relevance - (1 - lambda) * maxRedundancy;
-      if (score > bestScore) {
-        bestScore = score;
-        bestIdx = i;
-      }
-    }
-
-    if (bestIdx === -1) break;
-
-    const chosen = remaining.splice(bestIdx, 1)[0];
-    selected.push(chosen);
-    selectedVecs.push(embeddingMap.get(chosen.id) ?? null);
-    selectedEntries.push(chosen);
-  }
-
-  return selected;
-}
-
-/**
  * Hybrid search combining FTS5 text matching and vector similarity,
- * with RRF merging and MMR reranking for diversity.
+ * with RRF merging, recency decay, and near-duplicate suppression.
  *
  * Pipeline:
  *   1. FTS5 ranked list
  *   2. Vector (semantic) ranked list
  *   3. RRF: merge the two ranked lists into a single score
- *   4. Apply recency decay to RRF scores
- *   5. MMR: rerank top candidates for diversity (uses embeddings or Jaccard fallback)
- *   6. Near-duplicate suppression on the final selection
+ *   4. Recency decay: penalise old events (knowledge/entity entries unaffected)
+ *   5. Near-duplicate suppression (cosine similarity > 0.92 threshold)
  *
  * @param {import('../server/types.js').BaseCtx} ctx
  * @param {string} query
@@ -383,20 +289,6 @@ export async function hybridSearch(
     rrfScores.set(id, (rrfScores.get(id) ?? 0) * boost);
   }
 
-  // Stage 3b: Frequency signal — log(1 + hit_count) / log(1 + max_hit_count)
-  const allRows = [...rowMap.values()];
-  const maxHitCount = Math.max(...allRows.map((e) => e.hit_count || 0), 0);
-  if (maxHitCount > 0) {
-    const logMax = Math.log(1 + maxHitCount);
-    for (const entry of allRows) {
-      const freqScore = Math.log(1 + (entry.hit_count || 0)) / logMax;
-      rrfScores.set(
-        entry.id,
-        (rrfScores.get(entry.id) ?? 0) + freqScore * 0.13,
-      );
-    }
-  }
-
   // Attach final score to each entry and sort by RRF score descending
   const candidates = [...rowMap.values()].map((entry) => ({
     ...entry,
@@ -404,7 +296,7 @@ export async function hybridSearch(
   }));
   candidates.sort((a, b) => b.score - a.score);
 
-  // Stage 4: Fetch embeddings for all candidates that have a rowid
+  // Stage 4: Fetch embeddings for near-duplicate suppression
   const embeddingMap = new Map();
   if (queryVec && idToRowid.size > 0) {
     const rowidToId = new Map();
@@ -429,34 +321,15 @@ export async function hybridSearch(
         }
       }
     } catch (_) {
-      // Embeddings unavailable — MMR will fall back to Jaccard similarity
+      // Embeddings unavailable — near-dup suppression skipped
     }
   }
 
-  // Use vecSim as the query-relevance signal for MMR; fall back to RRF score
-  const querySimMap = new Map();
-  for (const candidate of candidates) {
-    querySimMap.set(
-      candidate.id,
-      vecSimMap.has(candidate.id)
-        ? vecSimMap.get(candidate.id)
-        : candidate.score,
-    );
-  }
-
-  // Stage 5: MMR — rerank for diversity using embeddings or Jaccard fallback
-  const mmrSelected = maximalMarginalRelevance(
-    candidates,
-    querySimMap,
-    embeddingMap,
-    offset + limit,
-  );
-
-  // Stage 6: Near-duplicate suppression (hard filter, not reorder)
-  if (queryVec && embeddingMap.size > 0 && mmrSelected.length > limit) {
+  // Stage 5: Near-duplicate suppression (cosine similarity > 0.92 threshold)
+  if (queryVec && embeddingMap.size > 0) {
     const selected = [];
     const selectedVecs = [];
-    for (const candidate of mmrSelected) {
+    for (const candidate of candidates) {
       if (selected.length >= offset + limit) break;
       const vec = embeddingMap.get(candidate.id);
       if (vec && selectedVecs.length > 0) {
@@ -475,7 +348,7 @@ export async function hybridSearch(
     return dedupedPage;
   }
 
-  const finalPage = mmrSelected.slice(offset, offset + limit);
+  const finalPage = candidates.slice(offset, offset + limit);
   trackAccess(ctx.db, finalPage);
   return finalPage;
 }
