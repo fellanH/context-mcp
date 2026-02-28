@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { hybridSearch } from "../../retrieve/index.js";
 import { categoryFor } from "../../core/categories.js";
 import { normalizeKind } from "../../core/files.js";
+import { resolveTemporalParams } from "../../core/temporal.js";
 import { ok, err } from "../helpers.js";
 import { isEmbedAvailable } from "../../index/embed.js";
 
@@ -280,11 +281,15 @@ export const inputSchema = {
   since: z
     .string()
     .optional()
-    .describe("ISO date, return entries created after this"),
+    .describe(
+      "Return entries created after this date. Accepts ISO date strings (e.g. '2025-01-01') or natural shortcuts: 'today', 'yesterday', 'this_week', 'this_month', 'last_3_days', 'last_2_weeks', 'last_1_month'. Spaces and underscores are interchangeable.",
+    ),
   until: z
     .string()
     .optional()
-    .describe("ISO date, return entries created before this"),
+    .describe(
+      "Return entries created before this date. Accepts ISO date strings or the same natural shortcuts as `since`. When `since` is 'yesterday' and `until` is omitted, `until` is automatically set to the end of yesterday.",
+    ),
   limit: z.number().optional().describe("Max results to return (default 10)"),
   include_superseded: z
     .boolean()
@@ -359,6 +364,11 @@ export async function handler(
 ) {
   const { config } = ctx;
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
+
+  // Resolve natural-language temporal shortcuts → ISO date strings
+  const resolved = resolveTemporalParams({ since, until });
+  since = resolved.since;
+  until = resolved.until;
 
   const hasQuery = query?.trim();
 
