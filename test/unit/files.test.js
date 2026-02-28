@@ -34,43 +34,33 @@ describe("slugify", () => {
 });
 
 describe("normalizeKind", () => {
-  it("returns known singular kinds as-is", () => {
+  it("returns kinds as-is (identity function)", () => {
     expect(normalizeKind("insight")).toBe("insight");
     expect(normalizeKind("decision")).toBe("decision");
-  });
-
-  it("converts known plural forms to singular", () => {
-    expect(normalizeKind("insights")).toBe("insight");
-    expect(normalizeKind("decisions")).toBe("decision");
-    expect(normalizeKind("patterns")).toBe("pattern");
-  });
-
-  it("returns unknown kinds as-is", () => {
+    expect(normalizeKind("insights")).toBe("insights");
+    expect(normalizeKind("decisions")).toBe("decisions");
     expect(normalizeKind("custom")).toBe("custom");
     expect(normalizeKind("foobar")).toBe("foobar");
   });
 });
 
 describe("kindToDir / dirToKind", () => {
-  it("maps known kinds to plural directories", () => {
-    expect(kindToDir("insight")).toBe("insights");
-    expect(kindToDir("decision")).toBe("decisions");
+  it("returns kind as directory name (no pluralization)", () => {
+    expect(kindToDir("insight")).toBe("insight");
+    expect(kindToDir("decision")).toBe("decision");
+    expect(kindToDir("custom")).toBe("custom");
   });
 
-  it("maps known plural dirs back to singular kinds", () => {
-    expect(dirToKind("insights")).toBe("insight");
-    expect(dirToKind("decisions")).toBe("decision");
-  });
-
-  it("appends 's' for unknown kinds", () => {
-    expect(kindToDir("custom")).toBe("customs");
+  it("returns directory name as kind (identity)", () => {
+    expect(dirToKind("insight")).toBe("insight");
+    expect(dirToKind("decision")).toBe("decision");
   });
 });
 
 describe("kindToPath", () => {
-  it("returns category/kind path", () => {
-    expect(kindToPath("insight")).toBe("knowledge/insights");
-    expect(kindToPath("contact")).toBe("entities/contacts");
-    expect(kindToPath("session")).toBe("events/sessions");
+  it("returns category/kind path using singular kind names", () => {
+    expect(kindToPath("insight")).toBe("knowledge/insight");
+    expect(kindToPath("contact")).toBe("entities/contact");
+    expect(kindToPath("session")).toBe("events/session");
   });
 });

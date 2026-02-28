@@ -141,34 +141,34 @@ describe("safeFolderPath", () => {
   describe("normal folders", () => {
     it("returns the kind base when folder is empty", () => {
       const result = safeFolderPath(vaultDir, "insight", "");
-      expect(result).toBe(resolve(vaultDir, "knowledge", "insights"));
+      expect(result).toBe(resolve(vaultDir, "knowledge", "insight"));
     });
 
     it("returns the kind base when folder is undefined", () => {
       const result = safeFolderPath(vaultDir, "insight", undefined);
-      expect(result).toBe(resolve(vaultDir, "knowledge", "insights"));
+      expect(result).toBe(resolve(vaultDir, "knowledge", "insight"));
     });
 
     it("appends a simple subfolder", () => {
       const result = safeFolderPath(vaultDir, "insight", "react");
-      expect(result).toBe(resolve(vaultDir, "knowledge", "insights", "react"));
+      expect(result).toBe(resolve(vaultDir, "knowledge", "insight", "react"));
     });
 
     it("appends a nested subfolder", () => {
       const result = safeFolderPath(vaultDir, "insight", "react/hooks");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "react", "hooks"),
+        resolve(vaultDir, "knowledge", "insight", "react", "hooks"),
       );
     });
 
     it("works with entity kinds", () => {
       const result = safeFolderPath(vaultDir, "contact", "vendors");
-      expect(result).toBe(resolve(vaultDir, "entities", "contacts", "vendors"));
+      expect(result).toBe(resolve(vaultDir, "entities", "contact", "vendors"));
     });
 
     it("works with event kinds", () => {
       const result = safeFolderPath(vaultDir, "session", "2024");
-      expect(result).toBe(resolve(vaultDir, "events", "sessions", "2024"));
+      expect(result).toBe(resolve(vaultDir, "events", "session", "2024"));
     });
   });
 
@@ -223,20 +223,20 @@ describe("safeFolderPath", () => {
       // URL-encoded strings are NOT decoded by resolve/path — they stay literal
       const result = safeFolderPath(vaultDir, "insight", "%2e%2e%2f");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "%2e%2e%2f"),
+        resolve(vaultDir, "knowledge", "insight", "%2e%2e%2f"),
       );
     });
 
     it("treats %2e%2e/ as a literal folder name", () => {
       const result = safeFolderPath(vaultDir, "insight", "%2e%2e/");
-      expect(result).toBe(resolve(vaultDir, "knowledge", "insights", "%2e%2e"));
+      expect(result).toBe(resolve(vaultDir, "knowledge", "insight", "%2e%2e"));
     });
   });
 
   describe("edge cases", () => {
     it("handles single dot folder (stays in kind dir)", () => {
       const result = safeFolderPath(vaultDir, "insight", ".");
-      expect(result).toBe(resolve(vaultDir, "knowledge", "insights"));
+      expect(result).toBe(resolve(vaultDir, "knowledge", "insight"));
     });
 
     it("blocks double dot folder", () => {
@@ -247,27 +247,27 @@ describe("safeFolderPath", () => {
 
     it("normalizes trailing slashes", () => {
       const result = safeFolderPath(vaultDir, "insight", "react/");
-      expect(result).toBe(resolve(vaultDir, "knowledge", "insights", "react"));
+      expect(result).toBe(resolve(vaultDir, "knowledge", "insight", "react"));
     });
 
     it("normalizes double slashes in folder", () => {
       const result = safeFolderPath(vaultDir, "insight", "react//hooks");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "react", "hooks"),
+        resolve(vaultDir, "knowledge", "insight", "react", "hooks"),
       );
     });
 
     it("handles folder with spaces", () => {
       const result = safeFolderPath(vaultDir, "insight", "my folder");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "my folder"),
+        resolve(vaultDir, "knowledge", "insight", "my folder"),
       );
     });
 
     it("handles deeply nested valid folder", () => {
       const result = safeFolderPath(vaultDir, "insight", "a/b/c/d");
       expect(result).toBe(
-        resolve(vaultDir, "knowledge", "insights", "a", "b", "c", "d"),
+        resolve(vaultDir, "knowledge", "insight", "a", "b", "c", "d"),
       );
     });
   });

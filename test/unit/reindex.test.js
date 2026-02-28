@@ -65,7 +65,7 @@ describe("reindex", () => {
     writeMdFile(
       ctx.config.vaultDir,
       "knowledge",
-      "insights",
+      "insight",
       "test-basic-01234567.md",
       {
         id: "REINDEX_BASIC_01",
@@ -118,7 +118,7 @@ describe("reindex", () => {
     writeMdFile(
       ctx.config.vaultDir,
       "knowledge",
-      "decisions",
+      "decision",
       "stats-test-01234567.md",
       {
         id: "REINDEX_STATS_01",
@@ -149,7 +149,7 @@ describe("reindex", () => {
     writeMdFile(
       ctx.config.vaultDir,
       "events",
-      "sessions",
+      "session",
       "nested-test-01234567.md",
       {
         id: "REINDEX_NESTED_01",
@@ -169,7 +169,7 @@ describe("reindex", () => {
   }, 60000);
 
   it("discovers flat kind directories (legacy structure)", async () => {
-    writeMdFile(ctx.config.vaultDir, "", "patterns", "flat-test-01234567.md", {
+    writeMdFile(ctx.config.vaultDir, "", "pattern", "flat-test-01234567.md", {
       id: "REINDEX_FLAT_01",
       kind: "pattern",
       title: "Flat dir pattern",

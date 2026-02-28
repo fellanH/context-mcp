@@ -23,6 +23,7 @@ const KIND_CATEGORY = {
   source: "entity",
   bucket: "entity",
   // Event — append-only, decaying
+  event: "event",
   conversation: "event",
   message: "event",
   session: "event",

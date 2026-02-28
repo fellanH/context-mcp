@@ -37,42 +37,19 @@ export function slugify(text, maxLen = 60) {
   return slug;
 }
 
-const PLURAL_MAP = {
-  insight: "insights",
-  decision: "decisions",
-  pattern: "patterns",
-  status: "statuses",
-  analysis: "analyses",
-  contact: "contacts",
-  project: "projects",
-  tool: "tools",
-  source: "sources",
-  conversation: "conversations",
-  message: "messages",
-  session: "sessions",
-  log: "logs",
-  feedback: "feedbacks",
-};
-
-const SINGULAR_MAP = Object.fromEntries(
-  Object.entries(PLURAL_MAP).map(([k, v]) => [v, k]),
-);
-
+/** Map kind name to its directory name. Kind names are used as-is (no pluralization). */
 export function kindToDir(kind) {
-  if (PLURAL_MAP[kind]) return PLURAL_MAP[kind];
-  return kind.endsWith("s") ? kind : kind + "s";
+  return kind;
 }
 
+/** Map directory name back to kind name. Directory names equal kind names (identity). */
 export function dirToKind(dirName) {
-  if (SINGULAR_MAP[dirName]) return SINGULAR_MAP[dirName];
-  return dirName.replace(/s$/, "");
+  return dirName;
 }
 
-/** Normalize a kind input (singular or plural) to its canonical singular form. */
+/** Normalize a kind input to its canonical form. Kind names are returned as-is. */
 export function normalizeKind(input) {
-  if (PLURAL_MAP[input]) return input; // Already a known singular kind
-  if (SINGULAR_MAP[input]) return SINGULAR_MAP[input]; // Known plural → singular
-  return input; // Unknown — use as-is (don't strip 's')
+  return input;
 }
 
 /** Returns relative path from vault root → kind dir: "knowledge/insights", "events/sessions", etc. */
