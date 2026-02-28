@@ -67,7 +67,8 @@ export const SCHEMA_DDL = `
     hit_count       INTEGER DEFAULT 0,
     last_accessed_at TEXT,
     source_files    TEXT,
-    tier            TEXT DEFAULT 'working' CHECK(tier IN ('ephemeral', 'working', 'durable'))
+    tier            TEXT DEFAULT 'working' CHECK(tier IN ('ephemeral', 'working', 'durable')),
+    related_to      TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_vault_kind ON vault(kind);
@@ -156,13 +157,13 @@ export async function initDatabase(dbPath) {
 
     const freshDb = createDb(dbPath);
     freshDb.exec(SCHEMA_DDL);
-    freshDb.exec("PRAGMA user_version = 12");
+    freshDb.exec("PRAGMA user_version = 13");
     return freshDb;
   }
 
   if (version < 5) {
     db.exec(SCHEMA_DDL);
-    db.exec("PRAGMA user_version = 12");
+    db.exec("PRAGMA user_version = 13");
   } else if (version === 5) {
     // v5 -> v6 migration: add multi-tenancy + encryption columns
     // Wrapped in transaction with duplicate-column guards for idempotent retry
@@ -344,6 +345,18 @@ export async function initDatabase(dbPath) {
     });
   }
 
+  if (version >= 5 && version <= 12) {
+    // v12 -> v13 migration: add related_to column for graph linking
+    runTransaction(db, () => {
+      try {
+        db.exec(`ALTER TABLE vault ADD COLUMN related_to TEXT`);
+      } catch (e) {
+        if (!e.message.includes("duplicate column")) throw e;
+      }
+      db.exec("PRAGMA user_version = 13");
+    });
+  }
+
   return db;
 }
 
@@ -371,6 +384,9 @@ export function prepareStatements(db) {
       ),
       updateSourceFiles: db.prepare(
         `UPDATE vault SET source_files = ? WHERE id = ?`,
+      ),
+      updateRelatedTo: db.prepare(
+        `UPDATE vault SET related_to = ? WHERE id = ?`,
       ),
       insertVecStmt: db.prepare(
         `INSERT INTO vault_vec (rowid, embedding) VALUES (?, ?)`,

@@ -317,7 +317,7 @@ export async function reindex(ctx, opts = {}) {
       // P3: Fetch all mutable fields for change detection
       const dbRows = ctx.db
         .prepare(
-          "SELECT id, file_path, body, title, tags, meta FROM vault WHERE kind = ?",
+          "SELECT id, file_path, body, title, tags, meta, related_to FROM vault WHERE kind = ?",
         )
         .all(kind);
       const dbByPath = new Map(dbRows.map((r) => [r.file_path, r]));
@@ -343,6 +343,12 @@ export async function reindex(ctx, opts = {}) {
         // Extract identity_key and expires_at from frontmatter
         const identity_key = fmMeta.identity_key || null;
         const expires_at = fmMeta.expires_at || null;
+        const related_to = Array.isArray(fmMeta.related_to)
+          ? fmMeta.related_to
+          : null;
+        const relatedToJson = related_to?.length
+          ? JSON.stringify(related_to)
+          : null;
 
         // Derive folder from disk location (source of truth)
         const meta = { ...(parsed.meta || {}) };
@@ -372,6 +378,9 @@ export async function reindex(ctx, opts = {}) {
             fmMeta.updated || created,
           );
           if (result.changes > 0) {
+            if (relatedToJson && ctx.stmts.updateRelatedTo) {
+              ctx.stmts.updateRelatedTo.run(relatedToJson, id);
+            }
             if (category !== "event") {
               const rowidResult = ctx.stmts.getRowid.get(id);
               if (rowidResult?.rowid) {
@@ -396,8 +405,16 @@ export async function reindex(ctx, opts = {}) {
           const bodyChanged = existing.body !== parsed.body;
           const tagsChanged = tagsJson !== (existing.tags || null);
           const metaChanged = metaJson !== (existing.meta || null);
+          const relatedToChanged =
+            relatedToJson !== (existing.related_to || null);
 
-          if (bodyChanged || titleChanged || tagsChanged || metaChanged) {
+          if (
+            bodyChanged ||
+            titleChanged ||
+            tagsChanged ||
+            metaChanged ||
+            relatedToChanged
+          ) {
             ctx.stmts.updateEntry.run(
               parsed.title || null,
               parsed.body,
@@ -409,6 +426,9 @@ export async function reindex(ctx, opts = {}) {
               expires_at,
               filePath,
             );
+            if (relatedToChanged && ctx.stmts.updateRelatedTo) {
+              ctx.stmts.updateRelatedTo.run(relatedToJson, existing.id);
+            }
 
             // Queue re-embed if title or body changed (vector ops deferred to Phase 2)
             if ((bodyChanged || titleChanged) && category !== "event") {

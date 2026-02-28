@@ -6,6 +6,7 @@ import { hybridSearch } from "../../retrieve/index.js";
 import { categoryFor } from "../../core/categories.js";
 import { normalizeKind } from "../../core/files.js";
 import { resolveTemporalParams } from "../../core/temporal.js";
+import { collectLinkedEntries } from "../../core/linking.js";
 import { ok, err } from "../helpers.js";
 import { isEmbedAvailable } from "../../index/embed.js";
 
@@ -333,6 +334,12 @@ export const inputSchema = {
     .describe(
       "Index scope: 'hot' (default) — knowledge + entity entries only; 'events' — event entries only (cold index); 'all' — entire vault including events. Overrides include_events when set.",
     ),
+  follow_links: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, follow related_to links from result entries and include linked entries (forward links) and backlinks (entries that reference the results). Enables bidirectional graph traversal.",
+    ),
 };
 
 /**
@@ -358,6 +365,7 @@ export async function handler(
     include_ephemeral,
     include_events,
     scope,
+    follow_links,
   },
   ctx,
   { ensureIndexed, reindexFailed },
@@ -665,6 +673,45 @@ export async function handler(
         lines.push(`  Recommendation: ${c.recommendation}`);
       }
       lines.push("");
+    }
+  }
+
+  // Graph traversal: follow related_to links bidirectionally
+  if (follow_links) {
+    const { forward, backward } = collectLinkedEntries(
+      ctx.db,
+      filtered,
+      userId,
+    );
+    const allLinked = [...forward, ...backward];
+    const seen = new Set();
+    const uniqueLinked = allLinked.filter((e) => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    });
+
+    if (uniqueLinked.length > 0) {
+      lines.push(`## Linked Entries (${uniqueLinked.length} via related_to)\n`);
+      for (const r of uniqueLinked) {
+        const direction = forward.some((f) => f.id === r.id)
+          ? "→ forward"
+          : "← backlink";
+        const entryTags = r.tags ? JSON.parse(r.tags) : [];
+        const tagStr = entryTags.length ? entryTags.join(", ") : "none";
+        const relPath =
+          r.file_path && config.vaultDir
+            ? r.file_path.replace(config.vaultDir + "/", "")
+            : r.file_path || "n/a";
+        lines.push(
+          `### ${r.title || "(untitled)"} [${r.kind}/${r.category}] ${direction}`,
+        );
+        lines.push(`${tagStr} · ${relPath} · id: \`${r.id}\``);
+        lines.push(r.body?.slice(0, 200) + (r.body?.length > 200 ? "..." : ""));
+        lines.push("");
+      }
+    } else {
+      lines.push(`## Linked Entries\n\nNo related entries found.\n`);
     }
   }
 

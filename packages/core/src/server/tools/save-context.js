@@ -5,6 +5,7 @@ import { categoryFor, defaultTierFor } from "../../core/categories.js";
 import { normalizeKind } from "../../core/files.js";
 import { ok, err, ensureVaultExists, ensureValidKind } from "../helpers.js";
 import { maybeShowFeedbackPrompt } from "../../core/telemetry.js";
+import { validateRelatedTo } from "../../core/linking.js";
 import {
   MAX_BODY_LENGTH,
   MAX_TITLE_LENGTH,
@@ -294,6 +295,12 @@ export const inputSchema = {
     .describe(
       "Array of entry IDs that this entry supersedes/replaces. Those entries will be marked with superseded_by pointing to this new entry and excluded from future search results by default.",
     ),
+  related_to: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Array of entry IDs this entry is related to. Enables bidirectional graph traversal — use get_context with follow_links:true to retrieve linked entries.",
+    ),
   source_files: z
     .array(
       z.object({
@@ -359,6 +366,7 @@ export async function handler(
     identity_key,
     expires_at,
     supersedes,
+    related_to,
     source_files,
     dry_run,
     similarity_threshold,
@@ -374,6 +382,9 @@ export async function handler(
 
   const vaultErr = ensureVaultExists(config);
   if (vaultErr) return vaultErr;
+
+  const relatedToErr = validateRelatedTo(related_to);
+  if (relatedToErr) return err(relatedToErr, "INVALID_INPUT");
 
   const inputErr = validateSaveInput({
     kind,
@@ -428,9 +439,15 @@ export async function handler(
       source,
       expires_at,
       supersedes,
+      related_to,
       source_files,
     });
     await indexEntry(ctx, entry);
+    if (entry.related_to?.length && ctx.stmts.updateRelatedTo) {
+      ctx.stmts.updateRelatedTo.run(JSON.stringify(entry.related_to), entry.id);
+    } else if (entry.related_to === null && ctx.stmts.updateRelatedTo) {
+      ctx.stmts.updateRelatedTo.run(null, entry.id);
+    }
     const relPath = entry.filePath
       ? entry.filePath.replace(config.vaultDir + "/", "")
       : entry.filePath;
@@ -531,6 +548,7 @@ export async function handler(
     identity_key,
     expires_at,
     supersedes,
+    related_to,
     source_files,
     userId,
     tier: effectiveTier,
@@ -562,8 +580,7 @@ export async function handler(
   );
   for (const bt of bucketTags) {
     const bucketUserClause = userId !== undefined ? "AND user_id = ?" : "";
-    const bucketParams =
-      userId !== undefined ? [bt, userId] : [bt];
+    const bucketParams = userId !== undefined ? [bt, userId] : [bt];
     const exists = ctx.db
       .prepare(
         `SELECT 1 FROM vault WHERE kind = 'bucket' AND identity_key = ? ${bucketUserClause} LIMIT 1`,

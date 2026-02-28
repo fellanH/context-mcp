@@ -27,6 +27,7 @@ export function writeEntry(
     identity_key,
     expires_at,
     supersedes,
+    related_to,
     source_files,
     tier,
     userId,
@@ -88,6 +89,7 @@ export function writeEntry(
     identity_key,
     expires_at,
     supersedes,
+    related_to,
   });
 
   return {
@@ -105,6 +107,7 @@ export function writeEntry(
     identity_key,
     expires_at,
     supersedes,
+    related_to: related_to || null,
     source_files: source_files || null,
     tier: tier || null,
     userId: userId || null,
@@ -126,6 +129,9 @@ export function updateEntryFile(ctx, existing, updates) {
 
   const existingMeta = existing.meta ? JSON.parse(existing.meta) : {};
   const existingTags = existing.tags ? JSON.parse(existing.tags) : [];
+  const existingRelatedTo = existing.related_to
+    ? JSON.parse(existing.related_to)
+    : fmMeta.related_to || null;
 
   const title = updates.title !== undefined ? updates.title : existing.title;
   const body = updates.body !== undefined ? updates.body : existing.body;
@@ -138,6 +144,8 @@ export function updateEntryFile(ctx, existing, updates) {
     updates.supersedes !== undefined
       ? updates.supersedes
       : fmMeta.supersedes || null;
+  const related_to =
+    updates.related_to !== undefined ? updates.related_to : existingRelatedTo;
   const source_files =
     updates.source_files !== undefined
       ? updates.source_files
@@ -162,6 +170,7 @@ export function updateEntryFile(ctx, existing, updates) {
   if (existing.identity_key) fmFields.identity_key = existing.identity_key;
   if (expires_at) fmFields.expires_at = expires_at;
   if (supersedes?.length) fmFields.supersedes = supersedes;
+  if (related_to?.length) fmFields.related_to = related_to;
   fmFields.tags = tags;
   fmFields.source = source || "claude-code";
   fmFields.created = fmMeta.created || existing.created_at;
@@ -189,6 +198,7 @@ export function updateEntryFile(ctx, existing, updates) {
     identity_key: existing.identity_key,
     expires_at,
     supersedes,
+    related_to: related_to || null,
     source_files: source_files || null,
     userId: existing.user_id || null,
   };
@@ -216,6 +226,10 @@ export async function captureAndIndex(ctx, data) {
           ctx.stmts.updateSupersededBy.run(entry.id, supersededId.trim());
         }
       }
+    }
+    // Store related_to links in DB
+    if (entry.related_to?.length && ctx.stmts.updateRelatedTo) {
+      ctx.stmts.updateRelatedTo.run(JSON.stringify(entry.related_to), entry.id);
     }
     return entry;
   } catch (err) {

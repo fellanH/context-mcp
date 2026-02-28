@@ -69,6 +69,7 @@ const RESERVED_FM_KEYS = new Set([
   "identity_key",
   "expires_at",
   "supersedes",
+  "related_to",
 ]);
 
 export function extractCustomMeta(fmMeta) {

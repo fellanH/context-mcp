@@ -38,6 +38,7 @@ export function writeEntryFile(
     identity_key,
     expires_at,
     supersedes,
+    related_to,
   },
 ) {
   // P5: folder is now a top-level param; also accept from meta for backward compat
@@ -64,6 +65,7 @@ export function writeEntryFile(
   if (identity_key) fmFields.identity_key = identity_key;
   if (expires_at) fmFields.expires_at = expires_at;
   if (supersedes?.length) fmFields.supersedes = supersedes;
+  if (related_to?.length) fmFields.related_to = related_to;
   fmFields.tags = tags || [];
   fmFields.source = source || "claude-code";
   fmFields.created = created;
