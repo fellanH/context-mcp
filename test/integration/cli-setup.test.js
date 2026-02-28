@@ -62,6 +62,85 @@ describe("CLI basics", () => {
   });
 });
 
+describe("CLI porcelain/plumbing help split", () => {
+  const PLUMBING_COMMANDS = [
+    "recall",
+    "session-capture",
+    "session-end",
+    "post-tool-call",
+    "flush",
+    "consolidate",
+    "migrate",
+  ];
+
+  const PORCELAIN_COMMANDS = [
+    "setup",
+    "search",
+    "save",
+    "import",
+    "export",
+    "reindex",
+    "prune",
+    "status",
+    "doctor",
+    "health",
+  ];
+
+  it("--help hides plumbing commands by default", () => {
+    const { stdout, exitCode } = runCli("--help");
+    expect(exitCode).toBe(0);
+    for (const cmd of PLUMBING_COMMANDS) {
+      expect(stdout).not.toContain(`  ${cmd}`);
+    }
+  });
+
+  it("--help shows all porcelain commands", () => {
+    const { stdout, exitCode } = runCli("--help");
+    expect(exitCode).toBe(0);
+    for (const cmd of PORCELAIN_COMMANDS) {
+      expect(stdout).toContain(cmd);
+    }
+  });
+
+  it("--help includes hint about --all flag", () => {
+    const { stdout, exitCode } = runCli("--help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("--all");
+    expect(stdout).toContain("plumbing");
+  });
+
+  it("--help --all shows plumbing commands", () => {
+    const { stdout, exitCode } = runCli("--help --all");
+    expect(exitCode).toBe(0);
+    for (const cmd of PLUMBING_COMMANDS) {
+      expect(stdout).toContain(cmd);
+    }
+  });
+
+  it("--help --all still shows porcelain commands", () => {
+    const { stdout, exitCode } = runCli("--help --all");
+    expect(exitCode).toBe(0);
+    for (const cmd of PORCELAIN_COMMANDS) {
+      expect(stdout).toContain(cmd);
+    }
+  });
+
+  it("--help --all includes Plumbing section header", () => {
+    const { stdout, exitCode } = runCli("--help --all");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Plumbing");
+    expect(stdout).toContain("internal");
+  });
+
+  it("plumbing commands still work (backward compat) — recall exits gracefully on empty stdin", () => {
+    // recall reads from stdin and should not crash with an error code > 1
+    // when stdin is closed immediately (no vault configured)
+    // We just verify the command is dispatched (exits, doesn't say "Unknown command")
+    const { exitCode, stderr } = runCli("recall");
+    expect(stderr).not.toContain("Unknown command");
+  });
+});
+
 describe("TOOLS array validation", () => {
   // Dynamic import the CLI module to inspect the TOOLS array indirectly
   // We validate tool structure through the setup --yes output

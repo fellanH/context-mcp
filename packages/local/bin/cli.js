@@ -282,7 +282,7 @@ function printDetectionResults(results) {
   }
 }
 
-function showHelp() {
+function showHelp(showAll = false) {
   console.log(`
   ${bold("◇ context-vault")} ${dim(`v${VERSION}`)}
   ${dim("Persistent memory for AI agents")}
@@ -293,37 +293,47 @@ ${bold("Usage:")}
   ${dim("No command → runs setup (first time) or shows status (existing vault)")}
 
 ${bold("Commands:")}
-  ${cyan("setup")}                 Interactive MCP server installer
-  ${cyan("connect")} --key cv_...  Connect AI tools to hosted vault
-  ${cyan("switch")} local|hosted      Switch between local and hosted MCP modes
-  ${cyan("serve")}                 Start the MCP server (used by AI clients)
-  ${cyan("hooks")} install|uninstall  Install or remove Claude Code memory hook
-  ${cyan("claude")} install|uninstall  Alias for hooks install|uninstall
-  ${cyan("skills")} install          Install bundled Claude Code skills
-  ${cyan("health")}                Quick health check — vault, DB, entry count
-  ${cyan("restart")}               Stop running MCP server processes (client auto-restarts)
-  ${cyan("flush")}                 Check vault health and confirm DB is accessible
-  ${cyan("recall")}                Search vault from a Claude Code hook (reads stdin)
-  ${cyan("session-capture")}       Save a session summary entry (reads JSON from stdin)
-  ${cyan("session-end")}           Run session-end hook (parse transcript + capture)
-  ${cyan("post-tool-call")}        Run post-tool-call hook (log tool usage)
-  ${cyan("save")}                  Save an entry to the vault from CLI
-  ${cyan("search")}                Search vault entries from CLI
-  ${cyan("reindex")}               Rebuild search index from knowledge files
-  ${cyan("prune")}                 Remove expired entries (use --dry-run to preview)
-  ${cyan("status")}                Show vault diagnostics
-  ${cyan("doctor")}                Diagnose and repair common issues
-  ${cyan("update")}                Check for and install updates
-  ${cyan("uninstall")}             Remove MCP configs and optionally data
-  ${cyan("import")} <path>          Import entries from file or directory
-  ${cyan("export")}                Export vault to JSON or CSV
-  ${cyan("ingest")} <url>          Fetch URL and save as vault entry
-  ${cyan("ingest-project")} <path>  Scan project directory and register as project entity
-  ${cyan("migrate")}               Migrate vault between local and hosted
-  ${cyan("consolidate")}           Find hot tags and cold entries for maintenance
+  ${cyan("setup")}                      Interactive MCP server installer
+  ${cyan("connect")} --key cv_...       Connect AI tools to hosted vault
+  ${cyan("switch")} local|hosted        Switch between local and hosted MCP modes
+  ${cyan("serve")}                      Start the MCP server (used by AI clients)
+  ${cyan("hooks")} install|uninstall    Install or remove Claude Code memory hook
+  ${cyan("claude")} install|uninstall   Alias for hooks install|uninstall
+  ${cyan("skills")} install             Install bundled Claude Code skills
+  ${cyan("health")}                     Quick health check — vault, DB, entry count
+  ${cyan("status")}                     Show vault diagnostics
+  ${cyan("doctor")}                     Diagnose and repair common issues
+  ${cyan("restart")}                    Stop running MCP server processes (client auto-restarts)
+  ${cyan("search")}                     Search vault entries from CLI
+  ${cyan("save")}                       Save an entry to the vault from CLI
+  ${cyan("import")} <path>              Import entries from file or directory
+  ${cyan("export")}                     Export vault to JSON or CSV
+  ${cyan("ingest")} <url>               Fetch URL and save as vault entry
+  ${cyan("ingest-project")} <path>      Scan project directory and register as project entity
+  ${cyan("reindex")}                    Rebuild search index from knowledge files
+  ${cyan("prune")}                      Remove expired entries (use --dry-run to preview)
+  ${cyan("update")}                     Check for and install updates
+  ${cyan("uninstall")}                  Remove MCP configs and optionally data
+`);
 
-${bold("Options:")}
+  if (showAll) {
+    console.log(`${bold("Plumbing")} ${dim("(internal — hook implementations and maintenance utilities):")}
+  ${cyan("recall")}                     Search vault from a Claude Code hook (reads stdin)
+  ${cyan("session-capture")}            Save a session summary entry (reads JSON from stdin)
+  ${cyan("session-end")}                Run session-end hook (parse transcript + capture)
+  ${cyan("post-tool-call")}             Run post-tool-call hook (log tool usage)
+  ${cyan("flush")}                      Check vault health and confirm DB is accessible
+  ${cyan("consolidate")}                Find hot tags and cold entries for maintenance
+  ${cyan("migrate")}                    Migrate vault between local and hosted
+`);
+  } else {
+    console.log(`  ${dim("Run")} ${dim("context-vault --help --all")} ${dim("to show internal plumbing commands.")}
+`);
+  }
+
+  console.log(`${bold("Options:")}
   --help                Show this help
+  --help --all          Show all commands including internal plumbing
   --version             Show version
   --vault-dir <path>    Set vault directory (setup/serve)
   --yes                 Non-interactive mode (accept all defaults)
@@ -4473,7 +4483,7 @@ async function main() {
   }
 
   if (flags.has("--help") || command === "help") {
-    showHelp();
+    showHelp(flags.has("--all"));
     return;
   }
 
