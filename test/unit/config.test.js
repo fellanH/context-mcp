@@ -148,7 +148,7 @@ describe("resolveConfig", () => {
 
   it("default paths are based on homedir", () => {
     const cfg = resolveConfig();
-    expect(cfg.vaultDir).toBe(`${FAKE_HOME}/vault`);
+    expect(cfg.vaultDir).toBe(`${FAKE_HOME}/.vault`);
     expect(cfg.dataDir).toBe(`${FAKE_HOME}/.context-mcp`);
     expect(cfg.dbPath).toBe(`${FAKE_HOME}/.context-mcp/vault.db`);
     expect(cfg.devDir).toBe(`${FAKE_HOME}/dev`);
@@ -395,7 +395,7 @@ describe("resolveConfig", () => {
   });
 
   it("vaultDirExists is true when vault dir exists", () => {
-    mockFiles[`${FAKE_HOME}/vault`] = "";
+    mockFiles[`${FAKE_HOME}/.vault`] = "";
 
     const cfg = resolveConfig();
     expect(cfg.vaultDirExists).toBe(true);

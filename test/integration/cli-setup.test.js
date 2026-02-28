@@ -268,7 +268,7 @@ describe("full setup flow E2E", () => {
     expect(exitCode).toBe(0);
 
     // Vault directory created
-    const vaultDir = join(tmpHome, "vault");
+    const vaultDir = join(tmpHome, ".vault");
     expect(existsSync(vaultDir)).toBe(true);
 
     // Config written
@@ -346,7 +346,7 @@ describe("setup error cases", () => {
   it("exits with error when vault dir path is a file", () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "cv-error-"));
     // Create a file at the default vault path so setup can't make a dir there
-    writeFileSync(join(tmpHome, "vault"), "I am a file, not a directory");
+    writeFileSync(join(tmpHome, ".vault"), "I am a file, not a directory");
 
     try {
       const { exitCode, stderr, stdout } = runCli(
@@ -601,7 +601,7 @@ describe("vault marker file", () => {
       });
       expect(exitCode).toBe(0);
 
-      const markerPath = join(tmpHome, "vault", ".context-vault");
+      const markerPath = join(tmpHome, ".vault", ".context-vault");
       expect(existsSync(markerPath)).toBe(true);
 
       const marker = JSON.parse(readFileSync(markerPath, "utf-8"));
