@@ -320,7 +320,13 @@ export const inputSchema = {
     .boolean()
     .optional()
     .describe(
-      "If true, include event category entries in semantic search results. Default: false — events are excluded from query-based search but remain accessible via category/tag filters.",
+      "If true, include event category entries in semantic search results. Default: false — events are excluded from query-based search but remain accessible via category/tag filters. Deprecated: prefer scope parameter.",
+    ),
+  scope: z
+    .enum(["hot", "events", "all"])
+    .optional()
+    .describe(
+      "Index scope: 'hot' (default) — knowledge + entity entries only; 'events' — event entries only (cold index); 'all' — entire vault including events. Overrides include_events when set.",
     ),
 };
 
@@ -346,6 +352,7 @@ export async function handler(
     pivot_count,
     include_ephemeral,
     include_events,
+    scope,
   },
   ctx,
   { ensureIndexed, reindexFailed },
@@ -354,12 +361,31 @@ export async function handler(
   const userId = ctx.userId !== undefined ? ctx.userId : undefined;
 
   const hasQuery = query?.trim();
-  const shouldExcludeEvents = hasQuery && !include_events && !category;
+
+  // Resolve effective scope — explicit scope param wins over include_events legacy flag.
+  // scope "hot" (default): knowledge + entity only — events excluded from search
+  // scope "events": force category filter to "event" (cold index query)
+  // scope "all": no category restriction — full vault
+  let effectiveScope = scope;
+  if (!effectiveScope) {
+    effectiveScope = include_events ? "all" : "hot";
+  }
+
+  // Scope "events" forces category to "event" unless caller already set a narrower category
+  const scopedCategory =
+    !category && effectiveScope === "events" ? "event" : category;
+  const shouldExcludeEvents =
+    hasQuery && effectiveScope === "hot" && !scopedCategory;
   // Expand buckets to bucket: prefixed tags and merge with explicit tags
   const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
   const effectiveTags = [...(tags ?? []), ...bucketTags];
   const hasFilters =
-    kind || category || effectiveTags.length || since || until || identity_key;
+    kind ||
+    scopedCategory ||
+    effectiveTags.length ||
+    since ||
+    until ||
+    identity_key;
   if (!hasQuery && !hasFilters)
     return err(
       "Required: query or at least one filter (kind, category, tags, since, until, identity_key)",
@@ -398,7 +424,7 @@ export async function handler(
 
   // Gap 2: Event default time-window
   const effectiveCategory =
-    category || (kindFilter ? categoryFor(kindFilter) : null);
+    scopedCategory || (kindFilter ? categoryFor(kindFilter) : null);
   let effectiveSince = since || null;
   let effectiveUntil = until || null;
   let autoWindowed = false;
@@ -420,7 +446,7 @@ export async function handler(
     // Hybrid search mode
     const sorted = await hybridSearch(ctx, query, {
       kindFilter,
-      categoryFilter: category || null,
+      categoryFilter: scopedCategory || null,
       excludeEvents: shouldExcludeEvents,
       since: effectiveSince,
       until: effectiveUntil,
@@ -451,9 +477,9 @@ export async function handler(
       clauses.push("kind = ?");
       params.push(kindFilter);
     }
-    if (category) {
+    if (scopedCategory) {
       clauses.push("category = ?");
-      params.push(category);
+      params.push(scopedCategory);
     }
     if (effectiveSince) {
       clauses.push("created_at >= ?");
@@ -661,6 +687,7 @@ export async function handler(
 
   const result = ok(lines.join("\n"));
   const meta = {};
+  meta.scope = effectiveScope;
   if (tokensBudget != null) {
     meta.tokens_used = tokensUsed;
     meta.tokens_budget = tokensBudget;
@@ -671,8 +698,6 @@ export async function handler(
   if (consolidationSuggestions.length > 0) {
     meta.consolidation_suggestions = consolidationSuggestions;
   }
-  if (Object.keys(meta).length > 0) {
-    result._meta = meta;
-  }
+  result._meta = meta;
   return result;
 }

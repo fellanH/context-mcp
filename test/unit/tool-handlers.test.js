@@ -669,6 +669,192 @@ describe("get_context include_events", () => {
   }, 60000);
 });
 
+// ─── get_context scope parameter ─────────────────────────────────────────────
+
+describe("get_context scope", () => {
+  it("scope: 'hot' excludes event entries (default behaviour)", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "insight",
+        title: "Architecture decision for scope test",
+        body: "We decided to use a modular architecture for maintainability",
+        tags: ["arch"],
+      });
+      await captureAndIndex(freshCtx, {
+        kind: "log",
+        title: "Architecture event log for scope test",
+        body: "Logged architecture discussion during planning session",
+        tags: ["arch"],
+      });
+
+      const result = await getContextTool.handler(
+        { query: "architecture scope test", scope: "hot" },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("Architecture decision for scope test");
+      expect(text).not.toContain("Architecture event log for scope test");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+
+  it("scope: 'events' returns only event entries", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "insight",
+        title: "Scope events knowledge entry",
+        body: "A knowledge entry that should not appear when scope is events",
+        tags: ["scope-test"],
+      });
+      await captureAndIndex(freshCtx, {
+        kind: "log",
+        title: "Scope events log entry",
+        body: "An event log that should appear when scope is events",
+        tags: ["scope-test"],
+      });
+
+      const result = await getContextTool.handler(
+        { tags: ["scope-test"], scope: "events" },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("Scope events log entry");
+      expect(text).not.toContain("Scope events knowledge entry");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+
+  it("scope: 'all' includes both knowledge and event entries", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "insight",
+        title: "All scope knowledge entry",
+        body: "Knowledge about comprehensive vault queries",
+        tags: ["scope-all"],
+      });
+      await captureAndIndex(freshCtx, {
+        kind: "log",
+        title: "All scope event entry",
+        body: "Event log about comprehensive vault queries",
+        tags: ["scope-all"],
+      });
+
+      const result = await getContextTool.handler(
+        { tags: ["scope-all"], scope: "all" },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("All scope knowledge entry");
+      expect(text).toContain("All scope event entry");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+
+  it("default scope (no scope param) behaves as hot — excludes events from query search", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "pattern",
+        title: "Default scope pattern",
+        body: "Pattern for default scope test with hot index behaviour",
+        tags: ["default-scope"],
+      });
+      await captureAndIndex(freshCtx, {
+        kind: "session",
+        title: "Default scope session",
+        body: "Session event for default scope test",
+        tags: ["default-scope"],
+      });
+
+      const result = await getContextTool.handler(
+        { query: "default scope test hot index" },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("Default scope pattern");
+      expect(text).not.toContain("Default scope session");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+
+  it("include_events: true is equivalent to scope: 'all' (backward compat)", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "log",
+        title: "Backward compat event entry",
+        body: "Event visible via include_events backward compat flag",
+        tags: ["compat-test"],
+      });
+
+      const result = await getContextTool.handler(
+        { query: "backward compat flag", include_events: true },
+        freshCtx,
+        shared,
+      );
+      const text = isOk(result);
+      expect(text).toContain("Backward compat event entry");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+
+  it("scope is included in _meta on every response", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "insight",
+        title: "Meta scope test entry",
+        body: "Entry for verifying meta scope field",
+        tags: ["meta-scope"],
+      });
+
+      const result = await getContextTool.handler(
+        { tags: ["meta-scope"] },
+        freshCtx,
+        shared,
+      );
+      isOk(result);
+      expect(result._meta?.scope).toBe("hot");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+
+  it("scope: 'events' in _meta when scope param is events", async () => {
+    const { ctx: freshCtx, cleanup: freshCleanup } = await createTestCtx();
+    try {
+      await captureAndIndex(freshCtx, {
+        kind: "log",
+        title: "Meta events scope entry",
+        body: "Event for verifying meta scope field set to events",
+        tags: ["meta-events-scope"],
+      });
+
+      const result = await getContextTool.handler(
+        { tags: ["meta-events-scope"], scope: "events" },
+        freshCtx,
+        shared,
+      );
+      isOk(result);
+      expect(result._meta?.scope).toBe("events");
+    } finally {
+      freshCleanup();
+    }
+  }, 60000);
+});
+
 // ─── skeletonBody (unit) ──────────────────────────────────────────────────────
 
 import { skeletonBody } from "../../packages/core/src/server/tools/get-context.js";

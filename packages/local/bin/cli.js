@@ -2881,6 +2881,7 @@ async function runSearch() {
   const sort = getFlag("--sort") || "relevance";
   const format = getFlag("--format") || "plain";
   const showFull = flags.has("--full");
+  const scopeArg = getFlag("--scope"); // "hot" | "events" | "all"
 
   const valuedFlags = new Set([
     "--kind",
@@ -2888,6 +2889,7 @@ async function runSearch() {
     "--limit",
     "--sort",
     "--format",
+    "--scope",
   ]);
 
   const queryParts = [];
@@ -2927,8 +2929,18 @@ async function runSearch() {
 
     let results;
 
+    // Resolve scope → category/exclude filter
+    const validScopes = new Set(["hot", "events", "all"]);
+    const resolvedScope = validScopes.has(scopeArg) ? scopeArg : "hot";
+    const scopeCategoryFilter = resolvedScope === "events" ? "event" : null;
+    const scopeExcludeEvents = resolvedScope === "hot";
+
     if (query) {
-      results = await hybridSearch(ctx, query, { limit: limit * 2 });
+      results = await hybridSearch(ctx, query, {
+        limit: limit * 2,
+        categoryFilter: scopeCategoryFilter,
+        excludeEvents: scopeExcludeEvents,
+      });
 
       if (kind) {
         results = results.filter((r) => r.kind === kind);
@@ -2940,6 +2952,10 @@ async function runSearch() {
       if (kind) {
         sql += " AND kind = ?";
         params.push(kind);
+      }
+      if (scopeCategoryFilter) {
+        sql += " AND category = ?";
+        params.push(scopeCategoryFilter);
       }
       sql += " ORDER BY COALESCE(updated_at, created_at) DESC LIMIT ?";
       params.push(limit);
@@ -3840,7 +3856,7 @@ async function runDoctor() {
             console.log(`    ${dim(`${row.created_at} — ${row.title}`)}`);
           }
           console.log(
-            `    ${dim('Review: context-vault search --kind feedback --tag auto-captured')}`,
+            `    ${dim("Review: context-vault search --kind feedback --tag auto-captured")}`,
           );
         }
       } catch {
@@ -3953,9 +3969,7 @@ async function runDoctor() {
         console.log(
           `  ${yellow("!")} ${tool.name}: using old name "context-mcp"`,
         );
-        console.log(
-          `    ${dim("Fix: run context-vault setup to update")}`,
-        );
+        console.log(`    ${dim("Fix: run context-vault setup to update")}`);
         anyToolConfigured = true;
       }
     } catch {
@@ -3979,9 +3993,7 @@ async function runDoctor() {
   }
 
   if (!anyToolConfigured) {
-    console.log(
-      `  ${yellow("!")} No AI tools have context-vault configured`,
-    );
+    console.log(`  ${yellow("!")} No AI tools have context-vault configured`);
     console.log(`    ${dim("Fix: run context-vault setup")}`);
     allOk = false;
   }
@@ -4106,14 +4118,10 @@ async function runDoctor() {
 
       if (hookCount === 0) {
         console.log(`  ${dim("-")} No context-vault hooks installed`);
-        console.log(
-          `    ${dim("Optional: run context-vault hooks install")}`,
-        );
+        console.log(`    ${dim("Optional: run context-vault hooks install")}`);
       }
     } catch {
-      console.log(
-        `  ${yellow("!")} Could not read ${settingsPath}`,
-      );
+      console.log(`  ${yellow("!")} Could not read ${settingsPath}`);
     }
   } else {
     console.log(`  ${dim("-")} No Claude Code settings found`);
