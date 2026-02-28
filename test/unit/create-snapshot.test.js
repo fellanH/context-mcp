@@ -1,36 +1,13 @@
 /**
  * Unit tests for the create_snapshot tool handler.
  *
- * The LLM call is mocked via vi.mock so tests run without a real ANTHROPIC_API_KEY.
+ * create_snapshot is a pure gather tool — no external LLM calls.
+ * All tests run fully offline without any API keys.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex } from "@context-vault/core/capture";
 import * as createSnapshotTool from "../../packages/core/src/server/tools/create-snapshot.js";
-
-const FAKE_BRIEF = `# Test Topic — Context Brief
-## Status
-Active project in development.
-## Key Decisions
-- Use SQLite for local storage.
-## Patterns & Conventions
-- Consistent use of ULID identifiers.
-## Active Constraints
-- Node.js >= 24 required.
-## Open Questions
-- None at this time.
-## Audit Notes
-No contradictions detected.`;
-
-const mockMessagesCreate = vi.fn().mockResolvedValue({
-  content: [{ type: "text", text: FAKE_BRIEF }],
-});
-
-vi.mock("@anthropic-ai/sdk", () => ({
-  Anthropic: class {
-    messages = { create: mockMessagesCreate };
-  },
-}));
 
 const shared = { ensureIndexed: async () => {}, reindexFailed: false };
 
@@ -207,7 +184,7 @@ describe("create_snapshot handler — happy path", () => {
     expect(Array.isArray(meta.synthesized_from)).toBe(true);
   }, 30000);
 
-  it("body of saved brief contains LLM output", async () => {
+  it("body of saved brief contains gathered entry content", async () => {
     await createSnapshotTool.handler(
       { topic: "Test Topic", identity_key: "body-check-key" },
       ctx,
@@ -217,7 +194,23 @@ describe("create_snapshot handler — happy path", () => {
       .prepare("SELECT * FROM vault WHERE identity_key = ?")
       .get("body-check-key");
     expect(row.body).toContain("Context Brief");
-    expect(row.body).toContain("Key Decisions");
+    expect(row.body).toContain("Gathered from");
+    expect(row.body).toContain("[insight]");
+  }, 30000);
+
+  it("body is formatted markdown without any LLM-generated text", async () => {
+    await createSnapshotTool.handler(
+      { topic: "Test Topic", identity_key: "format-check-key" },
+      ctx,
+      shared,
+    );
+    const row = ctx.db
+      .prepare("SELECT * FROM vault WHERE identity_key = ?")
+      .get("format-check-key");
+    expect(row.body).toContain("**Tags:**");
+    expect(row.body).toContain("**ID:**");
+    expect(row.body).not.toContain("Key Decisions");
+    expect(row.body).not.toContain("Active Constraints");
   }, 30000);
 });
 
@@ -251,7 +244,7 @@ describe("create_snapshot handler — noise suppression", () => {
 
   afterAll(() => cleanup());
 
-  it("excludes noise kinds from synthesis entries", async () => {
+  it("excludes noise kinds from gathered entries", async () => {
     const result = await createSnapshotTool.handler(
       { topic: "caching", identity_key: "caching-snapshot" },
       ctx,
@@ -280,34 +273,5 @@ describe("create_snapshot handler — noise suppression", () => {
       )
       .all(briefRow.id);
     expect(supersededRows.length).toBeGreaterThan(0);
-  }, 30000);
-});
-
-describe("create_snapshot handler — LLM error handling", () => {
-  let ctx, cleanup;
-
-  beforeAll(async () => {
-    ({ ctx, cleanup } = await createTestCtx());
-    await captureAndIndex(ctx, {
-      kind: "insight",
-      title: "Some insight",
-      body: "Content for LLM error test",
-      tags: ["test"],
-      source: "test",
-    });
-  }, 60000);
-
-  afterAll(() => cleanup());
-
-  it("returns LLM_ERROR when Anthropic call fails", async () => {
-    mockMessagesCreate.mockRejectedValueOnce(new Error("API key invalid"));
-
-    const result = await createSnapshotTool.handler(
-      { topic: "test error topic" },
-      ctx,
-      shared,
-    );
-
-    isErr(result, "LLM_ERROR");
   }, 30000);
 });

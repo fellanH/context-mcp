@@ -5,14 +5,13 @@ import { normalizeKind } from "../../core/files.js";
 import { ok, err, ensureVaultExists } from "../helpers.js";
 
 const NOISE_KINDS = new Set(["prompt-history", "task-notification"]);
-const SYNTHESIS_MODEL = "claude-haiku-4-5-20251001";
-const MAX_ENTRIES_FOR_SYNTHESIS = 40;
+const MAX_ENTRIES_FOR_GATHER = 40;
 const MAX_BODY_PER_ENTRY = 600;
 
 export const name = "create_snapshot";
 
 export const description =
-  "Pull all relevant vault entries matching a topic, run an LLM synthesis pass to deduplicate and structure them into a context brief, then save and return the brief's ULID. The brief is saved as kind: 'brief' with a deterministic identity_key for retrieval.";
+  "Pull all relevant vault entries matching a topic, deduplicate, and save them as a structured context brief (kind: 'brief'). Entries are formatted as markdown — no external API or LLM call required. The calling agent can synthesize the gathered content directly. Retrieve with: get_context(kind: 'brief', identity_key: '<key>').";
 
 export const inputSchema = {
   topic: z.string().describe("The topic or project name to snapshot"),
@@ -38,62 +37,42 @@ export const inputSchema = {
     ),
 };
 
-function buildSynthesisPrompt(topic, entries) {
-  const entriesBlock = entries
+function formatGatheredEntries(topic, entries) {
+  const header = [
+    `# ${topic} — Context Brief`,
+    "",
+    `*Gathered from ${entries.length} vault ${entries.length === 1 ? "entry" : "entries"}. Synthesize the content below to extract key decisions, patterns, and constraints.*`,
+    "",
+    "---",
+    "",
+  ].join("\n");
+
+  const body = entries
     .map((e, i) => {
       const tags = e.tags ? JSON.parse(e.tags) : [];
       const tagStr = tags.length ? tags.join(", ") : "none";
-      const body = e.body
+      const updated = e.updated_at || e.created_at || "unknown";
+      const bodyText = e.body
         ? e.body.slice(0, MAX_BODY_PER_ENTRY) +
           (e.body.length > MAX_BODY_PER_ENTRY ? "…" : "")
         : "(no body)";
+      const title = e.title || `Entry ${i + 1}`;
       return [
-        `### Entry ${i + 1} [${e.kind}] id: ${e.id}`,
-        `tags: ${tagStr}`,
-        `updated: ${e.updated_at || e.created_at || "unknown"}`,
-        body,
+        `## ${i + 1}. [${e.kind}] ${title}`,
+        "",
+        `**Tags:** ${tagStr}`,
+        `**Updated:** ${updated}`,
+        `**ID:** \`${e.id}\``,
+        "",
+        bodyText,
+        "",
+        "---",
+        "",
       ].join("\n");
     })
-    .join("\n\n");
+    .join("");
 
-  return `You are a knowledge synthesis assistant. Given the following vault entries about "${topic}", produce a structured context brief.
-
-Deduplicate overlapping information, resolve any contradictions (note them in Audit Notes), and organise the content into the sections below. Keep each section concise and actionable. Omit sections that have no relevant content.
-
-Output ONLY the markdown document — no preamble, no explanation.
-
-Required format:
-# ${topic} — Context Brief
-## Status
-(current state of the topic)
-## Key Decisions
-(architectural or strategic decisions made)
-## Patterns & Conventions
-(recurring patterns, coding conventions, standards)
-## Active Constraints
-(known limitations, hard requirements, deadlines)
-## Open Questions
-(unresolved questions or areas needing investigation)
-## Audit Notes
-(contradictions detected, stale entries flagged with their ids)
-
----
-VAULT ENTRIES:
-
-${entriesBlock}`;
-}
-
-async function callLlm(prompt) {
-  const { Anthropic } = await import("@anthropic-ai/sdk");
-  const client = new Anthropic();
-  const message = await client.messages.create({
-    model: SYNTHESIS_MODEL,
-    max_tokens: 2048,
-    messages: [{ role: "user", content: prompt }],
-  });
-  const block = message.content.find((b) => b.type === "text");
-  if (!block) throw new Error("LLM returned no text content");
-  return block.text;
+  return header + body;
 }
 
 function slugifyTopic(topic) {
@@ -122,7 +101,6 @@ export async function handler(
   await ensureIndexed();
 
   const normalizedKinds = kinds?.map(normalizeKind) ?? [];
-  // Expand buckets to bucket: prefixed tags and merge with explicit tags
   const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
   const effectiveTags = [...(tags ?? []), ...bucketTags];
 
@@ -132,7 +110,7 @@ export async function handler(
     for (const kindFilter of normalizedKinds) {
       const rows = await hybridSearch(ctx, topic, {
         kindFilter,
-        limit: Math.ceil(MAX_ENTRIES_FOR_SYNTHESIS / normalizedKinds.length),
+        limit: Math.ceil(MAX_ENTRIES_FOR_GATHER / normalizedKinds.length),
         userIdFilter: userId,
         includeSuperseeded: false,
       });
@@ -146,7 +124,7 @@ export async function handler(
     });
   } else {
     candidates = await hybridSearch(ctx, topic, {
-      limit: MAX_ENTRIES_FOR_SYNTHESIS,
+      limit: MAX_ENTRIES_FOR_GATHER,
       userIdFilter: userId,
       includeSuperseeded: false,
     });
@@ -163,25 +141,16 @@ export async function handler(
     .filter((r) => NOISE_KINDS.has(r.kind))
     .map((r) => r.id);
 
-  const synthesisEntries = candidates.filter((r) => !NOISE_KINDS.has(r.kind));
+  const gatherEntries = candidates.filter((r) => !NOISE_KINDS.has(r.kind));
 
-  if (synthesisEntries.length === 0) {
+  if (gatherEntries.length === 0) {
     return err(
-      `No entries found for topic "${topic}" to synthesize. Try a broader topic or different tags.`,
+      `No entries found for topic "${topic}". Try a broader topic or different tags.`,
       "NO_ENTRIES",
     );
   }
 
-  let briefBody;
-  try {
-    const prompt = buildSynthesisPrompt(topic, synthesisEntries);
-    briefBody = await callLlm(prompt);
-  } catch (e) {
-    return err(
-      `LLM synthesis failed: ${e.message}. Ensure ANTHROPIC_API_KEY is set.`,
-      "LLM_ERROR",
-    );
-  }
+  const briefBody = formatGatheredEntries(topic, gatherEntries);
 
   const effectiveIdentityKey =
     identity_key ?? `snapshot-${slugifyTopic(topic)}`;
@@ -205,9 +174,9 @@ export async function handler(
     userId,
     meta: {
       topic,
-      entry_count: synthesisEntries.length,
+      entry_count: gatherEntries.length,
       noise_superseded: noiseIds.length,
-      synthesized_from: synthesisEntries.map((e) => e.id),
+      synthesized_from: gatherEntries.map((e) => e.id),
     },
   });
 
@@ -215,7 +184,7 @@ export async function handler(
     `✓ Snapshot created → id: ${entry.id}`,
     `  title: ${entry.title}`,
     `  identity_key: ${effectiveIdentityKey}`,
-    `  synthesized from: ${synthesisEntries.length} entries`,
+    `  synthesized from: ${gatherEntries.length} entries`,
     noiseIds.length > 0
       ? `  noise superseded: ${noiseIds.length} entries`
       : null,
