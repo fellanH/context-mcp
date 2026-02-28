@@ -2,6 +2,22 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.17.0] — 2026-02-28
+
+### Added
+
+- Issue #168: Tiered search — event category entries are excluded from default `get_context` queries. Events remain accessible via explicit `include_events: true` parameter or category/tag filter-only queries. Reduces noise in agent RAG results.
+- Issue #147: Hot-reload `config.json` on every tool call without server restart (backported from 2.16.0 implementation to cover edge cases)
+- Issue #146: Growth warning thresholds raised and per-kind breakdown added to `context_status` output
+- `context-vault doctor` now checks for auto-captured feedback entries and embedding model health
+
+### Fixed
+
+- Issue #155: Replace hardcoded absolute hook paths (`node /path/to/session-end.mjs`) with CLI subcommands (`context-vault session-end`, `context-vault post-tool-call`). Hooks now survive `npm update` without path breakage. Stale hooks are migrated automatically on reinstall.
+- Issue #154: `context-vault uninstall` now removes all Claude Code hooks and installed skills before optionally removing data directory
+- Issue #164: `context-vault status` shows a friendly error instead of stack trace when DB parent directory is missing
+- Test assertions updated for `~/.vault` default directory (changed in 2.16.0)
+
 ## [2.16.0] — 2026-02-27
 
 ### Added
