@@ -8,7 +8,6 @@ import * as getContext from "./tools/get-context.js";
 import * as saveContext from "./tools/save-context.js";
 import * as listContext from "./tools/list-context.js";
 import * as deleteContext from "./tools/delete-context.js";
-import * as submitFeedback from "./tools/submit-feedback.js";
 import * as ingestUrl from "./tools/ingest-url.js";
 import * as contextStatus from "./tools/context-status.js";
 import * as clearContext from "./tools/clear-context.js";
@@ -22,7 +21,6 @@ const toolModules = [
   saveContext,
   listContext,
   deleteContext,
-  submitFeedback,
   ingestUrl,
   ingestProject,
   contextStatus,
