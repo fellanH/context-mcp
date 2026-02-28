@@ -311,6 +311,7 @@ ${bold("Commands:")}
   ${cyan("ingest")} <url>               Fetch URL and save as vault entry
   ${cyan("ingest-project")} <path>      Scan project directory and register as project entity
   ${cyan("reindex")}                    Rebuild search index from knowledge files
+  ${cyan("migrate-dirs")} [--dry-run]   Rename plural vault dirs to singular (post-2.18.0)
   ${cyan("prune")}                      Remove expired entries (use --dry-run to preview)
   ${cyan("update")}                     Check for and install updates
   ${cyan("uninstall")}                  Remove MCP configs and optionally data
@@ -1704,6 +1705,80 @@ async function runReindex() {
   console.log(`  ${yellow("~")} ${stats.updated} updated`);
   console.log(`  ${red("-")} ${stats.removed} removed`);
   console.log(`  ${dim("·")} ${stats.unchanged} unchanged`);
+}
+
+async function runMigrateDirs() {
+  const dryRun = flags.has("--dry-run");
+
+  // Vault dir: positional arg (skip --flags), or fall back to configured vault
+  const positional = args.slice(1).find((a) => !a.startsWith("--"));
+  let vaultDir = positional;
+
+  if (!vaultDir) {
+    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const config = resolveConfig();
+    if (!config.vaultDirExists) {
+      console.error(red(`Vault directory not found: ${config.vaultDir}`));
+      console.error("Run " + cyan("context-vault setup") + " to configure.");
+      process.exit(1);
+    }
+    vaultDir = config.vaultDir;
+  }
+
+  if (!existsSync(vaultDir) || !statSync(vaultDir).isDirectory()) {
+    console.error(red(`Error: ${vaultDir} is not a directory`));
+    process.exit(1);
+  }
+
+  const { planMigration, executeMigration } =
+    await import("@context-vault/core/core/migrate-dirs");
+
+  const ops = planMigration(vaultDir);
+
+  if (ops.length === 0) {
+    console.log(green("✓ No plural directories found — vault is up to date."));
+    return;
+  }
+
+  if (dryRun) {
+    console.log(dim("Dry run — no files will be moved.\n"));
+  }
+
+  for (const op of ops) {
+    const fileLabel = `${op.fileCount} ${op.fileCount === 1 ? "file" : "files"}`;
+    const actionLabel = op.action === "rename" ? "RENAME" : "MERGE";
+    const suffix = dryRun ? dim(" [dry-run]") : "";
+    console.log(
+      `  ${cyan(actionLabel)}: ${op.pluralName}/ → ${op.singularName}/ (${fileLabel})${suffix}`,
+    );
+  }
+
+  if (dryRun) {
+    console.log();
+    console.log(
+      dim(
+        `  ${ops.length} ${ops.length === 1 ? "directory" : "directories"} would be renamed/merged.`,
+      ),
+    );
+    console.log(dim("  Remove --dry-run to apply."));
+    return;
+  }
+
+  const { renamed, merged, errors } = executeMigration(ops);
+
+  console.log();
+  if (renamed > 0) console.log(green(`✓ Renamed: ${renamed}`));
+  if (merged > 0) console.log(green(`✓ Merged:  ${merged}`));
+  if (errors.length > 0) {
+    for (const e of errors) console.log(red(`  ✗ ${e}`));
+  }
+
+  if (renamed + merged > 0) {
+    console.log();
+    console.log(
+      dim("Run `context-vault reindex` to rebuild the search index."),
+    );
+  }
 }
 
 async function runPrune() {
@@ -4554,6 +4629,9 @@ async function main() {
       break;
     case "reindex":
       await runReindex();
+      break;
+    case "migrate-dirs":
+      await runMigrateDirs();
       break;
     case "prune":
       await runPrune();

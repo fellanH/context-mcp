@@ -29,6 +29,11 @@ export {
   parseEntryFromMarkdown,
 } from "./core/frontmatter.js";
 export { gatherVaultStatus } from "./core/status.js";
+export {
+  PLURAL_TO_SINGULAR,
+  planMigration,
+  executeMigration,
+} from "./core/migrate-dirs.js";
 
 // Capture layer
 export {
