@@ -154,8 +154,9 @@ export function detectConsolidationHints(entries, db, userId, opts = {}) {
   for (const tag of candidateTags) {
     let vaultCount = 0;
     try {
-      const userClause =
-        userId !== undefined ? " AND user_id = ?" : " AND user_id IS NULL";
+      // When userId is defined (hosted mode), scope to that user.
+      // When userId is undefined (local mode), no user scoping — column may not exist.
+      const userClause = userId !== undefined ? " AND user_id = ?" : "";
       const countParams =
         userId !== undefined ? [`%"${tag}"%`, userId] : [`%"${tag}"%`];
       const countRow = db
@@ -172,8 +173,7 @@ export function detectConsolidationHints(entries, db, userId, opts = {}) {
 
     let lastSnapshotAgeDays = null;
     try {
-      const userClause =
-        userId !== undefined ? " AND user_id = ?" : " AND user_id IS NULL";
+      const userClause = userId !== undefined ? " AND user_id = ?" : "";
       const params =
         userId !== undefined ? [`%"${tag}"%`, userId] : [`%"${tag}"%`];
       const recentBrief = db
@@ -417,11 +417,16 @@ export async function handler(
   if (identity_key) {
     if (!kindFilter)
       return err("identity_key requires kind to be specified", "INVALID_INPUT");
-    const match = ctx.stmts.getByIdentityKey.get(
-      kindFilter,
-      identity_key,
-      userId !== undefined ? userId : null,
-    );
+    // Local mode: getByIdentityKey takes 2 params (no user_id).
+    // Hosted mode: 3 params — (kind, identity_key, userId).
+    const match =
+      ctx.stmts._mode === "local"
+        ? ctx.stmts.getByIdentityKey.get(kindFilter, identity_key)
+        : ctx.stmts.getByIdentityKey.get(
+            kindFilter,
+            identity_key,
+            userId !== undefined ? userId : null,
+          );
     if (match) {
       const entryTags = match.tags ? JSON.parse(match.tags) : [];
       const tagStr = entryTags.length ? entryTags.join(", ") : "none";

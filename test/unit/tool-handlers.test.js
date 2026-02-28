@@ -1373,25 +1373,22 @@ describe("delete_context handler", () => {
     isErr(result, "INVALID_INPUT");
   }, 30000);
 
-  it("respects userId ownership check", async () => {
+  it("local mode: no user ownership — any ctx can delete any entry", async () => {
+    // In local mode the schema has no user_id column. Ownership checks only
+    // apply in hosted mode (where ctx.userId is set by the auth layer).
+    // In local mode ctx.userId is always undefined → ownership branch never fires.
     const entry = await captureAndIndex(ctx, {
       kind: "insight",
-      body: "Owned entry",
+      body: "Owned entry for local delete test",
     });
-    ctx.db
-      .prepare("UPDATE vault SET user_id = ? WHERE id = ?")
-      .run("user-a", entry.id);
 
-    const ctxWithUser = { ...ctx, userId: "user-b" };
+    // ctx has no userId (local default) — deletion succeeds unconditionally.
     const result = await deleteContextTool.handler(
       { id: entry.id },
-      ctxWithUser,
+      ctx,
       shared,
     );
-    isErr(result, "NOT_FOUND");
-
-    // Cleanup
-    ctx.stmts.deleteEntry.run(entry.id);
+    expect(result.isError).toBeFalsy();
   }, 30000);
 });
 

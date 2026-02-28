@@ -251,7 +251,7 @@ describe("reindex", () => {
   it("removes entries for kinds whose directories no longer exist on disk", async () => {
     ctx.db
       .prepare(
-        "INSERT INTO vault (id, user_id, kind, category, title, body, tags, source, file_path, created_at) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO vault (id, kind, category, title, body, tags, source, file_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         "REINDEX_GHOST_KIND_01",

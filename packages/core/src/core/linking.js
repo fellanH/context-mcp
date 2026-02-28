@@ -36,10 +36,10 @@ export function resolveLinks(db, ids, userId) {
   if (!ids.length) return [];
   const unique = [...new Set(ids)];
   const placeholders = unique.map(() => "?").join(",");
+  // When userId is defined (hosted mode), scope to that user.
+  // When userId is undefined (local mode), no user scoping — all entries accessible.
   const userClause =
-    userId !== undefined && userId !== null
-      ? "AND user_id = ?"
-      : "AND user_id IS NULL";
+    userId !== undefined && userId !== null ? "AND user_id = ?" : "";
   const params =
     userId !== undefined && userId !== null ? [...unique, userId] : unique;
   try {
@@ -69,10 +69,10 @@ export function resolveLinks(db, ids, userId) {
  */
 export function resolveBacklinks(db, entryId, userId) {
   if (!entryId) return [];
+  // When userId is defined (hosted mode), scope to that user.
+  // When userId is undefined (local mode), no user scoping — all entries accessible.
   const userClause =
-    userId !== undefined && userId !== null
-      ? "AND user_id = ?"
-      : "AND user_id IS NULL";
+    userId !== undefined && userId !== null ? "AND user_id = ?" : "";
   const likePattern = `%"${entryId}"%`;
   const params =
     userId !== undefined && userId !== null

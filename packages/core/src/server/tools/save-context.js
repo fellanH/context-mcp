@@ -44,9 +44,15 @@ async function findSimilar(
 
     const rowids = vecRows.map((vr) => vr.rowid);
     const placeholders = rowids.map(() => "?").join(",");
-    const columns = hydrate
-      ? "rowid, id, title, body, kind, tags, category, user_id, updated_at"
-      : "rowid, id, title, category, user_id";
+    // Local mode has no user_id column — omit it from the SELECT list.
+    const isLocal = ctx.stmts._mode === "local";
+    const columns = isLocal
+      ? hydrate
+        ? "rowid, id, title, body, kind, tags, category, updated_at"
+        : "rowid, id, title, category"
+      : hydrate
+        ? "rowid, id, title, body, kind, tags, category, user_id, updated_at"
+        : "rowid, id, title, category, user_id";
     const hydratedRows = ctx.db
       .prepare(`SELECT ${columns} FROM vault WHERE rowid IN (${placeholders})`)
       .all(...rowids);
@@ -60,7 +66,7 @@ async function findSimilar(
       if (similarity < threshold) continue;
       const row = byRowid.get(vr.rowid);
       if (!row) continue;
-      if (userId !== undefined && row.user_id !== userId) continue;
+      if (!isLocal && userId !== undefined && row.user_id !== userId) continue;
       if (row.category === "entity") continue;
       const entry = { id: row.id, title: row.title, score: similarity };
       if (hydrate) {

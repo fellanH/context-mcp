@@ -66,37 +66,53 @@ export async function indexEntry(
   const cat = category || categoryFor(kind);
   const effectiveTier = tier || defaultTierFor(kind);
   const userIdVal = userId || null;
+  const isLocal = ctx.stmts._mode === "local";
 
   let wasUpdate = false;
 
-  // Entity upsert: check by (kind, identity_key, user_id) first
+  // Entity upsert: check by (kind, identity_key[, user_id]) first.
+  // Local mode omits user_id — all entries are user-agnostic.
   if (cat === "entity" && identity_key) {
-    const existing = ctx.stmts.getByIdentityKey.get(
-      kind,
-      identity_key,
-      userIdVal,
-    );
+    const existing = isLocal
+      ? ctx.stmts.getByIdentityKey.get(kind, identity_key)
+      : ctx.stmts.getByIdentityKey.get(kind, identity_key, userIdVal);
     if (existing) {
-      ctx.stmts.upsertByIdentityKey.run(
-        title || null,
-        body,
-        metaJson,
-        tagsJson,
-        source || "claude-code",
-        cat,
-        filePath,
-        expires_at || null,
-        sourceFilesJson,
-        kind,
-        identity_key,
-        userIdVal,
-      );
+      if (isLocal) {
+        ctx.stmts.upsertByIdentityKey.run(
+          title || null,
+          body,
+          metaJson,
+          tagsJson,
+          source || "claude-code",
+          cat,
+          filePath,
+          expires_at || null,
+          sourceFilesJson,
+          kind,
+          identity_key,
+        );
+      } else {
+        ctx.stmts.upsertByIdentityKey.run(
+          title || null,
+          body,
+          metaJson,
+          tagsJson,
+          source || "claude-code",
+          cat,
+          filePath,
+          expires_at || null,
+          sourceFilesJson,
+          kind,
+          identity_key,
+          userIdVal,
+        );
+      }
       wasUpdate = true;
     }
   }
 
   if (!wasUpdate) {
-    // Prepare encryption if ctx.encrypt is available
+    // Prepare encryption if ctx.encrypt is available (hosted mode only)
     let encrypted = null;
     if (ctx.encrypt) {
       encrypted = await ctx.encrypt({ title, body, meta });
@@ -104,7 +120,8 @@ export async function indexEntry(
 
     try {
       if (encrypted) {
-        // Encrypted insert: store preview in body column for FTS, full content in encrypted columns
+        // Hosted-mode encrypted insert: store preview in body for FTS,
+        // full content in encrypted columns.
         const bodyPreview = body.slice(0, 200);
         ctx.stmts.insertEntryEncrypted.run(
           id,
@@ -128,7 +145,27 @@ export async function indexEntry(
           sourceFilesJson,
           effectiveTier,
         );
+      } else if (isLocal) {
+        // Local mode: no user_id column — 15 params.
+        ctx.stmts.insertEntry.run(
+          id,
+          kind,
+          cat,
+          title || null,
+          body,
+          metaJson,
+          tagsJson,
+          source || "claude-code",
+          filePath,
+          identity_key || null,
+          expires_at || null,
+          createdAt,
+          createdAt,
+          sourceFilesJson,
+          effectiveTier,
+        );
       } else {
+        // Hosted mode without encryption: 16 params (includes user_id).
         ctx.stmts.insertEntry.run(
           id,
           userIdVal,
@@ -262,10 +299,14 @@ export async function reindex(ctx, opts = {}) {
 
   if (!existsSync(ctx.config.vaultDir)) return stats;
 
-  // Use INSERT OR IGNORE for reindex — handles files with duplicate frontmatter IDs
-  // user_id is NULL for reindex (always local mode)
+  // Use INSERT OR IGNORE for reindex — handles files with duplicate frontmatter IDs.
+  // Local mode: no user_id column (15 params).
+  // Hosted mode: user_id is NULL for file-sourced entries (14 params, NULL literal).
+  const isLocalReindex = ctx.stmts._mode === "local";
   const upsertEntry = ctx.db.prepare(
-    `INSERT OR IGNORE INTO vault (id, user_id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    isLocalReindex
+      ? `INSERT OR IGNORE INTO vault (id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      : `INSERT OR IGNORE INTO vault (id, user_id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
   // Auto-discover kind directories, supporting both:

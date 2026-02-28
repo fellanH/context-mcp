@@ -103,8 +103,9 @@ async function main() {
 
     // ── Phase: DB ────────────────────────────────────────────────────────────
     phase = "DB";
-    db = await initDatabase(config.dbPath);
-    const stmts = prepareStatements(db);
+    const mode = config.hostedUrl ? "hosted" : "local";
+    db = await initDatabase(config.dbPath, { mode });
+    const stmts = prepareStatements(db, mode);
 
     const ctx = {
       db,

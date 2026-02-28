@@ -42,7 +42,69 @@ function runTransaction(db, fn) {
   }
 }
 
-export const SCHEMA_DDL = `
+// Local-mode schema: no multi-tenancy or encryption columns.
+// Identity uniqueness is scoped to (kind, identity_key) — no user_id.
+export const LOCAL_SCHEMA_DDL = `
+  CREATE TABLE IF NOT EXISTS vault (
+    id              TEXT PRIMARY KEY,
+    kind            TEXT NOT NULL,
+    category        TEXT NOT NULL DEFAULT 'knowledge',
+    title           TEXT,
+    body            TEXT NOT NULL,
+    meta            TEXT,
+    tags            TEXT,
+    source          TEXT,
+    file_path       TEXT UNIQUE,
+    identity_key    TEXT,
+    expires_at      TEXT,
+    superseded_by   TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    updated_at      TEXT,
+    hit_count       INTEGER DEFAULT 0,
+    last_accessed_at TEXT,
+    source_files    TEXT,
+    tier            TEXT DEFAULT 'working' CHECK(tier IN ('ephemeral', 'working', 'durable')),
+    related_to      TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_vault_kind ON vault(kind);
+  CREATE INDEX IF NOT EXISTS idx_vault_category ON vault(category);
+  CREATE INDEX IF NOT EXISTS idx_vault_category_created ON vault(category, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_vault_updated ON vault(updated_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_identity ON vault(kind, identity_key) WHERE identity_key IS NOT NULL AND category = 'entity';
+  CREATE INDEX IF NOT EXISTS idx_vault_superseded ON vault(superseded_by) WHERE superseded_by IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_vault_tier ON vault(tier);
+
+  -- Single FTS5 table
+  CREATE VIRTUAL TABLE IF NOT EXISTS vault_fts USING fts5(
+    title, body, tags, kind,
+    content='vault', content_rowid='rowid'
+  );
+
+  -- FTS sync triggers
+  CREATE TRIGGER IF NOT EXISTS vault_ai AFTER INSERT ON vault BEGIN
+    INSERT INTO vault_fts(rowid, title, body, tags, kind)
+      VALUES (new.rowid, new.title, new.body, new.tags, new.kind);
+  END;
+  CREATE TRIGGER IF NOT EXISTS vault_ad AFTER DELETE ON vault BEGIN
+    INSERT INTO vault_fts(vault_fts, rowid, title, body, tags, kind)
+      VALUES ('delete', old.rowid, old.title, old.body, old.tags, old.kind);
+  END;
+  CREATE TRIGGER IF NOT EXISTS vault_au AFTER UPDATE ON vault BEGIN
+    INSERT INTO vault_fts(vault_fts, rowid, title, body, tags, kind)
+      VALUES ('delete', old.rowid, old.title, old.body, old.tags, old.kind);
+    INSERT INTO vault_fts(rowid, title, body, tags, kind)
+      VALUES (new.rowid, new.title, new.body, new.tags, new.kind);
+  END;
+
+  -- Single vec table (384-dim float32 for all-MiniLM-L6-v2)
+  CREATE VIRTUAL TABLE IF NOT EXISTS vault_vec USING vec0(embedding float[384]);
+`;
+
+// Hosted-mode schema: adds multi-tenancy (user_id, team_id) and at-rest
+// encryption columns (body_encrypted, title_encrypted, meta_encrypted, iv).
+// Identity uniqueness is scoped to (user_id, kind, identity_key).
+export const HOSTED_SCHEMA_DDL = `
   CREATE TABLE IF NOT EXISTS vault (
     id              TEXT PRIMARY KEY,
     kind            TEXT NOT NULL,
@@ -107,7 +169,13 @@ export const SCHEMA_DDL = `
   CREATE VIRTUAL TABLE IF NOT EXISTS vault_vec USING vec0(embedding float[384]);
 `;
 
-export async function initDatabase(dbPath) {
+// Backward-compatible alias — kept for external consumers that reference SCHEMA_DDL.
+export const SCHEMA_DDL = HOSTED_SCHEMA_DDL;
+
+// Current target schema version. Bump this on every migration.
+const CURRENT_VERSION = 14;
+
+export async function initDatabase(dbPath, { mode = "local" } = {}) {
   const sqliteVec = await loadSqliteVec();
 
   function createDb(path) {
@@ -121,6 +189,8 @@ export async function initDatabase(dbPath) {
     }
     return db;
   }
+
+  const schemaDdl = mode === "hosted" ? HOSTED_SCHEMA_DDL : LOCAL_SCHEMA_DDL;
 
   const db = createDb(dbPath);
   const version = db.prepare("PRAGMA user_version").get().user_version;
@@ -156,14 +226,14 @@ export async function initDatabase(dbPath) {
     } catch {}
 
     const freshDb = createDb(dbPath);
-    freshDb.exec(SCHEMA_DDL);
-    freshDb.exec("PRAGMA user_version = 13");
+    freshDb.exec(schemaDdl);
+    freshDb.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
     return freshDb;
   }
 
   if (version < 5) {
-    db.exec(SCHEMA_DDL);
-    db.exec("PRAGMA user_version = 13");
+    db.exec(schemaDdl);
+    db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
   } else if (version === 5) {
     // v5 -> v6 migration: add multi-tenancy + encryption columns
     // Wrapped in transaction with duplicate-column guards for idempotent retry
@@ -357,12 +427,96 @@ export async function initDatabase(dbPath) {
     });
   }
 
+  if (version >= 5 && version <= 13) {
+    // v13 -> v14 migration: separate local and hosted schemas.
+    // Local mode: drop the 6 hosted-only columns (user_id, team_id,
+    // body_encrypted, title_encrypted, meta_encrypted, iv) and rebuild
+    // the identity index without user_id.
+    // Hosted mode: no structural change — just bump version.
+    runTransaction(db, () => {
+      if (mode === "local") {
+        // Must drop indexes that reference the columns before dropping columns.
+        db.exec(`DROP INDEX IF EXISTS idx_vault_user`);
+        db.exec(`DROP INDEX IF EXISTS idx_vault_team`);
+        db.exec(`DROP INDEX IF EXISTS idx_vault_identity`);
+        const dropColumnSafe = (col) => {
+          try {
+            db.exec(`ALTER TABLE vault DROP COLUMN ${col}`);
+          } catch (e) {
+            // Column may not exist on older schemas that never had it added.
+            if (!e.message.includes("no such column")) throw e;
+          }
+        };
+        dropColumnSafe("user_id");
+        dropColumnSafe("team_id");
+        dropColumnSafe("body_encrypted");
+        dropColumnSafe("title_encrypted");
+        dropColumnSafe("meta_encrypted");
+        dropColumnSafe("iv");
+        // Recreate identity uniqueness index scoped to (kind, identity_key),
+        // restricted to entity-category entries only (knowledge/event entries
+        // with identity_key are informational and may duplicate).
+        db.exec(
+          `CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_identity ON vault(kind, identity_key) WHERE identity_key IS NOT NULL AND category = 'entity'`,
+        );
+      }
+      db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+    });
+  }
+
   return db;
 }
 
-export function prepareStatements(db) {
+export function prepareStatements(db, mode = "local") {
   try {
+    if (mode === "local") {
+      // Local mode: no user_id, team_id, or encryption columns.
+      // insertEntry has 15 params (no user_id).
+      // getByIdentityKey and upsertByIdentityKey have no user_id WHERE clause.
+      return {
+        _mode: "local",
+        insertEntry: db.prepare(
+          `INSERT INTO vault (id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, source_files, tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ),
+        updateEntry: db.prepare(
+          `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, identity_key = ?, expires_at = ?, updated_at = datetime('now') WHERE file_path = ?`,
+        ),
+        deleteEntry: db.prepare(`DELETE FROM vault WHERE id = ?`),
+        getRowid: db.prepare(`SELECT rowid FROM vault WHERE id = ?`),
+        getRowidByPath: db.prepare(
+          `SELECT rowid FROM vault WHERE file_path = ?`,
+        ),
+        getEntryById: db.prepare(`SELECT * FROM vault WHERE id = ?`),
+        getByIdentityKey: db.prepare(
+          `SELECT * FROM vault WHERE kind = ? AND identity_key = ?`,
+        ),
+        upsertByIdentityKey: db.prepare(
+          `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, file_path = ?, expires_at = ?, source_files = ?, updated_at = datetime('now') WHERE kind = ? AND identity_key = ?`,
+        ),
+        updateSourceFiles: db.prepare(
+          `UPDATE vault SET source_files = ? WHERE id = ?`,
+        ),
+        updateRelatedTo: db.prepare(
+          `UPDATE vault SET related_to = ? WHERE id = ?`,
+        ),
+        insertVecStmt: db.prepare(
+          `INSERT INTO vault_vec (rowid, embedding) VALUES (?, ?)`,
+        ),
+        deleteVecStmt: db.prepare(`DELETE FROM vault_vec WHERE rowid = ?`),
+        updateSupersededBy: db.prepare(
+          `UPDATE vault SET superseded_by = ? WHERE id = ?`,
+        ),
+        clearSupersededByRef: db.prepare(
+          `UPDATE vault SET superseded_by = NULL WHERE superseded_by = ?`,
+        ),
+      };
+    }
+
+    // Hosted mode: full schema with user_id scoping and encryption support.
+    // insertEntry has 16 params (includes user_id).
+    // getByIdentityKey and upsertByIdentityKey scope by user_id IS ?.
     return {
+      _mode: "hosted",
       insertEntry: db.prepare(
         `INSERT INTO vault (id, user_id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, source_files, tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ),
