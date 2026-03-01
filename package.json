@@ -1,13 +1,14 @@
 {
   "name": "context-vault-monorepo",
   "private": true,
-  "version": "2.17.1",
+  "version": "3.0.0",
   "type": "module",
   "workspaces": [
     "packages/core",
     "packages/local"
   ],
   "scripts": {
+    "build": "cd packages/core && npx tsc",
     "cli": "node packages/local/bin/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -15,6 +16,9 @@
     "release": "node scripts/release.mjs"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
     "vitest": "^4.0.0"
   }
 }

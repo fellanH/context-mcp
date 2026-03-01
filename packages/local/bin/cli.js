@@ -34,7 +34,7 @@ const HOME = homedir();
 
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf-8"));
 const VERSION = pkg.version;
-const SERVER_PATH = resolve(ROOT, "src", "server", "index.js");
+const SERVER_PATH = resolve(ROOT, "src", "server.js");
 
 /** Detect if running as an npm-installed package (global or local) vs local dev clone */
 function isInstalledPackage() {
@@ -374,6 +374,26 @@ async function runSetup() {
     } catch {}
 
     if (latestVersion === VERSION) {
+      // Even when "up to date", ensure the launcher points to a valid server
+      const dataDir = join(HOME, ".context-mcp");
+      const launcherPath = join(dataDir, "server.mjs");
+      let launcherOk = false;
+      if (existsSync(launcherPath)) {
+        const content = readFileSync(launcherPath, "utf-8");
+        const m = content.match(/import "(.+?)"/);
+        if (m && existsSync(m[1])) launcherOk = true;
+      }
+      if (!launcherOk && !isNpx()) {
+        mkdirSync(dataDir, { recursive: true });
+        writeFileSync(launcherPath, `import "${SERVER_PATH}";\n`);
+        console.log(
+          green(`  ✓ context-vault v${VERSION} is up to date`) +
+            dim(`  (vault: ${existingVault})`),
+        );
+        console.log(dim(`  ↳ Repaired server launcher → ${SERVER_PATH}`));
+        console.log();
+        return;
+      }
       console.log(
         green(`  ✓ context-vault v${VERSION} is up to date`) +
           dim(`  (vault: ${existingVault})`),
@@ -801,7 +821,7 @@ async function runSetup() {
       }, 100);
 
       try {
-        const { embed } = await import("@context-vault/core/index/embed");
+        const { embed } = await import("@context-vault/core/embed");
         let timeoutHandle;
         const timeout = new Promise((_, reject) => {
           timeoutHandle = setTimeout(
@@ -1036,7 +1056,7 @@ async function runSetup() {
   // Verify DB is accessible
   let dbAccessible = false;
   try {
-    const { initDatabase } = await import("@context-vault/core/index/db");
+    const { initDatabase } = await import("@context-vault/core/db");
     const db = await initDatabase(vaultConfig.dbPath);
     db.prepare("SELECT 1").get();
     db.close();
@@ -1579,7 +1599,7 @@ async function runSwitch() {
   if (target === "local") {
     const launcherPath = join(dataDir, "server.mjs");
     if (!existsSync(launcherPath)) {
-      const serverAbs = resolve(ROOT, "src", "server", "index.js");
+      const serverAbs = resolve(ROOT, "src", "server.js");
       mkdirSync(dataDir, { recursive: true });
       writeFileSync(launcherPath, `import "${serverAbs}";\n`);
     }
@@ -1675,10 +1695,10 @@ async function runSwitch() {
 async function runReindex() {
   console.log(dim("Loading vault..."));
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
-    await import("@context-vault/core/index/db");
-  const { embed } = await import("@context-vault/core/index/embed");
+    await import("@context-vault/core/db");
+  const { embed } = await import("@context-vault/core/embed");
   const { reindex } = await import("@context-vault/core/index");
 
   const config = resolveConfig();
@@ -1717,7 +1737,7 @@ async function runMigrateDirs() {
   let vaultDir = positional;
 
   if (!vaultDir) {
-    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const { resolveConfig } = await import("@context-vault/core/config");
     const config = resolveConfig();
     if (!config.vaultDirExists) {
       console.error(red(`Vault directory not found: ${config.vaultDir}`));
@@ -1733,7 +1753,7 @@ async function runMigrateDirs() {
   }
 
   const { planMigration, executeMigration } =
-    await import("@context-vault/core/core/migrate-dirs");
+    await import("@context-vault/core/migrate-dirs");
 
   const ops = planMigration(vaultDir);
 
@@ -1786,9 +1806,9 @@ async function runMigrateDirs() {
 async function runPrune() {
   const dryRun = flags.has("--dry-run");
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
-    await import("@context-vault/core/index/db");
+    await import("@context-vault/core/db");
   const { pruneExpired } = await import("@context-vault/core/index");
 
   const config = resolveConfig();
@@ -1849,11 +1869,11 @@ async function runPrune() {
 async function runArchive() {
   const dryRun = flags.has("--dry-run");
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
-    await import("@context-vault/core/index/db");
+    await import("@context-vault/core/db");
   const { findArchiveCandidates, archiveEntries } =
-    await import("@context-vault/core/core/archive");
+    await import("@context-vault/core/archive");
 
   const config = resolveConfig();
   if (!config.vaultDirExists) {
@@ -1937,9 +1957,9 @@ async function runRestore() {
   const entryId = args[1];
 
   if (!entryId || entryId.startsWith("--")) {
-    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const { resolveConfig } = await import("@context-vault/core/config");
     const { listArchivedEntries } =
-      await import("@context-vault/core/core/archive");
+      await import("@context-vault/core/archive");
 
     const config = resolveConfig();
 
@@ -1967,11 +1987,11 @@ async function runRestore() {
     return;
   }
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
-    await import("@context-vault/core/index/db");
-  const { embed } = await import("@context-vault/core/index/embed");
-  const { restoreEntry } = await import("@context-vault/core/core/archive");
+    await import("@context-vault/core/db");
+  const { embed } = await import("@context-vault/core/embed");
+  const { restoreEntry } = await import("@context-vault/core/archive");
 
   const config = resolveConfig();
   if (!config.vaultDirExists) {
@@ -2004,11 +2024,11 @@ async function runRestore() {
 }
 
 async function runStatus() {
-  const { resolveConfig } = await import("@context-vault/core/core/config");
-  const { initDatabase } = await import("@context-vault/core/index/db");
-  const { gatherVaultStatus } = await import("@context-vault/core/core/status");
+  const { resolveConfig } = await import("@context-vault/core/config");
+  const { initDatabase } = await import("@context-vault/core/db");
+  const { gatherVaultStatus } = await import("../src/status.js");
   const { errorLogPath, errorLogCount } =
-    await import("@context-vault/core/core/error-log");
+    await import("../src/error-log.js");
 
   const config = resolveConfig();
 
@@ -2297,7 +2317,7 @@ async function runMigrate() {
     return;
   }
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const config = resolveConfig();
 
   if (direction === "to-hosted") {
@@ -2374,10 +2394,10 @@ async function runImport() {
     return runImportZip(targetPath, dryRun);
   }
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
-    await import("@context-vault/core/index/db");
-  const { embed } = await import("@context-vault/core/index/embed");
+    await import("@context-vault/core/db");
+  const { embed } = await import("@context-vault/core/embed");
   const { parseFile, parseDirectory } =
     await import("@context-vault/core/capture/importers");
   const { importEntries } =
@@ -2458,13 +2478,13 @@ async function runImport() {
 
 async function runImportZip(zipPath, dryRun) {
   const AdmZip = (await import("adm-zip")).default;
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
-    await import("@context-vault/core/index/db");
-  const { embed } = await import("@context-vault/core/index/embed");
-  const { indexEntry } = await import("@context-vault/core/index/index");
-  const { parseFrontmatter } = await import("@context-vault/core/core/frontmatter");
-  const { categoryDirFor } = await import("@context-vault/core/core/categories");
+    await import("@context-vault/core/db");
+  const { embed } = await import("@context-vault/core/embed");
+  const { indexEntry } = await import("@context-vault/core/index");
+  const { parseFrontmatter } = await import("@context-vault/core/frontmatter");
+  const { categoryDirFor } = await import("@context-vault/core/categories");
   const { mkdirSync, writeFileSync, existsSync: existsFn } = await import("node:fs");
   const { join: joinPath, basename: baseName } = await import("node:path");
 
@@ -2523,7 +2543,7 @@ async function runImportZip(zipPath, dryRun) {
   }
 
   const vaultDirOverride = getFlag("--vault");
-  const config = (await import("@context-vault/core/core/config")).resolveConfig();
+  const config = (await import("@context-vault/core/config")).resolveConfig();
   const targetVaultDir = vaultDirOverride ? resolve(vaultDirOverride) : config.vaultDir;
 
   if (!existsFn(targetVaultDir)) {
@@ -2662,9 +2682,9 @@ async function runExport() {
     return runExportZip();
   }
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, prepareStatements } =
-    await import("@context-vault/core/index/db");
+    await import("@context-vault/core/db");
   const { writeFileSync } = await import("node:fs");
 
   const config = resolveConfig();
@@ -2785,8 +2805,8 @@ async function runExportZip() {
     return;
   }
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
-  const { initDatabase } = await import("@context-vault/core/index/db");
+  const { resolveConfig } = await import("@context-vault/core/config");
+  const { initDatabase } = await import("@context-vault/core/db");
   const { readFileSync: readFs, existsSync: existsFn } = await import("node:fs");
   const { basename } = await import("node:path");
 
@@ -2999,10 +3019,10 @@ async function runIngest() {
     return;
   }
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
-    await import("@context-vault/core/index/db");
-  const { embed } = await import("@context-vault/core/index/embed");
+    await import("@context-vault/core/db");
+  const { embed } = await import("@context-vault/core/embed");
   const { captureAndIndex } = await import("@context-vault/core/capture");
 
   const config = resolveConfig();
@@ -3066,10 +3086,10 @@ async function runIngestProject() {
 
   console.log(dim(`  Scanning ${projectPath}...`));
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
-    await import("@context-vault/core/index/db");
-  const { embed } = await import("@context-vault/core/index/embed");
+    await import("@context-vault/core/db");
+  const { embed } = await import("@context-vault/core/embed");
   const { captureAndIndex } = await import("@context-vault/core/capture");
   const { existsSync: fsExists, readFileSync: fsRead } =
     await import("node:fs");
@@ -3280,21 +3300,21 @@ async function runRecall() {
 
   let db;
   try {
-    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const { resolveConfig } = await import("@context-vault/core/config");
     const config = resolveConfig();
 
     if (!config.vaultDirExists) return;
 
     const { initDatabase, prepareStatements } =
-      await import("@context-vault/core/index/db");
-    const { embed } = await import("@context-vault/core/index/embed");
+      await import("@context-vault/core/db");
+    const { embed } = await import("@context-vault/core/embed");
     const { hybridSearch } = await import("@context-vault/core/retrieve/index");
 
     db = await initDatabase(config.dbPath);
     const stmts = prepareStatements(db);
     const ctx = { db, config, stmts, embed };
 
-    const { categoryFor } = await import("@context-vault/core/core/categories");
+    const { categoryFor } = await import("@context-vault/core/categories");
     const recall = config.recall;
 
     const results = await hybridSearch(ctx, query, {
@@ -3334,8 +3354,8 @@ async function runRecall() {
 }
 
 async function runFlush() {
-  const { resolveConfig } = await import("@context-vault/core/core/config");
-  const { initDatabase } = await import("@context-vault/core/index/db");
+  const { resolveConfig } = await import("@context-vault/core/config");
+  const { initDatabase } = await import("@context-vault/core/db");
 
   let db;
   try {
@@ -3381,12 +3401,12 @@ async function runSessionCapture() {
     }
     const { kind, title, body, tags, source } = payload;
     if (!kind || !body) return;
-    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const { resolveConfig } = await import("@context-vault/core/config");
     const config = resolveConfig();
     if (!config.vaultDirExists) return;
     const { initDatabase, prepareStatements, insertVec, deleteVec } =
-      await import("@context-vault/core/index/db");
-    const { embed } = await import("@context-vault/core/index/embed");
+      await import("@context-vault/core/db");
+    const { embed } = await import("@context-vault/core/embed");
     const { captureAndIndex } = await import("@context-vault/core/capture");
     db = await initDatabase(config.dbPath);
     const stmts = prepareStatements(db);
@@ -3465,7 +3485,7 @@ async function runSave() {
 
   let db;
   try {
-    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const { resolveConfig } = await import("@context-vault/core/config");
     const config = resolveConfig();
     if (!config.vaultDirExists) {
       console.error(
@@ -3474,8 +3494,8 @@ async function runSave() {
       process.exit(1);
     }
     const { initDatabase, prepareStatements, insertVec, deleteVec } =
-      await import("@context-vault/core/index/db");
-    const { embed } = await import("@context-vault/core/index/embed");
+      await import("@context-vault/core/db");
+    const { embed } = await import("@context-vault/core/embed");
     const { captureAndIndex } = await import("@context-vault/core/capture");
     db = await initDatabase(config.dbPath);
     const stmts = prepareStatements(db);
@@ -3549,7 +3569,7 @@ async function runSearch() {
 
   let db;
   try {
-    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const { resolveConfig } = await import("@context-vault/core/config");
     const config = resolveConfig();
     if (!config.vaultDirExists) {
       console.error(red("No vault found. Run: context-vault setup"));
@@ -3557,8 +3577,8 @@ async function runSearch() {
     }
 
     const { initDatabase, prepareStatements } =
-      await import("@context-vault/core/index/db");
-    const { embed } = await import("@context-vault/core/index/embed");
+      await import("@context-vault/core/db");
+    const { embed } = await import("@context-vault/core/embed");
     const { hybridSearch } = await import("@context-vault/core/retrieve/index");
 
     db = await initDatabase(config.dbPath);
@@ -4316,9 +4336,9 @@ ${bold("Commands:")}
 }
 
 async function runDoctor() {
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { errorLogPath, errorLogCount } =
-    await import("@context-vault/core/core/error-log");
+    await import("../src/error-log.js");
 
   console.log();
   console.log(`  ${bold("◇ context-vault doctor")} ${dim(`v${VERSION}`)}`);
@@ -4392,7 +4412,7 @@ async function runDoctor() {
     let db;
     if (existsSync(config.dbPath)) {
       try {
-        const { initDatabase } = await import("@context-vault/core/index/db");
+        const { initDatabase } = await import("@context-vault/core/db");
         db = await initDatabase(config.dbPath);
         const schemaRow = db.prepare("PRAGMA user_version").get();
         const schemaVersion = schemaRow?.user_version ?? "unknown";
@@ -4414,7 +4434,7 @@ async function runDoctor() {
 
     // ── Embedding model ──────────────────────────────────────────────────
     try {
-      const { embed } = await import("@context-vault/core/index/embed");
+      const { embed } = await import("@context-vault/core/embed");
       const vec = await embed("doctor check");
       if (vec && vec.length > 0) {
         console.log(
@@ -4780,9 +4800,9 @@ async function runDoctor() {
 }
 
 async function runHealth() {
-  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase, testConnection } =
-    await import("@context-vault/core/index/db");
+    await import("@context-vault/core/db");
 
   let config;
   let healthy = true;
@@ -4971,8 +4991,8 @@ async function runConsolidate() {
   const dryRun = flags.has("--dry-run");
   const tagArg = getFlag("--tag");
 
-  const { resolveConfig } = await import("@context-vault/core/core/config");
-  const { initDatabase } = await import("@context-vault/core/index/db");
+  const { resolveConfig } = await import("@context-vault/core/config");
+  const { initDatabase } = await import("@context-vault/core/db");
   const { findHotTags, findColdEntries } =
     await import("@context-vault/core/consolidation/index");
 
@@ -5101,7 +5121,7 @@ async function runConsolidate() {
 }
 
 async function runServe() {
-  await import("../src/server/index.js");
+  await import("../src/server.js");
 }
 
 async function main() {

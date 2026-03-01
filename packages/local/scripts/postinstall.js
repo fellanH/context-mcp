@@ -56,7 +56,7 @@ async function main() {
   // `npx context-vault serve` instead, so skip writing the launcher.
   const isNpx = PKG_ROOT.includes("/_npx/") || PKG_ROOT.includes("\\_npx\\");
   if (!isNpx) {
-    const SERVER_ABS = join(PKG_ROOT, "src", "server", "index.js");
+    const SERVER_ABS = join(PKG_ROOT, "src", "server.js");
     const DATA_DIR = join(homedir(), ".context-mcp");
     const LAUNCHER = join(DATA_DIR, "server.mjs");
     mkdirSync(DATA_DIR, { recursive: true });

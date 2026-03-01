@@ -1,15 +1,16 @@
 {
   "name": "context-vault",
-  "version": "2.17.1",
+  "version": "3.0.1",
   "type": "module",
   "description": "Persistent memory for AI agents — saves and searches knowledge across sessions",
   "bin": {
     "context-vault": "bin/cli.js",
-    "context-mcp": "bin/cli.js"
+    "context-mcp": "bin/cli.js",
+    "memory": "bin/cli.js"
   },
-  "main": "src/server/index.js",
+  "main": "src/server.js",
   "exports": {
-    ".": "./src/server/index.js",
+    ".": "./src/server.js",
     "./cli": "./bin/cli.js"
   },
   "scripts": {
@@ -26,7 +27,7 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "author": "Felix Hellstrom",
   "repository": {
@@ -56,7 +57,7 @@
     "@context-vault/core"
   ],
   "dependencies": {
-    "@context-vault/core": "^2.17.1",
+    "@context-vault/core": "^3.0.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "adm-zip": "^0.5.16",
     "sqlite-vec": "^0.1.0"

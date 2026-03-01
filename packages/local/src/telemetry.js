@@ -1,0 +1,80 @@
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { API_URL, MARKETING_URL, GITHUB_ISSUES_URL } from "@context-vault/core/constants";
+import type { VaultConfig } from "@context-vault/core/types";
+
+const TELEMETRY_ENDPOINT = `${API_URL}/telemetry`;
+const NOTICE_MARKER = ".telemetry-notice-shown";
+const FEEDBACK_PROMPT_MARKER = ".feedback-prompt-shown";
+
+export function isTelemetryEnabled(config: VaultConfig | undefined): boolean {
+  const envVal = process.env.CONTEXT_VAULT_TELEMETRY;
+  if (envVal !== undefined) return envVal === "1" || envVal === "true";
+  return config?.telemetry === true;
+}
+
+export function sendTelemetryEvent(
+  config: VaultConfig | undefined,
+  payload: { event: string; code?: string | null; tool?: string | null; cv_version: string },
+): void {
+  if (!isTelemetryEnabled(config)) return;
+
+  const event = {
+    event: payload.event,
+    code: payload.code || null,
+    tool: payload.tool || null,
+    cv_version: payload.cv_version,
+    node_version: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    ts: new Date().toISOString(),
+  };
+
+  fetch(TELEMETRY_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(event),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => {});
+}
+
+export function maybeShowTelemetryNotice(dataDir: string): void {
+  try {
+    const markerPath = join(dataDir, NOTICE_MARKER);
+    if (existsSync(markerPath)) return;
+    writeFileSync(markerPath, new Date().toISOString() + "\n");
+  } catch {
+    return;
+  }
+
+  const lines = [
+    "[context-vault] Telemetry: disabled by default.",
+    "[context-vault] To help improve context-vault, you can opt in to anonymous error reporting.",
+    "[context-vault] Reports contain only: event type, error code, tool name, version, node version, platform, arch, timestamp.",
+    "[context-vault] No vault content, file paths, or personal data is ever sent.",
+    '[context-vault] Opt in: set "telemetry": true in ~/.context-mcp/config.json or set CONTEXT_VAULT_TELEMETRY=1.',
+    `[context-vault] Full payload schema: ${MARKETING_URL}/telemetry`,
+  ];
+  for (const line of lines) {
+    process.stderr.write(line + "\n");
+  }
+}
+
+export function maybeShowFeedbackPrompt(dataDir: string): void {
+  try {
+    const markerPath = join(dataDir, FEEDBACK_PROMPT_MARKER);
+    if (existsSync(markerPath)) return;
+    writeFileSync(markerPath, new Date().toISOString() + "\n");
+  } catch {
+    return;
+  }
+
+  const lines = [
+    "[context-vault] First entry saved — nice work!",
+    "[context-vault] Got feedback, a bug, or a feature request?",
+    `[context-vault] Open an issue: ${GITHUB_ISSUES_URL}`,
+  ];
+  for (const line of lines) {
+    process.stderr.write(line + "\n");
+  }
+}

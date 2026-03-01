@@ -1,29 +1,79 @@
 {
   "name": "@context-vault/core",
-  "version": "2.17.1",
+  "version": "3.0.0",
   "type": "module",
-  "description": "Shared core: capture, index, retrieve, tools, and utilities for context-vault",
-  "main": "src/index.js",
+  "description": "Pure local engine: capture, index, search, and utilities for context-vault",
+  "main": "dist/main.js",
+  "types": "dist/main.d.ts",
   "exports": {
-    ".": "./src/index.js",
-    "./constants": "./src/constants.js",
-    "./capture": "./src/capture/index.js",
-    "./capture/*": "./src/capture/*.js",
-    "./index": "./src/index/index.js",
-    "./index/*": "./src/index/*.js",
-    "./retrieve": "./src/retrieve/index.js",
-    "./retrieve/*": "./src/retrieve/*.js",
-    "./sync": "./src/sync/sync.js",
-    "./sync/*": "./src/sync/*.js",
-    "./core/*": "./src/core/*.js",
-    "./server/*": "./src/server/*.js"
+    ".": {
+      "types": "./dist/main.d.ts",
+      "import": "./dist/main.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.js"
+    },
+    "./categories": {
+      "types": "./dist/categories.d.ts",
+      "import": "./dist/categories.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./files": {
+      "types": "./dist/files.d.ts",
+      "import": "./dist/files.js"
+    },
+    "./frontmatter": {
+      "types": "./dist/frontmatter.d.ts",
+      "import": "./dist/frontmatter.js"
+    },
+    "./formatters": {
+      "types": "./dist/formatters.d.ts",
+      "import": "./dist/formatters.js"
+    },
+    "./db": {
+      "types": "./dist/db.d.ts",
+      "import": "./dist/db.js"
+    },
+    "./embed": {
+      "types": "./dist/embed.d.ts",
+      "import": "./dist/embed.js"
+    },
+    "./index": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./search": {
+      "types": "./dist/search.d.ts",
+      "import": "./dist/search.js"
+    },
+    "./capture": {
+      "types": "./dist/capture.d.ts",
+      "import": "./dist/capture.js"
+    },
+    "./ingest-url": {
+      "types": "./dist/ingest-url.d.ts",
+      "import": "./dist/ingest-url.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    }
   },
   "files": [
+    "dist/",
     "src/"
   ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx --watch src/main.ts"
+  },
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "author": "Felix Hellstrom",
   "repository": {
