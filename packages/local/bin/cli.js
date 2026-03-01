@@ -1912,7 +1912,7 @@ async function runStatus() {
       const filled = maxCount > 0 ? Math.round((c / maxCount) * BAR_WIDTH) : 0;
       const bar = "█".repeat(filled) + "░".repeat(BAR_WIDTH - filled);
       const countStr = String(c).padStart(4);
-      console.log(`  ${countStr} ${kind}s   ${dim(bar)}`);
+      console.log(`    ${dim(bar)} ${countStr} ${kind}s`);
     }
   } else {
     console.log(`\n  ${dim("(empty — no entries indexed)")}`);

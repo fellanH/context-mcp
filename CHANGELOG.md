@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [2.17.1] — 2026-03-01
+
+### Changed
+
+- `context-vault status` visual index: bar chart now renders to the left with count and kind name to the right, improving readability and visual alignment
+
 ## [2.17.0] — 2026-02-28
 
 ### Added
