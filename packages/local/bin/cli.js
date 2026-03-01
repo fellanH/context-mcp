@@ -306,8 +306,8 @@ ${bold("Commands:")}
   ${cyan("restart")}                    Stop running MCP server processes (client auto-restarts)
   ${cyan("search")}                     Search vault entries from CLI
   ${cyan("save")}                       Save an entry to the vault from CLI
-  ${cyan("import")} <path>              Import entries from file or directory
-  ${cyan("export")}                     Export vault to JSON or CSV
+  ${cyan("import")} <path>              Import entries from file, directory, or .zip archive
+  ${cyan("export")}                     Export vault entries (JSON, CSV, or portable ZIP)
   ${cyan("ingest")} <url>               Fetch URL and save as vault entry
   ${cyan("ingest-project")} <path>      Scan project directory and register as project entity
   ${cyan("reindex")}                    Rebuild search index from knowledge files
@@ -2183,14 +2183,27 @@ async function runImport() {
   const target = args[1];
   if (!target) {
     console.log(`\n  ${bold("context-vault import")} <path>\n`);
-    console.log(`  Import entries from a file or directory.\n`);
-    console.log(`  Supported formats: .md, .csv, .tsv, .json, .txt\n`);
+    console.log(`  Import entries from a file, directory, or portable archive.\n`);
+    console.log(`  Supported formats: .md, .csv, .tsv, .json, .txt, .zip\n`);
     console.log(`  Options:`);
     console.log(`    --kind <kind>    Default kind (default: insight)`);
     console.log(`    --source <src>   Default source (default: cli-import)`);
     console.log(`    --dry-run        Show parsed entries without importing`);
+    console.log(`    --vault <path>   Target vault directory (default: configured vault)`);
     console.log();
     return;
+  }
+
+  const dryRun = flags.has("--dry-run");
+  const targetPath = resolve(target);
+
+  if (!existsSync(targetPath)) {
+    console.error(red(`  Path not found: ${targetPath}`));
+    process.exit(1);
+  }
+
+  if (targetPath.endsWith(".zip")) {
+    return runImportZip(targetPath, dryRun);
   }
 
   const { resolveConfig } = await import("@context-vault/core/core/config");
@@ -2205,13 +2218,6 @@ async function runImport() {
 
   const kind = getFlag("--kind") || undefined;
   const source = getFlag("--source") || "cli-import";
-  const dryRun = flags.has("--dry-run");
-
-  const targetPath = resolve(target);
-  if (!existsSync(targetPath)) {
-    console.error(red(`  Path not found: ${targetPath}`));
-    process.exit(1);
-  }
 
   const stat = statSync(targetPath);
   let entries;
@@ -2282,13 +2288,211 @@ async function runImport() {
   console.log();
 }
 
+async function runImportZip(zipPath, dryRun) {
+  const AdmZip = (await import("adm-zip")).default;
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { initDatabase, prepareStatements, insertVec, deleteVec } =
+    await import("@context-vault/core/index/db");
+  const { embed } = await import("@context-vault/core/index/embed");
+  const { indexEntry } = await import("@context-vault/core/index/index");
+  const { parseFrontmatter } = await import("@context-vault/core/core/frontmatter");
+  const { categoryDirFor } = await import("@context-vault/core/core/categories");
+  const { mkdirSync, writeFileSync, existsSync: existsFn } = await import("node:fs");
+  const { join: joinPath, basename: baseName } = await import("node:path");
+
+  let zip;
+  try {
+    zip = new AdmZip(zipPath);
+  } catch (e) {
+    console.error(red(`\n  Failed to open archive: ${e.message}\n`));
+    process.exit(1);
+  }
+
+  const manifestEntry = zip.getEntry("manifest.json");
+  if (!manifestEntry) {
+    console.error(red("\n  Invalid archive: missing manifest.json\n"));
+    process.exit(1);
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(zip.readAsText("manifest.json"));
+  } catch {
+    console.error(red("\n  Invalid archive: corrupt manifest.json\n"));
+    process.exit(1);
+  }
+
+  const indexEntry_ = zip.getEntry("index.json");
+  if (!indexEntry_) {
+    console.error(red("\n  Invalid archive: missing index.json\n"));
+    process.exit(1);
+  }
+
+  let index;
+  try {
+    index = JSON.parse(zip.readAsText("index.json"));
+  } catch {
+    console.error(red("\n  Invalid archive: corrupt index.json\n"));
+    process.exit(1);
+  }
+
+  const entries = index.entries || [];
+  if (entries.length === 0) {
+    console.log(yellow("\n  Archive contains no entries.\n"));
+    return;
+  }
+
+  console.log(`\n  ${bold("◇ context-vault import")} ${dim(baseName(zipPath))}`);
+  console.log(dim(`  Archive: v${manifest.version} · ${manifest.entry_count} entries · ${manifest.context_vault_version || "?"}`));
+
+  const kindCounts = {};
+  for (const e of entries) {
+    kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
+  }
+  console.log();
+  for (const [k, count] of Object.entries(kindCounts).sort((a, b) => b[1] - a[1])) {
+    console.log(`    ${k}: ${count}`);
+  }
+
+  const vaultDirOverride = getFlag("--vault");
+  const config = (await import("@context-vault/core/core/config")).resolveConfig();
+  const targetVaultDir = vaultDirOverride ? resolve(vaultDirOverride) : config.vaultDir;
+
+  if (!existsFn(targetVaultDir)) {
+    console.error(red(`\n  Vault directory not found: ${targetVaultDir}`));
+    console.error(`  Run ${cyan("context-vault setup")} to configure.`);
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+  const stmts = prepareStatements(db);
+  const ctx = {
+    db,
+    config: { ...config, vaultDir: targetVaultDir },
+    stmts,
+    embed,
+    insertVec: (r, e) => insertVec(stmts, r, e),
+    deleteVec: (r) => deleteVec(stmts, r),
+  };
+
+  const existingIds = new Set();
+  const allIds = db.prepare("SELECT id FROM vault").all();
+  for (const row of allIds) existingIds.add(row.id);
+
+  let imported = 0;
+  let skippedDuplicate = 0;
+  let skippedMissing = 0;
+  let failed = 0;
+  const errors = [];
+
+  if (dryRun) {
+    for (let i = 0; i < Math.min(entries.length, 25); i++) {
+      const e = entries[i];
+      const isDuplicate = existingIds.has(e.id);
+      const tagStr = e.tags?.length ? ` ${dim(`[${e.tags.join(", ")}]`)}` : "";
+      const statusIcon = isDuplicate ? yellow("~") : green("+");
+      const statusText = isDuplicate ? dim(" (duplicate, would skip)") : "";
+      console.log(`\n  ${statusIcon} ${dim(`[${i + 1}]`)} ${e.kind} — ${e.title || e.id}${tagStr}${statusText}`);
+    }
+    if (entries.length > 25) {
+      console.log(dim(`\n  ... and ${entries.length - 25} more`));
+    }
+    const wouldSkip = entries.filter((e) => existingIds.has(e.id)).length;
+    console.log(`\n  ${dim(`Would import ${entries.length - wouldSkip}, skip ${wouldSkip} duplicates.`)}`);
+    console.log(dim("  Dry run — no entries were imported.\n"));
+    db.close();
+    return;
+  }
+
+  for (let i = 0; i < entries.length; i++) {
+    const entryMeta = entries[i];
+    process.stdout.write(`\r  Importing... ${i + 1}/${entries.length}`);
+
+    if (existingIds.has(entryMeta.id)) {
+      skippedDuplicate++;
+      continue;
+    }
+
+    const zipEntry = zip.getEntry(entryMeta.file);
+    if (!zipEntry) {
+      skippedMissing++;
+      continue;
+    }
+
+    const mdContent = zip.readAsText(entryMeta.file);
+    const { meta: fmMeta, body: rawBody } = parseFrontmatter(mdContent);
+
+    const kind = entryMeta.kind || fmMeta.kind || "insight";
+    const categoryDir = categoryDirFor(kind);
+    const targetDir = joinPath(targetVaultDir, categoryDir, kind);
+
+    try {
+      mkdirSync(targetDir, { recursive: true });
+
+      const fileName = baseName(entryMeta.file);
+      const filePath = joinPath(targetDir, fileName);
+      writeFileSync(filePath, mdContent);
+
+      const id = fmMeta.id || entryMeta.id;
+      const tags = Array.isArray(fmMeta.tags) ? fmMeta.tags : entryMeta.tags || [];
+      const title = fmMeta.title || entryMeta.title || null;
+      const source = fmMeta.source || entryMeta.source || "archive-import";
+      const identity_key = fmMeta.identity_key || entryMeta.identity_key || null;
+      const expires_at = fmMeta.expires_at || entryMeta.expires_at || null;
+      const createdAt = fmMeta.created || entryMeta.created_at || new Date().toISOString();
+
+      await indexEntry(ctx, {
+        id,
+        kind,
+        category: entryMeta.category || undefined,
+        title,
+        body: rawBody,
+        meta: null,
+        tags,
+        source,
+        filePath,
+        createdAt,
+        identity_key,
+        expires_at,
+      });
+
+      imported++;
+    } catch (e) {
+      failed++;
+      errors.push({ id: entryMeta.id, error: e.message });
+    }
+  }
+
+  db.close();
+
+  console.log(`\r  ${green("✓")} Import complete                    `);
+  console.log(`    ${green("+")} ${imported} imported`);
+  if (skippedDuplicate > 0) {
+    console.log(`    ${dim("~")} ${skippedDuplicate} skipped (already exist)`);
+  }
+  if (skippedMissing > 0) {
+    console.log(`    ${yellow("!")} ${skippedMissing} skipped (file missing in archive)`);
+  }
+  if (failed > 0) {
+    console.log(`    ${red("x")} ${failed} failed`);
+    for (const e of errors.slice(0, 5)) {
+      console.log(`      ${dim(e.error)}`);
+    }
+  }
+  console.log();
+}
+
 async function runExport() {
   const format = getFlag("--format") || "json";
-  const output = getFlag("--output");
+  const output = getFlag("--output") || getFlag("-o");
   const rawPageSize = getFlag("--page-size");
   const pageSize = rawPageSize
     ? Math.max(1, parseInt(rawPageSize, 10) || 100)
     : null;
+
+  if (format === "zip") {
+    return runExportZip();
+  }
 
   const { resolveConfig } = await import("@context-vault/core/core/config");
   const { initDatabase, prepareStatements } =
@@ -2308,7 +2512,6 @@ async function runExport() {
 
   let entries;
   if (pageSize) {
-    // Paginated: fetch in chunks to avoid loading everything into memory
     entries = [];
     let offset = 0;
     const stmt = db.prepare(
@@ -2376,6 +2579,188 @@ async function runExport() {
   } else {
     process.stdout.write(content);
   }
+}
+
+async function runExportZip() {
+  const output = getFlag("--output") || getFlag("-o");
+  const dryRun = flags.has("--dry-run");
+  const tagsRaw = getFlag("--tags");
+  const kindRaw = getFlag("--kind");
+  const since = getFlag("--since");
+  const until = getFlag("--until");
+  const exportAll = flags.has("--all");
+
+  const tagsFilter = tagsRaw
+    ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
+    : null;
+  const kindFilter = kindRaw
+    ? kindRaw.split(",").map((k) => k.trim()).filter(Boolean)
+    : null;
+
+  if (!exportAll && !tagsFilter && !kindFilter && !since && !until) {
+    console.log(`\n  ${bold("context-vault export --format zip")} [options]\n`);
+    console.log(`  Export vault entries as a portable ZIP archive.\n`);
+    console.log(`  ${bold("Filters (at least one required, or use --all):")}`);
+    console.log(`    --tags <t1,t2>       Filter by tags (comma-separated)`);
+    console.log(`    --kind <k1,k2>       Filter by kind (comma-separated)`);
+    console.log(`    --since <YYYY-MM-DD> Entries created on or after date`);
+    console.log(`    --until <YYYY-MM-DD> Entries created on or before date`);
+    console.log(`    --all                Export all entries\n`);
+    console.log(`  ${bold("Options:")}`);
+    console.log(`    --output, -o <path>  Output file path`);
+    console.log(`    --dry-run            Show what would be exported\n`);
+    console.log(`  ${bold("Examples:")}`);
+    console.log(`    context-vault export --tags stormfors --format zip -o stormfors.zip`);
+    console.log(`    context-vault export --kind decision,pattern --format zip`);
+    console.log(`    context-vault export --since 2026-01-01 --until 2026-02-28 --format zip`);
+    console.log(`    context-vault export --all --format zip --dry-run\n`);
+    return;
+  }
+
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { initDatabase } = await import("@context-vault/core/index/db");
+  const { readFileSync: readFs, existsSync: existsFn } = await import("node:fs");
+  const { basename } = await import("node:path");
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red(`  Vault directory not found: ${config.vaultDir}`));
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+
+  const conditions = ["(expires_at IS NULL OR expires_at > datetime('now'))"];
+  const params = [];
+
+  if (tagsFilter) {
+    const tagClauses = tagsFilter.map(() =>
+      "EXISTS (SELECT 1 FROM json_each(vault.tags) WHERE json_each.value = ?)"
+    );
+    conditions.push(`(${tagClauses.join(" OR ")})`);
+    params.push(...tagsFilter);
+  }
+
+  if (kindFilter) {
+    const placeholders = kindFilter.map(() => "?").join(", ");
+    conditions.push(`kind IN (${placeholders})`);
+    params.push(...kindFilter);
+  }
+
+  if (since) {
+    conditions.push("created_at >= ?");
+    params.push(since.includes("T") ? since : `${since}T00:00:00.000Z`);
+  }
+
+  if (until) {
+    conditions.push("created_at <= ?");
+    params.push(until.includes("T") ? until : `${until}T23:59:59.999Z`);
+  }
+
+  const sql = `SELECT * FROM vault WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC`;
+  const rows = db.prepare(sql).all(...params);
+  db.close();
+
+  if (rows.length === 0) {
+    console.log(yellow("\n  No entries match the given filters.\n"));
+    return;
+  }
+
+  const kindCounts = {};
+  for (const row of rows) {
+    kindCounts[row.kind] = (kindCounts[row.kind] || 0) + 1;
+  }
+
+  console.log(`\n  ${bold(String(rows.length))} entries match filters:\n`);
+  for (const [k, count] of Object.entries(kindCounts).sort((a, b) => b[1] - a[1])) {
+    console.log(`    ${k}: ${count}`);
+  }
+
+  const earliest = rows[rows.length - 1]?.created_at;
+  const latest = rows[0]?.created_at;
+  console.log(dim(`\n  Date range: ${earliest?.slice(0, 10) || "?"} → ${latest?.slice(0, 10) || "?"}`));
+
+  if (dryRun) {
+    console.log();
+    for (let i = 0; i < Math.min(rows.length, 25); i++) {
+      const r = rows[i];
+      const tags = safeJsonParse(r.tags, []);
+      const tagStr = tags.length ? ` ${dim(`[${tags.join(", ")}]`)}` : "";
+      console.log(`  ${dim(`[${i + 1}]`)} ${r.kind} — ${r.title || (r.body || "").slice(0, 60)}${tagStr}`);
+    }
+    if (rows.length > 25) {
+      console.log(dim(`  ... and ${rows.length - 25} more`));
+    }
+    console.log(dim("\n  Dry run — no archive created.\n"));
+    return;
+  }
+
+  const AdmZip = (await import("adm-zip")).default;
+  const zip = new AdmZip();
+
+  const indexEntries = [];
+  let filesSkipped = 0;
+
+  for (const row of rows) {
+    const entryPath = `entries/${row.kind}/${basename(row.file_path || `${row.id}.md`)}`;
+
+    let fileContent = null;
+    if (row.file_path && existsFn(row.file_path)) {
+      fileContent = readFs(row.file_path);
+    }
+
+    if (!fileContent) {
+      filesSkipped++;
+      continue;
+    }
+
+    zip.addFile(entryPath, fileContent);
+
+    indexEntries.push({
+      id: row.id,
+      kind: row.kind,
+      category: row.category,
+      title: row.title || null,
+      tags: safeJsonParse(row.tags, []),
+      source: row.source || null,
+      identity_key: row.identity_key || null,
+      expires_at: row.expires_at || null,
+      created_at: row.created_at,
+      file: entryPath,
+    });
+  }
+
+  const manifest = {
+    version: 1,
+    created_at: new Date().toISOString(),
+    context_vault_version: VERSION,
+    entry_count: indexEntries.length,
+    date_range: { earliest, latest },
+    filters: {
+      tags: tagsFilter || null,
+      kind: kindFilter || null,
+      since: since || null,
+      until: until || null,
+      all: exportAll || false,
+    },
+  };
+
+  zip.addFile("manifest.json", Buffer.from(JSON.stringify(manifest, null, 2)));
+  zip.addFile("index.json", Buffer.from(JSON.stringify({ entries: indexEntries }, null, 2)));
+
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultName = tagsFilter
+    ? `vault-${tagsFilter[0]}-${today}.zip`
+    : `vault-export-${today}.zip`;
+  const outputPath = resolve(output || defaultName);
+
+  zip.writeZip(outputPath);
+
+  console.log(`\n  ${green("✓")} Exported ${indexEntries.length} entries to ${outputPath}`);
+  if (filesSkipped > 0) {
+    console.log(yellow(`  ⚠ ${filesSkipped} entries skipped (file not found on disk)`));
+  }
+  console.log();
 }
 
 function safeJsonParse(str, fallback) {

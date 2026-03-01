@@ -58,6 +58,10 @@
   "dependencies": {
     "@context-vault/core": "^2.17.1",
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "adm-zip": "^0.5.16",
     "sqlite-vec": "^0.1.0"
-  }
+  },
+  "bundleDependencies": [
+    "@context-vault/core"
+  ]
 }
