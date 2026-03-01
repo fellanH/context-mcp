@@ -117,6 +117,17 @@ export function resolveConfig() {
         if (c.autoConsolidate != null)
           config.consolidation.autoConsolidate = c.autoConsolidate === true;
       }
+      if (fc.lifecycle && typeof fc.lifecycle === "object") {
+        for (const [tier, rules] of Object.entries(fc.lifecycle)) {
+          if (rules && typeof rules === "object") {
+            if (!config.lifecycle[tier]) config.lifecycle[tier] = {};
+            if (rules.archiveAfterDays != null)
+              config.lifecycle[tier].archiveAfterDays = Number(
+                rules.archiveAfterDays,
+              );
+          }
+        }
+      }
       // Hosted account linking (Phase 4)
       if (fc.hostedUrl) config.hostedUrl = fc.hostedUrl;
       if (fc.apiKey) config.apiKey = fc.apiKey;

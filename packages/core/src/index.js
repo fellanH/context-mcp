@@ -30,6 +30,13 @@ export {
 } from "./core/frontmatter.js";
 export { gatherVaultStatus } from "./core/status.js";
 export {
+  findArchiveCandidates,
+  archiveEntries,
+  restoreEntry,
+  countArchivedEntries,
+  listArchivedEntries,
+} from "./core/archive.js";
+export {
   PLURAL_TO_SINGULAR,
   planMigration,
   executeMigration,

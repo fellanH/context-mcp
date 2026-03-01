@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { walkDir } from "./files.js";
 import { isEmbedAvailable } from "../index/embed.js";
 import { KIND_STALENESS_DAYS } from "./categories.js";
+import { countArchivedEntries } from "./archive.js";
 
 /**
  * Gather raw vault status data for formatting by consumers.
@@ -165,6 +166,14 @@ export function gatherVaultStatus(ctx, opts = {}) {
     errors.push(`Auto-captured feedback count failed: ${e.message}`);
   }
 
+  // Archived entries (in _archive/ directory, not in index)
+  let archivedCount = 0;
+  try {
+    archivedCount = countArchivedEntries(config.vaultDir);
+  } catch (e) {
+    errors.push(`Archived count failed: ${e.message}`);
+  }
+
   // Stale knowledge entries — kinds with a threshold, not updated within N days
   let staleKnowledge = [];
   try {
@@ -201,6 +210,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
     embeddingStatus,
     embedModelAvailable,
     autoCapturedFeedbackCount,
+    archivedCount,
     staleKnowledge,
     resolvedFrom: config.resolvedFrom,
     errors,
@@ -322,7 +332,9 @@ export function computeGrowthWarnings(status, thresholds) {
     );
   }
   if (total >= (t.totalEntries?.warn ?? Infinity)) {
-    actions.push("Consider archiving events older than 90 days");
+    actions.push(
+      "Run `context-vault archive` to move old ephemeral/event entries to _archive/",
+    );
   }
 
   const kindBreakdown = totalExceeded

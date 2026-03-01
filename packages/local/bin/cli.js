@@ -312,6 +312,8 @@ ${bold("Commands:")}
   ${cyan("ingest-project")} <path>      Scan project directory and register as project entity
   ${cyan("reindex")}                    Rebuild search index from knowledge files
   ${cyan("migrate-dirs")} [--dry-run]   Rename plural vault dirs to singular (post-2.18.0)
+  ${cyan("archive")}                    Archive old ephemeral/event entries (use --dry-run to preview)
+  ${cyan("restore")} <id>               Restore an archived entry back into the vault
   ${cyan("prune")}                      Remove expired entries (use --dry-run to preview)
   ${cyan("update")}                     Check for and install updates
   ${cyan("uninstall")}                  Remove MCP configs and optionally data
@@ -1844,6 +1846,163 @@ async function runPrune() {
   }
 }
 
+async function runArchive() {
+  const dryRun = flags.has("--dry-run");
+
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { initDatabase, prepareStatements, insertVec, deleteVec } =
+    await import("@context-vault/core/index/db");
+  const { findArchiveCandidates, archiveEntries } =
+    await import("@context-vault/core/core/archive");
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red(`Vault directory not found: ${config.vaultDir}`));
+    console.error("Run " + cyan("context-vault setup") + " to configure.");
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+
+  if (dryRun) {
+    const ctx = {
+      db,
+      config,
+      stmts: prepareStatements(db),
+      embed: async () => null,
+      insertVec: () => {},
+      deleteVec: () => {},
+    };
+    const candidates = findArchiveCandidates(ctx);
+    db.close();
+
+    if (candidates.length === 0) {
+      console.log(green("  No entries eligible for archiving."));
+      const lifecycle = config.lifecycle || {};
+      console.log(dim("\n  Retention windows:"));
+      for (const [tier, rules] of Object.entries(lifecycle)) {
+        if (rules?.archiveAfterDays) {
+          console.log(dim(`    ${tier}: archive after ${rules.archiveAfterDays} days`));
+        }
+      }
+      return;
+    }
+
+    console.log(
+      `\n  ${bold(String(candidates.length))} ${candidates.length === 1 ? "entry" : "entries"} eligible for archiving:\n`,
+    );
+    for (const e of candidates) {
+      const label = e.title ? `${e.kind}: ${e.title}` : `${e.kind} (${e.id})`;
+      const age = e.updated_at || e.created_at;
+      console.log(
+        `  ${dim("-")} ${label} ${dim(`(tier=${e.tier}, last updated ${age})`)}`,
+      );
+    }
+    console.log(dim("\n  Dry run — no entries were archived."));
+    console.log(dim("  Remove --dry-run to archive."));
+    return;
+  }
+
+  const stmts = prepareStatements(db);
+  const ctx = {
+    db,
+    config,
+    stmts,
+    embed: async () => null,
+    insertVec: (r, e) => insertVec(stmts, r, e),
+    deleteVec: (r) => deleteVec(stmts, r),
+  };
+
+  const result = await archiveEntries(ctx);
+  db.close();
+
+  if (result.count === 0) {
+    console.log(green("  No entries eligible for archiving."));
+  } else {
+    console.log(
+      green(
+        `  ✓ Archived ${result.count} ${result.count === 1 ? "entry" : "entries"} to _archive/`,
+      ),
+    );
+    console.log(
+      dim(`  Files moved to: ${join(config.vaultDir, "_archive")}`),
+    );
+    console.log(
+      dim("  Restore with: context-vault restore <id>"),
+    );
+  }
+}
+
+async function runRestore() {
+  const entryId = args[1];
+
+  if (!entryId || entryId.startsWith("--")) {
+    const { resolveConfig } = await import("@context-vault/core/core/config");
+    const { listArchivedEntries } =
+      await import("@context-vault/core/core/archive");
+
+    const config = resolveConfig();
+
+    console.log(`\n  ${bold("context-vault restore")} <id>\n`);
+    console.log(`  Restore an archived entry back into the active vault.\n`);
+
+    if (config.vaultDirExists) {
+      const entries = listArchivedEntries(config.vaultDir);
+      if (entries.length > 0) {
+        console.log(`  ${bold("Archived entries")} (${entries.length}):\n`);
+        for (const e of entries.slice(0, 20)) {
+          const label = e.title
+            ? `${e.kind}: ${e.title.slice(0, 60)}`
+            : `${e.kind} (${e.id})`;
+          console.log(`    ${dim(e.id || "?")}  ${label}`);
+        }
+        if (entries.length > 20) {
+          console.log(dim(`\n    ... and ${entries.length - 20} more`));
+        }
+      } else {
+        console.log(dim("  No archived entries found."));
+      }
+    }
+    console.log();
+    return;
+  }
+
+  const { resolveConfig } = await import("@context-vault/core/core/config");
+  const { initDatabase, prepareStatements, insertVec, deleteVec } =
+    await import("@context-vault/core/index/db");
+  const { embed } = await import("@context-vault/core/index/embed");
+  const { restoreEntry } = await import("@context-vault/core/core/archive");
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red(`Vault directory not found: ${config.vaultDir}`));
+    console.error("Run " + cyan("context-vault setup") + " to configure.");
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+  const stmts = prepareStatements(db);
+  const ctx = {
+    db,
+    config,
+    stmts,
+    embed,
+    insertVec: (r, e) => insertVec(stmts, r, e),
+    deleteVec: (r) => deleteVec(stmts, r),
+  };
+
+  const result = await restoreEntry(ctx, entryId);
+  db.close();
+
+  if (result.restored) {
+    console.log(green(`  ✓ Restored ${result.kind} entry: ${result.id}`));
+    console.log(dim(`  File: ${result.filePath}`));
+  } else {
+    console.error(red(`  ✗ ${result.reason}`));
+    process.exit(1);
+  }
+}
+
 async function runStatus() {
   const { resolveConfig } = await import("@context-vault/core/core/config");
   const { initDatabase } = await import("@context-vault/core/index/db");
@@ -1936,6 +2095,15 @@ async function runStatus() {
     for (const { name, count } of status.subdirs) {
       console.log(`    ${name}/: ${count} files`);
     }
+  }
+
+  if (status.archivedCount > 0) {
+    console.log();
+    console.log(
+      dim(
+        `  ${status.archivedCount} archived ${status.archivedCount === 1 ? "entry" : "entries"} in _archive/ (excluded from search)`,
+      ),
+    );
   }
 
   if (status.stalePaths) {
@@ -4923,7 +5091,7 @@ async function runConsolidate() {
       );
       console.log(
         dim(
-          `  To archive: use context-vault search --kind <kind> and review manually.`,
+          `  To archive: run context-vault archive (or --dry-run to preview).`,
         ),
       );
     }
@@ -5017,6 +5185,12 @@ async function main() {
       break;
     case "migrate-dirs":
       await runMigrateDirs();
+      break;
+    case "archive":
+      await runArchive();
+      break;
+    case "restore":
+      await runRestore();
       break;
     case "prune":
       await runPrune();
