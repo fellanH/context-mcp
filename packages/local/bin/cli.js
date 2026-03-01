@@ -3308,7 +3308,7 @@ async function runRecall() {
     const { initDatabase, prepareStatements } =
       await import("@context-vault/core/db");
     const { embed } = await import("@context-vault/core/embed");
-    const { hybridSearch } = await import("@context-vault/core/retrieve/index");
+    const { hybridSearch } = await import("@context-vault/core/search");
 
     db = await initDatabase(config.dbPath);
     const stmts = prepareStatements(db);
@@ -3436,13 +3436,158 @@ async function runSessionCapture() {
 }
 
 async function runSessionEnd() {
-  const { main } = await import("../src/hooks/session-end.mjs");
-  await main();
+  let db;
+  try {
+    const raw = await new Promise((resolve) => {
+      let data = "";
+      process.stdin.on("data", (chunk) => (data += chunk));
+      process.stdin.on("end", () => resolve(data));
+    });
+    if (!raw.trim()) return;
+    let input;
+    try {
+      input = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const { session_id, transcript_path, cwd } = input ?? {};
+    if (!transcript_path || !cwd) return;
+
+    // Read transcript (JSONL)
+    let turns = [];
+    try {
+      const transcriptRaw = readFileSync(transcript_path, "utf-8");
+      for (const line of transcriptRaw.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try { turns.push(JSON.parse(trimmed)); } catch {}
+      }
+    } catch { return; }
+
+    const extractText = (turn) => {
+      if (typeof turn.content === "string") return turn.content;
+      if (Array.isArray(turn.content))
+        return turn.content.filter((b) => b.type === "text").map((b) => b.text).join(" ");
+      return "";
+    };
+
+    const userTurns = turns.filter((t) => t.role === "user");
+    if (userTurns.length === 0) return;
+
+    // Tool use blocks
+    const allToolUse = [];
+    for (const turn of turns) {
+      if (!Array.isArray(turn.content)) continue;
+      for (const block of turn.content) {
+        if (block.type === "tool_use") allToolUse.push(block);
+      }
+    }
+
+    // Files modified
+    const seenFiles = new Set();
+    const filesModified = [];
+    for (const block of allToolUse) {
+      if (block.name === "Write" || block.name === "Edit") {
+        const path = block.input?.file_path ?? block.input?.path ?? null;
+        if (path && !seenFiles.has(path)) { seenFiles.add(path); filesModified.push(path); }
+      }
+    }
+
+    // Commands run
+    const commandsRun = [];
+    for (const block of allToolUse) {
+      if (block.name === "Bash") {
+        const cmd = block.input?.command ?? block.input?.cmd ?? null;
+        if (cmd) commandsRun.push(cmd.slice(0, 100));
+      }
+    }
+
+    // Tool counts
+    const toolCounts = {};
+    for (const block of allToolUse) {
+      const name = block.name ?? "unknown";
+      toolCounts[name] = (toolCounts[name] ?? 0) + 1;
+    }
+    const toolSummary = Object.entries(toolCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => `${name}: ${count}`)
+      .join(", ");
+
+    // Duration
+    let durationStr = null;
+    const timestampedTurns = turns.filter((t) => t.timestamp != null);
+    if (timestampedTurns.length >= 2) {
+      const diffMs = new Date(timestampedTurns[timestampedTurns.length - 1].timestamp) - new Date(timestampedTurns[0].timestamp);
+      if (!isNaN(diffMs) && diffMs >= 0) {
+        const totalSec = Math.round(diffMs / 1000);
+        const hours = Math.floor(totalSec / 3600);
+        const minutes = Math.floor((totalSec % 3600) / 60);
+        const seconds = totalSec % 60;
+        durationStr = hours > 0 ? `${hours}h ${minutes}m` : minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+      }
+    }
+
+    const message_count = userTurns.length;
+    const project = cwd.split("/").pop() || "unknown";
+    const first_prompt = extractText(userTurns[0]).slice(0, 200);
+    const last_prompt = message_count > 1 ? extractText(userTurns[message_count - 1]).slice(0, 200) : first_prompt;
+
+    // Build body
+    const durationPart = durationStr ? `, ~${durationStr}` : "";
+    const bodyLines = [
+      `Session in ${project} (${message_count} exchange${message_count !== 1 ? "s" : ""}${durationPart}).`,
+      "", "## What was done",
+      `Opened with: ${first_prompt}`, "",
+      `Closed with: ${last_prompt}`,
+    ];
+    const limitedFiles = filesModified.slice(0, 20);
+    if (limitedFiles.length > 0) {
+      bodyLines.push("", "## Files modified");
+      for (const f of limitedFiles) bodyLines.push(`- ${f}`);
+      if (filesModified.length > 20) bodyLines.push(`- ... and ${filesModified.length - 20} more`);
+    }
+    const limitedCmds = commandsRun.slice(0, 10);
+    if (limitedCmds.length > 0) {
+      bodyLines.push("", "## Key commands");
+      for (const c of limitedCmds) bodyLines.push(`- ${c}`);
+      if (commandsRun.length > 10) bodyLines.push(`- ... and ${commandsRun.length - 10} more`);
+    }
+    if (toolSummary) bodyLines.push("", "## Tools used", toolSummary);
+    const body = bodyLines.join("\n");
+
+    // Save via core APIs
+    const { resolveConfig } = await import("@context-vault/core/config");
+    const config = resolveConfig();
+    if (!config.vaultDirExists) return;
+    const { initDatabase, prepareStatements, insertVec, deleteVec } =
+      await import("@context-vault/core/db");
+    const { captureAndIndex } = await import("@context-vault/core/capture");
+    db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+    const ctx = {
+      db, config, stmts,
+      embed: async () => null,
+      insertVec: (rowid, embedding) => insertVec(stmts, rowid, embedding),
+      deleteVec: (rowid) => deleteVec(stmts, rowid),
+    };
+    const entry = await captureAndIndex(ctx, {
+      kind: "session",
+      title: `Session — ${project} ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+      body,
+      tags: ["session-end", "session-summary", project],
+      source: "claude-code",
+      meta: { session_id: session_id ?? null, cwd, message_count },
+    });
+    console.log(`context-vault session captured — id: ${entry.id}`);
+  } catch {
+    // fail silently — never block session end
+  } finally {
+    try { db?.close(); } catch {}
+  }
 }
 
 async function runPostToolCall() {
-  const { main } = await import("../src/hooks/post-tool-call.mjs");
-  await main();
+  // Removed in v3 — post-tool-call hooks are no longer supported
 }
 
 async function runSave() {
@@ -3579,7 +3724,7 @@ async function runSearch() {
     const { initDatabase, prepareStatements } =
       await import("@context-vault/core/db");
     const { embed } = await import("@context-vault/core/embed");
-    const { hybridSearch } = await import("@context-vault/core/retrieve/index");
+    const { hybridSearch } = await import("@context-vault/core/search");
 
     db = await initDatabase(config.dbPath);
     const stmts = prepareStatements(db);
