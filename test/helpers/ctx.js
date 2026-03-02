@@ -10,8 +10,8 @@ import {
   prepareStatements,
   insertVec,
   deleteVec,
-} from "@context-vault/core/index/db";
-import { embed } from "@context-vault/core/index/embed";
+} from "@context-vault/core/db";
+import { embed } from "@context-vault/core/embed";
 
 export async function createTestCtx() {
   const tmp = mkdtempSync(join(tmpdir(), "context-vault-test-"));

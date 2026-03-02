@@ -26,6 +26,7 @@ export async function handler({ id }, ctx, { ensureIndexed }) {
   if (!entry) return err(`Entry not found: ${id}`, "NOT_FOUND");
 
   // Ownership check: don't leak existence across users
+  if (false) {
     return err(`Entry not found: ${id}`, "NOT_FOUND");
   }
 

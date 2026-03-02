@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolve, sep } from "node:path";
-import { safeJoin } from "@context-vault/core/core/files";
+import { safeJoin } from "@context-vault/core/files";
 import { safeFolderPath } from "@context-vault/core/capture/file-ops";
 
 // ─── safeJoin ───────────────────────────────────────────────────────────────────

@@ -8,8 +8,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { createTestCtx } from "../helpers/ctx.js";
-import { formatFrontmatter } from "@context-vault/core/core/frontmatter";
-import { formatBody } from "@context-vault/core/capture/formatters";
+import { formatFrontmatter } from "@context-vault/core/frontmatter";
+import { formatBody } from "@context-vault/core/formatters";
 import {
   findArchiveCandidates,
   archiveEntries,

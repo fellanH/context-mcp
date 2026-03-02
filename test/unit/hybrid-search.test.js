@@ -7,7 +7,7 @@ import {
   buildFilterClauses,
   hybridSearch,
   dotProduct,
-} from "@context-vault/core/retrieve";
+} from "@context-vault/core/search";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex } from "@context-vault/core/capture";
 

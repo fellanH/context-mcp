@@ -16,7 +16,7 @@ import {
   SCHEMA_DDL,
   initDatabase,
   prepareStatements,
-} from "../../packages/core/src/index/db.js";
+} from "@context-vault/core/db";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

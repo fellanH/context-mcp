@@ -5,7 +5,7 @@ import {
   kindToDir,
   dirToKind,
   kindToPath,
-} from "@context-vault/core/core/files";
+} from "@context-vault/core/files";
 
 describe("slugify", () => {
   it("lowercases and replaces non-alphanumeric with dashes", () => {

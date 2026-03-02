@@ -4,9 +4,9 @@ import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex } from "@context-vault/core/capture";
-import { parseFrontmatter } from "@context-vault/core/core/frontmatter";
-import { initDatabase, prepareStatements, insertVec, deleteVec } from "@context-vault/core/index/db";
-import { embed } from "@context-vault/core/index/embed";
+import { parseFrontmatter } from "@context-vault/core/frontmatter";
+import { initDatabase, prepareStatements, insertVec, deleteVec } from "@context-vault/core/db";
+import { embed } from "@context-vault/core/embed";
 import AdmZip from "adm-zip";
 
 describe("portable archive export/import", () => {
@@ -203,8 +203,8 @@ describe("portable archive export/import", () => {
       let imported = 0;
       let skipped = 0;
 
-      const { indexEntry } = await import("@context-vault/core/index/index");
-      const { categoryDirFor } = await import("@context-vault/core/core/categories");
+      const { indexEntry } = await import("@context-vault/core/index");
+      const { categoryDirFor } = await import("@context-vault/core/categories");
       const { writeFileSync } = await import("node:fs");
 
       const existingIds = new Set();
@@ -288,8 +288,8 @@ describe("portable archive export/import", () => {
       const importZip = new AdmZip(zipPath);
       const index = JSON.parse(importZip.readAsText("index.json"));
 
-      const { indexEntry } = await import("@context-vault/core/index/index");
-      const { categoryDirFor } = await import("@context-vault/core/core/categories");
+      const { indexEntry } = await import("@context-vault/core/index");
+      const { categoryDirFor } = await import("@context-vault/core/categories");
       const { writeFileSync } = await import("node:fs");
 
       // First import

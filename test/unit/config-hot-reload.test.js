@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { resolveConfig } from "@context-vault/core/core/config";
+import { resolveConfig } from "@context-vault/core/config";
 
 describe("config hot-reload via ctx getter", () => {
   let tmp, configPath, originalArgv;
