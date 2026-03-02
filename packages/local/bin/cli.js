@@ -3424,6 +3424,7 @@ async function runSessionCapture() {
       body,
       tags: tags || ["session", "auto-captured"],
       source: source || "session-end-hook",
+      expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
     });
     console.log(`context-vault session captured — id: ${entry.id}`);
   } catch {
@@ -3454,15 +3455,23 @@ async function runSessionEnd() {
     if (!transcript_path || !cwd) return;
 
     // Read transcript (JSONL)
-    let turns = [];
+    let transcriptLines = [];
     try {
       const transcriptRaw = readFileSync(transcript_path, "utf-8");
-      for (const line of transcriptRaw.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try { turns.push(JSON.parse(trimmed)); } catch {}
-      }
+      transcriptLines = transcriptRaw.split("\n").filter((l) => l.trim());
     } catch { return; }
+
+    // Import hooks module for structured parsing
+    const { parseTranscriptLines, buildSummary, extractInsights } =
+      await import("../packages/local/src/hooks/session-end.mjs");
+
+    const parsed = parseTranscriptLines(transcriptLines);
+
+    // Parse raw turns for user-turn counting and prompt extraction
+    let turns = [];
+    for (const line of transcriptLines) {
+      try { turns.push(JSON.parse(line)); } catch {}
+    }
 
     const extractText = (turn) => {
       if (typeof turn.content === "string") return turn.content;
@@ -3474,65 +3483,31 @@ async function runSessionEnd() {
     const userTurns = turns.filter((t) => t.role === "user");
     if (userTurns.length === 0) return;
 
-    // Tool use blocks
-    const allToolUse = [];
-    for (const turn of turns) {
-      if (!Array.isArray(turn.content)) continue;
-      for (const block of turn.content) {
-        if (block.type === "tool_use") allToolUse.push(block);
-      }
-    }
-
-    // Files modified
-    const seenFiles = new Set();
-    const filesModified = [];
-    for (const block of allToolUse) {
-      if (block.name === "Write" || block.name === "Edit") {
-        const path = block.input?.file_path ?? block.input?.path ?? null;
-        if (path && !seenFiles.has(path)) { seenFiles.add(path); filesModified.push(path); }
-      }
-    }
-
-    // Commands run
-    const commandsRun = [];
-    for (const block of allToolUse) {
-      if (block.name === "Bash") {
-        const cmd = block.input?.command ?? block.input?.cmd ?? null;
-        if (cmd) commandsRun.push(cmd.slice(0, 100));
-      }
-    }
-
-    // Tool counts
-    const toolCounts = {};
-    for (const block of allToolUse) {
-      const name = block.name ?? "unknown";
-      toolCounts[name] = (toolCounts[name] ?? 0) + 1;
-    }
-    const toolSummary = Object.entries(toolCounts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => `${name}: ${count}`)
-      .join(", ");
-
-    // Duration
-    let durationStr = null;
-    const timestampedTurns = turns.filter((t) => t.timestamp != null);
-    if (timestampedTurns.length >= 2) {
-      const diffMs = new Date(timestampedTurns[timestampedTurns.length - 1].timestamp) - new Date(timestampedTurns[0].timestamp);
-      if (!isNaN(diffMs) && diffMs >= 0) {
-        const totalSec = Math.round(diffMs / 1000);
-        const hours = Math.floor(totalSec / 3600);
-        const minutes = Math.floor((totalSec % 3600) / 60);
-        const seconds = totalSec % 60;
-        durationStr = hours > 0 ? `${hours}h ${minutes}m` : minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-      }
-    }
-
+    // #145: Skip trivial sessions (fewer than 2 user exchanges)
     const message_count = userTurns.length;
+    if (message_count < 2) return;
+
+    // Extract insights from transcript
+    const insights = extractInsights(transcript_path);
+
     const project = cwd.split("/").pop() || "unknown";
     const first_prompt = extractText(userTurns[0]).slice(0, 200);
     const last_prompt = message_count > 1 ? extractText(userTurns[message_count - 1]).slice(0, 200) : first_prompt;
 
-    // Build body
+    // Build structured summary using hooks module
+    const structuredSummary = buildSummary({ ...parsed, insights });
+
+    // Build body with context
+    const durationStr = parsed.startTime && parsed.endTime
+      ? (() => {
+          const diffMs = parsed.endTime - parsed.startTime;
+          const totalSec = Math.round(diffMs / 1000);
+          const hours = Math.floor(totalSec / 3600);
+          const minutes = Math.floor((totalSec % 3600) / 60);
+          const seconds = totalSec % 60;
+          return hours > 0 ? `${hours}h ${minutes}m` : minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+        })()
+      : null;
     const durationPart = durationStr ? `, ~${durationStr}` : "";
     const bodyLines = [
       `Session in ${project} (${message_count} exchange${message_count !== 1 ? "s" : ""}${durationPart}).`,
@@ -3540,11 +3515,25 @@ async function runSessionEnd() {
       `Opened with: ${first_prompt}`, "",
       `Closed with: ${last_prompt}`,
     ];
-    const limitedFiles = filesModified.slice(0, 20);
-    if (limitedFiles.length > 0) {
+
+    // Add files modified from parsed data
+    const filesModified = [...parsed.filesModified].slice(0, 20);
+    if (filesModified.length > 0) {
       bodyLines.push("", "## Files modified");
-      for (const f of limitedFiles) bodyLines.push(`- ${f}`);
-      if (filesModified.length > 20) bodyLines.push(`- ... and ${filesModified.length - 20} more`);
+      for (const f of filesModified) bodyLines.push(`- ${f}`);
+      if (parsed.filesModified.size > 20) bodyLines.push(`- ... and ${parsed.filesModified.size - 20} more`);
+    }
+
+    // Add commands from tool use
+    const commandsRun = [];
+    for (const turn of turns) {
+      if (!Array.isArray(turn.content)) continue;
+      for (const block of turn.content) {
+        if (block.type === "tool_use" && block.name === "Bash") {
+          const cmd = block.input?.command ?? block.input?.cmd ?? null;
+          if (cmd) commandsRun.push(cmd.slice(0, 100));
+        }
+      }
     }
     const limitedCmds = commandsRun.slice(0, 10);
     if (limitedCmds.length > 0) {
@@ -3552,7 +3541,14 @@ async function runSessionEnd() {
       for (const c of limitedCmds) bodyLines.push(`- ${c}`);
       if (commandsRun.length > 10) bodyLines.push(`- ... and ${commandsRun.length - 10} more`);
     }
+
+    // Tool summary
+    const toolSummary = Object.entries(parsed.toolCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => `${name}: ${count}`)
+      .join(", ");
     if (toolSummary) bodyLines.push("", "## Tools used", toolSummary);
+
     const body = bodyLines.join("\n");
 
     // Save via core APIs
@@ -3570,6 +3566,17 @@ async function runSessionEnd() {
       insertVec: (rowid, embedding) => insertVec(stmts, rowid, embedding),
       deleteVec: (rowid) => deleteVec(stmts, rowid),
     };
+
+    // #145: Dedup check — skip if session already captured
+    if (session_id) {
+      const existing = db
+        .prepare(
+          "SELECT id FROM vault WHERE kind = 'session' AND json_extract(meta, '$.session_id') = ?",
+        )
+        .get(session_id);
+      if (existing) return;
+    }
+
     const entry = await captureAndIndex(ctx, {
       kind: "session",
       title: `Session — ${project} ${new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
@@ -3577,6 +3584,7 @@ async function runSessionEnd() {
       tags: ["session-end", "session-summary", project],
       source: "claude-code",
       meta: { session_id: session_id ?? null, cwd, message_count },
+      expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
     });
     console.log(`context-vault session captured — id: ${entry.id}`);
   } catch {
