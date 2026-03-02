@@ -8,8 +8,8 @@ import { describe, it, expect } from "vitest";
 import {
   parseFrontmatter,
   formatFrontmatter,
-} from "@context-vault/core/core/frontmatter";
-import { formatBody } from "@context-vault/core/capture/formatters";
+} from "@context-vault/core/frontmatter";
+import { formatBody } from "@context-vault/core/formatters";
 
 describe("migration: extractCustomMeta", () => {
   const RESERVED_FM_KEYS = new Set([

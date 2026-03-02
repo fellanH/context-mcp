@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveTemporalShortcut,
   resolveTemporalParams,
-} from "../../packages/core/src/core/temporal.js";
+} from "../../packages/local/src/temporal.js";
 
 // Fixed reference point: Wednesday 2025-03-12 14:30:00 UTC
 const NOW = new Date("2025-03-12T14:30:00.000Z");

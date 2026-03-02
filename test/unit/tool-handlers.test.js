@@ -9,12 +9,12 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex } from "@context-vault/core/capture";
 
-import * as getContextTool from "../../packages/core/src/server/tools/get-context.js";
-import * as saveContextTool from "../../packages/core/src/server/tools/save-context.js";
-import * as deleteContextTool from "../../packages/core/src/server/tools/delete-context.js";
-import * as listContextTool from "../../packages/core/src/server/tools/list-context.js";
-import * as contextStatusTool from "../../packages/core/src/server/tools/context-status.js";
-import * as clearContextTool from "../../packages/core/src/server/tools/clear-context.js";
+import * as getContextTool from "../../packages/local/src/tools/get-context.js";
+import * as saveContextTool from "../../packages/local/src/tools/save-context.js";
+import * as deleteContextTool from "../../packages/local/src/tools/delete-context.js";
+import * as listContextTool from "../../packages/local/src/tools/list-context.js";
+import * as contextStatusTool from "../../packages/local/src/tools/context-status.js";
+import * as clearContextTool from "../../packages/local/src/tools/clear-context.js";
 
 const shared = { ensureIndexed: async () => {}, reindexFailed: false };
 
@@ -328,7 +328,7 @@ describe("save_context handler", () => {
 
 // ─── buildConflictCandidates (unit) ───────────────────────────────────────────
 
-import { buildConflictCandidates } from "../../packages/core/src/server/tools/save-context.js";
+import { buildConflictCandidates } from "../../packages/local/src/tools/save-context.js";
 
 describe("buildConflictCandidates", () => {
   const baseEntry = {
@@ -857,7 +857,7 @@ describe("get_context scope", () => {
 
 // ─── skeletonBody (unit) ──────────────────────────────────────────────────────
 
-import { skeletonBody } from "../../packages/core/src/server/tools/get-context.js";
+import { skeletonBody } from "../../packages/local/src/tools/get-context.js";
 
 describe("skeletonBody", () => {
   it("returns empty string for null/undefined body", () => {
@@ -1140,7 +1140,7 @@ describe("get_context detect_conflicts", () => {
 
 // ─── consolidation suggestions ────────────────────────────────────────────────
 
-import { detectConsolidationHints } from "../../packages/core/src/server/tools/get-context.js";
+import { detectConsolidationHints } from "../../packages/local/src/tools/get-context.js";
 
 describe("detectConsolidationHints", () => {
   let ctx, cleanup;
@@ -1543,43 +1543,43 @@ describe("context_status handler", () => {
 // ─── clear_context ────────────────────────────────────────────────────────────
 
 describe("clear_context handler", () => {
-  it("returns ok with reset message when called with no args", () => {
-    const result = clearContextTool.handler({});
+  it("returns ok with reset message when called with no args", async () => {
+    const result = await clearContextTool.handler({});
     const text = isOk(result);
     expect(text).toContain("Context Reset");
     expect(text).toContain("cleared");
     expect(text).toContain("no data was deleted");
   });
 
-  it("returns ok with reset message when called without arguments", () => {
-    const result = clearContextTool.handler();
+  it("returns ok with reset message when called without arguments", async () => {
+    const result = await clearContextTool.handler();
     const text = isOk(result);
     expect(text).toContain("Context Reset");
   });
 
-  it("includes scope name in response when scope is provided", () => {
-    const result = clearContextTool.handler({ scope: "project-b" });
+  it("includes scope name in response when scope is provided", async () => {
+    const result = await clearContextTool.handler({ scope: "project-b" });
     const text = isOk(result);
     expect(text).toContain("project-b");
     expect(text).toContain("Active Scope");
   });
 
-  it("trims whitespace from scope", () => {
-    const result = clearContextTool.handler({ scope: "  my-project  " });
+  it("trims whitespace from scope", async () => {
+    const result = await clearContextTool.handler({ scope: "  my-project  " });
     const text = isOk(result);
     expect(text).toContain("my-project");
     expect(text).toContain("Active Scope");
   });
 
-  it("treats whitespace-only scope as unset", () => {
-    const result = clearContextTool.handler({ scope: "   " });
+  it("treats whitespace-only scope as unset", async () => {
+    const result = await clearContextTool.handler({ scope: "   " });
     const text = isOk(result);
     expect(text).not.toContain("Active Scope");
     expect(text).toContain("No scope set");
   });
 
-  it("never returns an error response", () => {
-    const result = clearContextTool.handler({ scope: "anything" });
+  it("never returns an error response", async () => {
+    const result = await clearContextTool.handler({ scope: "anything" });
     expect(result.isError).toBeFalsy();
   });
 });

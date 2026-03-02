@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex } from "@context-vault/core/capture";
-import * as sessionStartTool from "../../packages/core/src/server/tools/session-start.js";
+import * as sessionStartTool from "../../packages/local/src/tools/session-start.js";
 
 const shared = { ensureIndexed: async () => {}, reindexFailed: false };
 

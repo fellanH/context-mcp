@@ -7,7 +7,7 @@ describe("parseArgs", () => {
   let parseArgs;
 
   beforeEach(async () => {
-    ({ parseArgs } = await import("@context-vault/core/core/config"));
+    ({ parseArgs } = await import("@context-vault/core/config"));
   });
 
   it("returns empty object for no args", () => {
@@ -123,7 +123,7 @@ describe("resolveConfig", () => {
     }));
 
     // Re-import to pick up fresh mocks
-    const mod = await import("@context-vault/core/core/config");
+    const mod = await import("@context-vault/core/config");
     resolveConfig = mod.resolveConfig;
   });
 

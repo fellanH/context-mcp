@@ -3,7 +3,7 @@ import {
   formatFrontmatter,
   parseFrontmatter,
   extractCustomMeta,
-} from "@context-vault/core/core/frontmatter";
+} from "@context-vault/core/frontmatter";
 
 describe("formatFrontmatter + parseFrontmatter roundtrip", () => {
   it("roundtrips simple scalar fields", () => {

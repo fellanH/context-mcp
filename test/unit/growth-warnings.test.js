@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeGrowthWarnings } from "@context-vault/core/core/status";
+import { computeGrowthWarnings } from "../../packages/local/src/status.js";
 import { DEFAULT_GROWTH_THRESHOLDS } from "@context-vault/core/constants";
 
 function makeStatus(overrides = {}) {

@@ -3,8 +3,8 @@ import { mkdirSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { createTestCtx } from "../helpers/ctx.js";
 import { reindex } from "@context-vault/core/index";
-import { formatFrontmatter } from "@context-vault/core/core/frontmatter";
-import { formatBody } from "@context-vault/core/capture/formatters";
+import { formatFrontmatter } from "@context-vault/core/frontmatter";
+import { formatBody } from "@context-vault/core/formatters";
 
 /**
  * Write a .md entry file to the vault directory with proper frontmatter.

@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex } from "@context-vault/core/capture";
-import * as createSnapshotTool from "../../packages/core/src/server/tools/create-snapshot.js";
+import * as createSnapshotTool from "../../packages/local/src/tools/create-snapshot.js";
 
 const shared = { ensureIndexed: async () => {}, reindexFailed: false };
 
