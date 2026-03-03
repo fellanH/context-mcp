@@ -3598,6 +3598,8 @@ async function runSave() {
   const tier = getFlag("--tier");
   const filePath = getFlag("--file");
   const bodyFlag = getFlag("--body");
+  const identityKey = getFlag("--identity-key");
+  const metaRaw = getFlag("--meta");
 
   if (!kind) {
     console.error(red("Error: --kind is required"));
@@ -3606,6 +3608,16 @@ async function runSave() {
   if (!title) {
     console.error(red("Error: --title is required"));
     process.exit(1);
+  }
+
+  let meta;
+  if (metaRaw) {
+    try {
+      meta = JSON.parse(metaRaw);
+    } catch {
+      console.error(red("Error: --meta must be valid JSON"));
+      process.exit(1);
+    }
   }
 
   let body;
@@ -3665,6 +3677,8 @@ async function runSave() {
       tags: parsedTags,
       source,
       ...(tier ? { tier } : {}),
+      ...(identityKey ? { identity_key: identityKey } : {}),
+      ...(meta !== undefined ? { meta } : {}),
     });
     console.log(`${green("✓")} Saved ${kind} — id: ${entry.id}`);
   } catch (e) {
