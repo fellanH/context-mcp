@@ -170,4 +170,6 @@ export function registerTools(server, ctx) {
       tracked((args) => mod.handler(args, ctx, shared), mod.name),
     );
   }
+
+  ensureIndexed().catch(() => {});
 }

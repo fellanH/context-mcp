@@ -266,7 +266,7 @@ export function updateEntryFile(
   };
 }
 
-export async function captureAndIndex(ctx: BaseCtx, data: CaptureInput): Promise<CaptureResult> {
+export async function captureAndIndex(ctx: BaseCtx, data: CaptureInput, precomputedEmbedding?: Float32Array | null): Promise<CaptureResult> {
   let previousContent: string | null = null;
   if (categoryFor(data.kind) === "entity" && data.identity_key) {
     const identitySlug = slugify(data.identity_key);
@@ -279,7 +279,7 @@ export async function captureAndIndex(ctx: BaseCtx, data: CaptureInput): Promise
 
   const entry = writeEntry(ctx, data);
   try {
-    await indexEntry(ctx, entry);
+    await indexEntry(ctx, entry, precomputedEmbedding);
     if (entry.supersedes?.length && ctx.stmts.updateSupersededBy) {
       for (const supersededId of entry.supersedes) {
         if (typeof supersededId === "string" && supersededId.trim()) {

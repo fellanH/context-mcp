@@ -13,6 +13,7 @@ const EMBED_BATCH_SIZE = 32;
 export async function indexEntry(
   ctx: BaseCtx,
   entry: IndexEntryInput & { supersedes?: string[] | null; related_to?: string[] | null },
+  precomputedEmbedding?: Float32Array | null,
 ): Promise<void> {
   const {
     id, kind, category, title, body, meta, tags, source,
@@ -92,8 +93,9 @@ export async function indexEntry(
   }
 
   if (cat !== "event") {
-    const embeddingText = [title, body].filter(Boolean).join(" ");
-    const embedding = await ctx.embed(embeddingText);
+    const embedding = precomputedEmbedding !== undefined
+      ? precomputedEmbedding
+      : await ctx.embed([title, body].filter(Boolean).join(" "));
 
     if (embedding) {
       try { ctx.deleteVec(rowid); } catch { /* no-op */ }

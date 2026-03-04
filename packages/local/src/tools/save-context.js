@@ -484,17 +484,18 @@ export async function handler(
   // ── Similarity check (knowledge + event only) ────────────────────────────
   const category = categoryFor(normalizedKind);
   let similarEntries = [];
+  let queryEmbedding = null;
 
   if (category === "knowledge" || category === "event") {
     const threshold = similarity_threshold ?? DEFAULT_SIMILARITY_THRESHOLD;
     const embeddingText = [title, body].filter(Boolean).join(" ");
-    const queryEmbedding = await ctx.embed(embeddingText);
+    queryEmbedding = await ctx.embed(embeddingText);
     if (queryEmbedding) {
       similarEntries = await findSimilar(
         ctx,
         queryEmbedding,
         threshold,
-        
+
         { hydrate: suggestMode },
       );
     }
@@ -540,6 +541,8 @@ export async function handler(
 
   const effectiveTier = tier ?? defaultTierFor(normalizedKind);
 
+  const embeddingToReuse = category === "knowledge" ? queryEmbedding : null;
+
   const entry = await captureAndIndex(ctx, {
     kind: normalizedKind,
     title,
@@ -553,9 +556,9 @@ export async function handler(
     supersedes,
     related_to,
     source_files,
-    
+
     tier: effectiveTier,
-  });
+  }, embeddingToReuse);
 
   if (ctx.config?.dataDir) {
     maybeShowFeedbackPrompt(ctx.config.dataDir);
