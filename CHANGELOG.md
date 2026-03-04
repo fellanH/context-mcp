@@ -2,6 +2,52 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.0.2] — 2026-03-04
+
+### Fixed
+
+- Repair broken CI — update stale test imports and source bugs from v3 refactor
+- Repair broken test imports and TypeScript-in-JS parse errors
+- Wire `--identity-key` and `--meta` flags in CLI `save` command (were accepted but silently ignored)
+
+### Added
+
+- Session lifecycle improvements — scoped context reset
+
+## [3.0.1] — 2026-03-01
+
+### Fixed
+
+- Repair stale server paths and broken core import specifiers from v3 refactor
+- Repair broken hook imports (recall, session-end, post-tool-call)
+
+## [3.0.0] — 2026-03-01
+
+Major release — TypeScript monorepo restructure.
+
+### Breaking Changes
+
+- Full TypeScript rewrite of `@context-vault/core` package
+- Package structure changed: tools moved from `core/src/server/tools/` to `local/src/tools/`
+- `@context-vault/core` exports flattened — named subpath exports replace nested paths
+
+### Added
+
+- Vault export/import as portable ZIP archives (#170)
+- Auto-archive lifecycle for ephemeral/event entries (#141)
+- Inbox kind → event category mapping
+- Separate local and hosted SQLite schemas (#178)
+- Vault entry linking — `related_to` field + `follow_links` traversal
+- Temporal shortcuts for `get_context` and CLI search
+- Hot/cold scope split for `get_context` and CLI search
+
+### Changed
+
+- Remove Anthropic API dependency from `create_snapshot`
+- Simplify search pipeline — remove frequency boost and MMR reranking
+- Remove `submit_feedback` MCP tool
+- Drop Node.js engine requirement from >=24 to >=20
+
 ## [2.17.1] — 2026-03-01
 
 ### Changed
