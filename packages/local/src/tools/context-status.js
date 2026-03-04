@@ -1,6 +1,8 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { gatherVaultStatus, computeGrowthWarnings } from "../status.js";
 import { errorLogPath, errorLogCount } from "../error-log.js";
-import { ok } from "../helpers.js";
+import { ok, err } from "../helpers.js";
 
 function relativeTime(ts) {
   const secs = Math.floor((Date.now() - ts) / 1000);
@@ -23,6 +25,7 @@ export const inputSchema = {};
  * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
  */
 export function handler(_args, ctx) {
+  try {
   const { config } = ctx;
 
   const status = gatherVaultStatus(ctx);
@@ -120,6 +123,18 @@ export function handler(_args, ctx) {
     lines.push(`- Entries: ${logCount} (share this file for support)`);
   }
 
+  // Last startup error
+  const lastErrorPath = join(config.dataDir, ".last-error");
+  if (existsSync(lastErrorPath)) {
+    try {
+      const lastError = readFileSync(lastErrorPath, "utf-8").trim();
+      lines.push(``, `### Last Startup Error`);
+      lines.push(`\`\`\``);
+      lines.push(lastError);
+      lines.push(`\`\`\``);
+    } catch {}
+  }
+
   // Health: session-level tool call stats
   const ts = ctx.toolStats;
   if (ts) {
@@ -178,4 +193,7 @@ export function handler(_args, ctx) {
   }
 
   return ok(lines.join("\n"));
+  } catch (e) {
+    return err(e.message, "STATUS_FAILED");
+  }
 }

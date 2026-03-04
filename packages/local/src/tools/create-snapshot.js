@@ -105,28 +105,32 @@ export async function handler(
 
   let candidates = [];
 
-  if (normalizedKinds.length > 0) {
-    for (const kindFilter of normalizedKinds) {
-      const rows = await hybridSearch(ctx, topic, {
-        kindFilter,
-        limit: Math.ceil(MAX_ENTRIES_FOR_GATHER / normalizedKinds.length),
-        
+  try {
+    if (normalizedKinds.length > 0) {
+      for (const kindFilter of normalizedKinds) {
+        const rows = await hybridSearch(ctx, topic, {
+          kindFilter,
+          limit: Math.ceil(MAX_ENTRIES_FOR_GATHER / normalizedKinds.length),
+
+          includeSuperseeded: false,
+        });
+        candidates.push(...rows);
+      }
+      const seen = new Set();
+      candidates = candidates.filter((r) => {
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      });
+    } else {
+      candidates = await hybridSearch(ctx, topic, {
+        limit: MAX_ENTRIES_FOR_GATHER,
+
         includeSuperseeded: false,
       });
-      candidates.push(...rows);
     }
-    const seen = new Set();
-    candidates = candidates.filter((r) => {
-      if (seen.has(r.id)) return false;
-      seen.add(r.id);
-      return true;
-    });
-  } else {
-    candidates = await hybridSearch(ctx, topic, {
-      limit: MAX_ENTRIES_FOR_GATHER,
-      
-      includeSuperseeded: false,
-    });
+  } catch (e) {
+    return err(e.message, "SEARCH_FAILED");
   }
 
   if (effectiveTags.length) {
@@ -162,22 +166,27 @@ export async function handler(
 
   const supersedes = noiseIds.length > 0 ? noiseIds : undefined;
 
-  const entry = await captureAndIndex(ctx, {
-    kind: "brief",
-    title: `${topic} — Context Brief`,
-    body: briefBody,
-    tags: briefTags,
-    source: "create_snapshot",
-    identity_key: effectiveIdentityKey,
-    supersedes,
-    
-    meta: {
-      topic,
-      entry_count: gatherEntries.length,
-      noise_superseded: noiseIds.length,
-      synthesized_from: gatherEntries.map((e) => e.id),
-    },
-  });
+  let entry;
+  try {
+    entry = await captureAndIndex(ctx, {
+      kind: "brief",
+      title: `${topic} — Context Brief`,
+      body: briefBody,
+      tags: briefTags,
+      source: "create_snapshot",
+      identity_key: effectiveIdentityKey,
+      supersedes,
+
+      meta: {
+        topic,
+        entry_count: gatherEntries.length,
+        noise_superseded: noiseIds.length,
+        synthesized_from: gatherEntries.map((e) => e.id),
+      },
+    });
+  } catch (e) {
+    return err(e.message, "SAVE_FAILED");
+  }
 
   const parts = [
     `✓ Snapshot created → id: ${entry.id}`,

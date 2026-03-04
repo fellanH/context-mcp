@@ -93,9 +93,16 @@ export async function indexEntry(
   }
 
   if (cat !== "event") {
-    const embedding = precomputedEmbedding !== undefined
-      ? precomputedEmbedding
-      : await ctx.embed([title, body].filter(Boolean).join(" "));
+    let embedding: Float32Array | null = null;
+    if (precomputedEmbedding !== undefined) {
+      embedding = precomputedEmbedding;
+    } else {
+      try {
+        embedding = await ctx.embed([title, body].filter(Boolean).join(" "));
+      } catch (embedErr) {
+        console.warn(`[context-vault] embed() failed for entry ${id} — skipping vec insert: ${(embedErr as Error).message}`);
+      }
+    }
 
     if (embedding) {
       try { ctx.deleteVec(rowid); } catch { /* no-op */ }

@@ -109,7 +109,7 @@ export function registerTools(server, ctx) {
             },
           });
         } catch {}
-        throw e;
+        return err(e.message, "INTERNAL_ERROR");
       } finally {
         clearTimeout(timer);
         if (ctx.activeOps) ctx.activeOps.count--;

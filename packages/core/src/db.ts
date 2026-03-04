@@ -107,6 +107,7 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
     const db = new DatabaseSync(path, { allowExtension: true });
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA foreign_keys = ON");
+    db.exec("PRAGMA busy_timeout = 3000");
     try {
       sqliteVec.load(db);
     } catch (e) {
@@ -124,6 +125,7 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
     );
 
     const backupPath = `${dbPath}.v${version}.backup`;
+    let backupSucceeded = false;
     try {
       db.close();
       if (existsSync(dbPath)) {
@@ -131,10 +133,20 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
         console.error(
           `[context-vault] Backed up old database to: ${backupPath}`,
         );
+        backupSucceeded = true;
+      } else {
+        backupSucceeded = true;
       }
     } catch (backupErr) {
       console.error(
         `[context-vault] Warning: could not backup old database: ${(backupErr as Error).message}`,
+      );
+    }
+
+    if (!backupSucceeded) {
+      throw new Error(
+        `[context-vault] Aborting schema migration: backup failed for ${dbPath}. ` +
+        `Fix the backup issue or manually back up the file before upgrading.`,
       );
     }
 

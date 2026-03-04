@@ -7,7 +7,7 @@ import { categoryFor } from "@context-vault/core/categories";
 import { normalizeKind } from "@context-vault/core/files";
 import { resolveTemporalParams } from "../temporal.js";
 import { collectLinkedEntries } from "../linking.js";
-import { ok, err } from "../helpers.js";
+import { ok, err, errWithHint } from "../helpers.js";
 import { isEmbedAvailable } from "@context-vault/core/embed";
 
 const STALE_DUPLICATE_DAYS = 7;
@@ -290,7 +290,7 @@ export const inputSchema = {
     .describe(
       "Return entries created before this date. Accepts ISO date strings or the same natural shortcuts as `since`. When `since` is 'yesterday' and `until` is omitted, `until` is automatically set to the end of yesterday.",
     ),
-  limit: z.number().optional().describe("Max results to return (default 10)"),
+  limit: z.number().max(500).optional().describe("Max results to return (default 10)"),
   include_superseded: z
     .boolean()
     .optional()
@@ -305,6 +305,7 @@ export const inputSchema = {
     ),
   max_tokens: z
     .number()
+    .max(100000)
     .optional()
     .describe(
       "Limit output to entries that fit within this token budget (rough estimate: 1 token ≈ 4 chars). Entries are packed greedily by relevance rank. At least 1 result is always returned. Response metadata includes tokens_used and tokens_budget.",
@@ -514,9 +515,18 @@ export async function handler(
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     params.push(fetchLimit);
-    const rows = ctx.db
-      .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT ?`)
-      .all(...params);
+    let rows;
+    try {
+      rows = ctx.db
+        .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT ?`)
+        .all(...params);
+    } catch (e) {
+      return errWithHint(
+        e.message,
+        "DB_ERROR",
+        "context-vault get_context DB_ERROR. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.",
+      );
+    }
 
     // Post-filter by tags if provided, then apply requested limit
     filtered = effectiveTags.length

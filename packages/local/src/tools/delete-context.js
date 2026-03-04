@@ -17,7 +17,6 @@ export const inputSchema = {
  * @param {import('../types.js').ToolShared} shared
  */
 export async function handler({ id }, ctx, { ensureIndexed }) {
-
   if (!id?.trim())
     return err("Required: id (non-empty string)", "INVALID_INPUT");
   await ensureIndexed();
@@ -25,34 +24,31 @@ export async function handler({ id }, ctx, { ensureIndexed }) {
   const entry = ctx.stmts.getEntryById.get(id);
   if (!entry) return err(`Entry not found: ${id}`, "NOT_FOUND");
 
-  // Ownership check: don't leak existence across users
-    return err(`Entry not found: ${id}`, "NOT_FOUND");
-  }
+  try {
+    // Delete DB record first — if this fails, the file stays and no orphan is created
+    const rowidResult = ctx.stmts.getRowid.get(id);
+    if (rowidResult?.rowid) {
+      try {
+        ctx.deleteVec(Number(rowidResult.rowid));
+      } catch {}
+    }
+    ctx.stmts.deleteEntry.run(id);
 
-  // Delete file from disk first (source of truth)
-  let fileWarning = null;
-  if (entry.file_path) {
-    try {
-      unlinkSync(entry.file_path);
-    } catch (e) {
-      // ENOENT = already gone — not an error worth surfacing
-      if (e.code !== "ENOENT") {
-        fileWarning = `file could not be removed from disk (${e.code}): ${entry.file_path}`;
+    // Delete file from disk after successful DB delete
+    let fileWarning = null;
+    if (entry.file_path) {
+      try {
+        unlinkSync(entry.file_path);
+      } catch (e) {
+        if (e.code !== "ENOENT") {
+          fileWarning = `file could not be removed from disk (${e.code}): ${entry.file_path}`;
+        }
       }
     }
+
+    const msg = `Deleted ${entry.kind}: ${entry.title || "(untitled)"} [${id}]`;
+    return ok(fileWarning ? `${msg}\nWarning: ${fileWarning}` : msg);
+  } catch (e) {
+    return err(e.message, "DELETE_FAILED");
   }
-
-  // Delete vector embedding
-  const rowidResult = ctx.stmts.getRowid.get(id);
-  if (rowidResult?.rowid) {
-    try {
-      ctx.deleteVec(Number(rowidResult.rowid));
-    } catch {}
-  }
-
-  // Delete DB row (FTS trigger handles FTS cleanup)
-  ctx.stmts.deleteEntry.run(id);
-
-  const msg = `Deleted ${entry.kind}: ${entry.title || "(untitled)"} [${id}]`;
-  return ok(fileWarning ? `${msg}\nWarning: ${fileWarning}` : msg);
 }

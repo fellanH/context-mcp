@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { normalizeKind } from "@context-vault/core/files";
 import { categoryFor } from "@context-vault/core/categories";
-import { ok } from "../helpers.js";
+import { ok, err, errWithHint } from "../helpers.js";
+import { resolveTemporalParams } from "../temporal.js";
 
 export const name = "list_context";
 
@@ -50,6 +51,10 @@ export async function handler(
 
   await ensureIndexed();
 
+  const resolved = resolveTemporalParams({ since, until });
+  since = resolved.since;
+  until = resolved.until;
+
   const kindFilter = kind ? normalizeKind(kind) : null;
   const effectiveCategory =
     category || (kindFilter ? categoryFor(kindFilter) : null);
@@ -64,8 +69,6 @@ export async function handler(
   const clauses = [];
   const params = [];
 
-  if (false) {
-  }
   if (kindFilter) {
     clauses.push("kind = ?");
     params.push(kindFilter);
@@ -91,16 +94,26 @@ export async function handler(
   const fetchLimit = tags?.length ? effectiveLimit * 10 : effectiveLimit;
 
   const countParams = [...params];
-  const total = ctx.db
-    .prepare(`SELECT COUNT(*) as c FROM vault ${where}`)
-    .get(...countParams).c;
+  let total;
+  let rows;
+  try {
+    total = ctx.db
+      .prepare(`SELECT COUNT(*) as c FROM vault ${where}`)
+      .get(...countParams).c;
 
-  params.push(fetchLimit, effectiveOffset);
-  const rows = ctx.db
-    .prepare(
-      `SELECT id, title, kind, category, tags, created_at, updated_at, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    )
-    .all(...params);
+    params.push(fetchLimit, effectiveOffset);
+    rows = ctx.db
+      .prepare(
+        `SELECT id, title, kind, category, tags, created_at, updated_at, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      )
+      .all(...params);
+  } catch (e) {
+    return errWithHint(
+      e.message,
+      "DB_ERROR",
+      "context-vault list_context DB_ERROR. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.",
+    );
+  }
 
   // Post-filter by tags if provided, then apply requested limit
   const filtered = tags?.length

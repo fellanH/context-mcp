@@ -3,7 +3,7 @@ import { captureAndIndex, updateEntryFile } from "@context-vault/core/capture";
 import { indexEntry } from "@context-vault/core/index";
 import { categoryFor, defaultTierFor } from "@context-vault/core/categories";
 import { normalizeKind } from "@context-vault/core/files";
-import { ok, err, ensureVaultExists, ensureValidKind } from "../helpers.js";
+import { ok, err, errWithHint, ensureVaultExists, ensureValidKind } from "../helpers.js";
 import { maybeShowFeedbackPrompt } from "../telemetry.js";
 import { validateRelatedTo } from "../linking.js";
 import {
@@ -319,12 +319,6 @@ export const inputSchema = {
     .describe(
       "Source code files this entry is derived from. When these files change (hash mismatch), the entry will be flagged as stale in get_context results.",
     ),
-  tier: z
-    .enum(["ephemeral", "working", "durable"])
-    .optional()
-    .describe(
-      "Memory tier for lifecycle management. 'ephemeral': short-lived session data. 'working': active context (default). 'durable': long-term reference material. Defaults based on kind when not specified.",
-    ),
   dry_run: z
     .boolean()
     .optional()
@@ -409,10 +403,6 @@ export async function handler(
     const existing = ctx.stmts.getEntryById.get(id);
     if (!existing) return err(`Entry not found: ${id}`, "NOT_FOUND");
 
-    // Ownership check: don't leak existence across users
-      return err(`Entry not found: ${id}`, "NOT_FOUND");
-    }
-
     if (kind && normalizeKind(kind) !== existing.kind) {
       return err(
         `Cannot change kind (current: "${existing.kind}"). Delete and re-create instead.`,
@@ -434,18 +424,27 @@ export async function handler(
       if (decrypted.meta) existing.meta = JSON.stringify(decrypted.meta);
     }
 
-    const entry = updateEntryFile(ctx, existing, {
-      title,
-      body,
-      tags,
-      meta,
-      source,
-      expires_at,
-      supersedes,
-      related_to,
-      source_files,
-    });
-    await indexEntry(ctx, entry);
+    let entry;
+    try {
+      entry = updateEntryFile(ctx, existing, {
+        title,
+        body,
+        tags,
+        meta,
+        source,
+        expires_at,
+        supersedes,
+        related_to,
+        source_files,
+      });
+      await indexEntry(ctx, entry);
+    } catch (e) {
+      return errWithHint(
+        e.message,
+        "UPDATE_FAILED",
+        "context-vault save_context update is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.",
+      );
+    }
     if (entry.related_to?.length && ctx.stmts.updateRelatedTo) {
       ctx.stmts.updateRelatedTo.run(JSON.stringify(entry.related_to), entry.id);
     } else if (entry.related_to === null && ctx.stmts.updateRelatedTo) {
@@ -489,7 +488,11 @@ export async function handler(
   if (category === "knowledge" || category === "event") {
     const threshold = similarity_threshold ?? DEFAULT_SIMILARITY_THRESHOLD;
     const embeddingText = [title, body].filter(Boolean).join(" ");
-    queryEmbedding = await ctx.embed(embeddingText);
+    try {
+      queryEmbedding = await ctx.embed(embeddingText);
+    } catch {
+      queryEmbedding = null;
+    }
     if (queryEmbedding) {
       similarEntries = await findSimilar(
         ctx,
@@ -543,22 +546,27 @@ export async function handler(
 
   const embeddingToReuse = category === "knowledge" ? queryEmbedding : null;
 
-  const entry = await captureAndIndex(ctx, {
-    kind: normalizedKind,
-    title,
-    body,
-    meta: finalMeta,
-    tags,
-    source,
-    folder,
-    identity_key,
-    expires_at,
-    supersedes,
-    related_to,
-    source_files,
+  let entry;
+  try {
+    entry = await captureAndIndex(ctx, {
+      kind: normalizedKind,
+      title,
+      body,
+      meta: finalMeta,
+      tags,
+      source,
+      folder,
+      identity_key,
+      expires_at,
+      supersedes,
+      related_to,
+      source_files,
 
-    tier: effectiveTier,
-  }, embeddingToReuse);
+      tier: effectiveTier,
+    }, embeddingToReuse);
+  } catch (e) {
+    return errWithHint(e.message, "SAVE_FAILED", "context-vault save_context is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.");
+  }
 
   if (ctx.config?.dataDir) {
     maybeShowFeedbackPrompt(ctx.config.dataDir);
@@ -613,12 +621,8 @@ export async function handler(
   if (criticalLimit != null) {
     try {
       const countRow = ctx.db
-        .prepare(
-          false
-            
-            : "SELECT COUNT(*) as c FROM vault",
-        )
-        .get(...([]));
+        .prepare("SELECT COUNT(*) as c FROM vault")
+        .get();
       if (countRow.c >= criticalLimit) {
         parts.push(
           ``,
