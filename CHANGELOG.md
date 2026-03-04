@@ -2,6 +2,13 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.0.3] — 2026-03-04
+
+### Fixed
+
+- Fix save_context timeout on larger entries — eager background reindex at server startup instead of blocking first tool call (#188)
+- Eliminate redundant embedding computation in save_context by reusing dedup similarity embedding for index insert
+
 ## [3.0.2] — 2026-03-04
 
 ### Fixed
