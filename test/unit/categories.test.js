@@ -3,7 +3,7 @@ import {
   categoryFor,
   categoryDirFor,
   CATEGORY_DIRS,
-} from "@context-vault/core/core/categories";
+} from "@context-vault/core/categories";
 
 describe("categoryFor", () => {
   it("returns knowledge for knowledge kinds", () => {

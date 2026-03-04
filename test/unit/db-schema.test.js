@@ -1,9 +1,8 @@
 /**
- * db-schema.test.js — Schema separation tests
+ * db-schema.test.js — Schema tests
  *
- * Verifies that LOCAL_SCHEMA_DDL and HOSTED_SCHEMA_DDL create distinct schemas,
- * that initDatabase selects the right DDL based on mode, and that the v13→v14
- * migration correctly drops hosted-only columns from existing local vaults.
+ * Verifies that initDatabase creates the correct schema and that
+ * prepareStatements works correctly.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -11,12 +10,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  LOCAL_SCHEMA_DDL,
-  HOSTED_SCHEMA_DDL,
   SCHEMA_DDL,
   initDatabase,
   prepareStatements,
-} from "../../packages/core/src/index/db.js";
+} from "../../packages/core/src/db.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -54,7 +51,43 @@ function getVersion(db) {
 // ─── DDL export tests ─────────────────────────────────────────────────────────
 
 describe("schema DDL exports", () => {
-  it("LOCAL_SCHEMA_DDL does not include hosted-only columns", () => {
+  it("SCHEMA_DDL is a non-empty string", () => {
+    expect(typeof SCHEMA_DDL).toBe("string");
+    expect(SCHEMA_DDL.length).toBeGreaterThan(100);
+  });
+
+  it("SCHEMA_DDL creates the vault table", () => {
+    expect(SCHEMA_DDL).toContain("CREATE TABLE IF NOT EXISTS vault");
+  });
+
+  it("SCHEMA_DDL includes all core columns", () => {
+    const cols = [
+      "id",
+      "kind",
+      "category",
+      "title",
+      "body",
+      "meta",
+      "tags",
+      "source",
+      "file_path",
+      "identity_key",
+      "expires_at",
+      "superseded_by",
+      "created_at",
+      "updated_at",
+      "hit_count",
+      "last_accessed_at",
+      "source_files",
+      "tier",
+      "related_to",
+    ];
+    for (const col of cols) {
+      expect(SCHEMA_DDL).toContain(col);
+    }
+  });
+
+  it("SCHEMA_DDL does not include hosted-only columns", () => {
     const hostedCols = [
       "user_id",
       "team_id",
@@ -64,42 +97,26 @@ describe("schema DDL exports", () => {
       "iv",
     ];
     for (const col of hostedCols) {
-      expect(LOCAL_SCHEMA_DDL).not.toContain(`${col}`);
+      expect(SCHEMA_DDL).not.toContain(col);
     }
   });
 
-  it("HOSTED_SCHEMA_DDL includes all six hosted-only columns", () => {
-    const hostedCols = [
-      "user_id",
-      "team_id",
-      "body_encrypted",
-      "title_encrypted",
-      "meta_encrypted",
-      "iv",
-    ];
-    for (const col of hostedCols) {
-      expect(HOSTED_SCHEMA_DDL).toContain(col);
-    }
+  it("SCHEMA_DDL identity index scopes to category=entity only", () => {
+    expect(SCHEMA_DDL).toContain("category = 'entity'");
   });
 
-  it("SCHEMA_DDL is an alias for HOSTED_SCHEMA_DDL", () => {
-    expect(SCHEMA_DDL).toBe(HOSTED_SCHEMA_DDL);
+  it("SCHEMA_DDL creates vault_fts virtual table", () => {
+    expect(SCHEMA_DDL).toContain("CREATE VIRTUAL TABLE IF NOT EXISTS vault_fts");
   });
 
-  it("LOCAL_SCHEMA_DDL identity index scopes to category=entity only", () => {
-    expect(LOCAL_SCHEMA_DDL).toContain("category = 'entity'");
-    expect(LOCAL_SCHEMA_DDL).not.toContain("user_id");
-  });
-
-  it("HOSTED_SCHEMA_DDL identity index includes user_id", () => {
-    expect(HOSTED_SCHEMA_DDL).toContain("idx_vault_identity");
-    expect(HOSTED_SCHEMA_DDL).toContain("user_id, kind, identity_key");
+  it("SCHEMA_DDL creates vault_vec virtual table", () => {
+    expect(SCHEMA_DDL).toContain("CREATE VIRTUAL TABLE IF NOT EXISTS vault_vec");
   });
 });
 
-// ─── initDatabase — fresh local DB ───────────────────────────────────────────
+// ─── initDatabase — fresh DB ──────────────────────────────────────────────────
 
-describe("initDatabase — local mode (default)", () => {
+describe("initDatabase", () => {
   let tmp, db;
 
   beforeEach(async () => {
@@ -114,7 +131,7 @@ describe("initDatabase — local mode (default)", () => {
     tmp.cleanup();
   });
 
-  it("creates local schema without hosted-only columns", () => {
+  it("creates schema without hosted-only columns", () => {
     const cols = getColumns(db);
     expect(cols).not.toContain("user_id");
     expect(cols).not.toContain("team_id");
@@ -124,7 +141,7 @@ describe("initDatabase — local mode (default)", () => {
     expect(cols).not.toContain("iv");
   });
 
-  it("includes all core local columns", () => {
+  it("includes all core columns", () => {
     const cols = getColumns(db);
     const expected = [
       "id",
@@ -152,8 +169,8 @@ describe("initDatabase — local mode (default)", () => {
     }
   });
 
-  it("sets version to CURRENT_VERSION (14)", () => {
-    expect(getVersion(db)).toBe(14);
+  it("sets version to CURRENT_VERSION (15)", () => {
+    expect(getVersion(db)).toBe(15);
   });
 
   it("does not create user or team indexes", () => {
@@ -165,7 +182,6 @@ describe("initDatabase — local mode (default)", () => {
   it("creates identity index without user_id", () => {
     const indexes = getIndexes(db);
     expect(indexes).toContain("idx_vault_identity");
-    // Verify the index definition does not reference user_id
     const indexDef = db
       .prepare(
         "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_vault_identity'",
@@ -174,16 +190,36 @@ describe("initDatabase — local mode (default)", () => {
     expect(indexDef.sql).not.toContain("user_id");
     expect(indexDef.sql).toContain("category = 'entity'");
   });
+
+  it("rebuilds an outdated schema (v13 → v15)", async () => {
+    const tmp2 = makeTmp();
+    try {
+      // Create a fresh DB and force version back to simulate outdated schema
+      const oldDb = await initDatabase(tmp2.dbPath);
+      oldDb.exec("PRAGMA user_version = 13");
+      oldDb.close();
+
+      // Re-open — migration should rebuild to v15
+      const newDb = await initDatabase(tmp2.dbPath);
+      expect(getVersion(newDb)).toBe(15);
+      const cols = getColumns(newDb);
+      expect(cols).toContain("id");
+      expect(cols).toContain("kind");
+      newDb.close();
+    } finally {
+      tmp2.cleanup();
+    }
+  });
 });
 
-// ─── initDatabase — fresh hosted DB ──────────────────────────────────────────
+// ─── prepareStatements ────────────────────────────────────────────────────────
 
-describe("initDatabase — hosted mode", () => {
+describe("prepareStatements", () => {
   let tmp, db;
 
   beforeEach(async () => {
     tmp = makeTmp();
-    db = await initDatabase(tmp.dbPath, { mode: "hosted" });
+    db = await initDatabase(tmp.dbPath);
   });
 
   afterEach(() => {
@@ -193,197 +229,28 @@ describe("initDatabase — hosted mode", () => {
     tmp.cleanup();
   });
 
-  it("creates hosted schema with all six hosted-only columns", () => {
-    const cols = getColumns(db);
-    expect(cols).toContain("user_id");
-    expect(cols).toContain("team_id");
-    expect(cols).toContain("body_encrypted");
-    expect(cols).toContain("title_encrypted");
-    expect(cols).toContain("meta_encrypted");
-    expect(cols).toContain("iv");
+  it("returns an object with insertEntry", () => {
+    const stmts = prepareStatements(db);
+    expect(stmts.insertEntry).toBeDefined();
   });
 
-  it("creates user and team indexes", () => {
-    const indexes = getIndexes(db);
-    expect(indexes).toContain("idx_vault_user");
-    expect(indexes).toContain("idx_vault_team");
+  it("returns an object with getEntryById", () => {
+    const stmts = prepareStatements(db);
+    expect(stmts.getEntryById).toBeDefined();
   });
 
-  it("creates identity index with user_id", () => {
-    const indexDef = db
-      .prepare(
-        "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_vault_identity'",
-      )
-      .get();
-    expect(indexDef.sql).toContain("user_id");
-    expect(indexDef.sql).not.toContain("category = 'entity'");
+  it("returns an object with deleteEntry", () => {
+    const stmts = prepareStatements(db);
+    expect(stmts.deleteEntry).toBeDefined();
   });
 
-  it("sets version to CURRENT_VERSION (14)", () => {
-    expect(getVersion(db)).toBe(14);
-  });
-});
-
-// ─── v13→v14 migration — local mode ──────────────────────────────────────────
-
-describe("v13→v14 migration — local mode drops hosted columns", () => {
-  let tmp;
-
-  afterEach(() => tmp.cleanup());
-
-  it("drops all six hosted-only columns from an existing v13 local vault", async () => {
-    tmp = makeTmp();
-    // Simulate a v13 hosted-schema vault (the old default)
-    const oldDb = await initDatabase(tmp.dbPath, { mode: "hosted" });
-    // Force version back to 13 so the migration re-runs
-    oldDb.exec("PRAGMA user_version = 13");
-    oldDb.close();
-
-    // Re-open in local mode — migration should drop hosted columns
-    const localDb = await initDatabase(tmp.dbPath, { mode: "local" });
-    const cols = getColumns(localDb);
-    expect(cols).not.toContain("user_id");
-    expect(cols).not.toContain("team_id");
-    expect(cols).not.toContain("body_encrypted");
-    expect(cols).not.toContain("title_encrypted");
-    expect(cols).not.toContain("meta_encrypted");
-    expect(cols).not.toContain("iv");
-    expect(getVersion(localDb)).toBe(14);
-    localDb.close();
+  it("returns an object with getByIdentityKey", () => {
+    const stmts = prepareStatements(db);
+    expect(stmts.getByIdentityKey).toBeDefined();
   });
 
-  it("drops user/team indexes and rebuilds identity index without user_id", async () => {
-    tmp = makeTmp();
-    const oldDb = await initDatabase(tmp.dbPath, { mode: "hosted" });
-    oldDb.exec("PRAGMA user_version = 13");
-    oldDb.close();
-
-    const localDb = await initDatabase(tmp.dbPath, { mode: "local" });
-    const indexes = getIndexes(localDb);
-    expect(indexes).not.toContain("idx_vault_user");
-    expect(indexes).not.toContain("idx_vault_team");
-    expect(indexes).toContain("idx_vault_identity");
-
-    const indexDef = localDb
-      .prepare(
-        "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_vault_identity'",
-      )
-      .get();
-    expect(indexDef.sql).not.toContain("user_id");
-    expect(indexDef.sql).toContain("category = 'entity'");
-    localDb.close();
-  });
-
-  it("preserves existing entry data when migrating hosted v13 → local v14", async () => {
-    tmp = makeTmp();
-    const oldDb = await initDatabase(tmp.dbPath, { mode: "hosted" });
-    // Insert a test entry via hosted insertEntry (with user_id)
-    oldDb
-      .prepare(
-        `INSERT INTO vault (id, user_id, kind, category, title, body, source, created_at, updated_at, tier)
-         VALUES (?, NULL, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)`,
-      )
-      .run(
-        "test-id-001",
-        "insight",
-        "knowledge",
-        "Migration test",
-        "Body text",
-        "test",
-        "working",
-      );
-    oldDb.exec("PRAGMA user_version = 13");
-    oldDb.close();
-
-    const localDb = await initDatabase(tmp.dbPath, { mode: "local" });
-    const row = localDb
-      .prepare("SELECT * FROM vault WHERE id = ?")
-      .get("test-id-001");
-    expect(row).toBeTruthy();
-    expect(row.kind).toBe("insight");
-    expect(row.title).toBe("Migration test");
-    // user_id column is gone
-    expect(row.user_id).toBeUndefined();
-    localDb.close();
-  });
-
-  it("hosted mode v13→v14 is a no-op — keeps all columns", async () => {
-    tmp = makeTmp();
-    const oldDb = await initDatabase(tmp.dbPath, { mode: "hosted" });
-    oldDb.exec("PRAGMA user_version = 13");
-    oldDb.close();
-
-    const hostedDb = await initDatabase(tmp.dbPath, { mode: "hosted" });
-    const cols = getColumns(hostedDb);
-    expect(cols).toContain("user_id");
-    expect(cols).toContain("team_id");
-    expect(cols).toContain("body_encrypted");
-    expect(getVersion(hostedDb)).toBe(14);
-    hostedDb.close();
-  });
-});
-
-// ─── prepareStatements — mode-aware ──────────────────────────────────────────
-
-describe("prepareStatements — mode selection", () => {
-  let tmp, localDb, hostedDb;
-
-  beforeEach(async () => {
-    tmp = makeTmp();
-    localDb = await initDatabase(tmp.dbPath);
-  });
-
-  afterEach(() => {
-    try {
-      localDb?.close();
-    } catch {}
-    try {
-      hostedDb?.close();
-    } catch {}
-    tmp.cleanup();
-  });
-
-  it("local mode stmts have _mode = 'local'", () => {
-    const stmts = prepareStatements(localDb, "local");
-    expect(stmts._mode).toBe("local");
-  });
-
-  it("hosted mode stmts have _mode = 'hosted'", async () => {
-    const tmp2 = makeTmp();
-    try {
-      hostedDb = await initDatabase(tmp2.dbPath, { mode: "hosted" });
-      const stmts = prepareStatements(hostedDb, "hosted");
-      expect(stmts._mode).toBe("hosted");
-    } finally {
-      try {
-        hostedDb?.close();
-      } catch {}
-      tmp2.cleanup();
-    }
-  });
-
-  it("local mode stmts have no insertEntryEncrypted", () => {
-    const stmts = prepareStatements(localDb, "local");
-    expect(stmts.insertEntryEncrypted).toBeUndefined();
-  });
-
-  it("hosted mode stmts have insertEntryEncrypted", async () => {
-    const tmp2 = makeTmp();
-    try {
-      hostedDb = await initDatabase(tmp2.dbPath, { mode: "hosted" });
-      const stmts = prepareStatements(hostedDb, "hosted");
-      expect(stmts.insertEntryEncrypted).toBeDefined();
-    } finally {
-      try {
-        hostedDb?.close();
-      } catch {}
-      tmp2.cleanup();
-    }
-  });
-
-  it("local insertEntry accepts 15 params (no user_id)", () => {
-    const stmts = prepareStatements(localDb, "local");
-    // Should not throw — verifies correct param count
+  it("insertEntry accepts 15 params (no user_id)", () => {
+    const stmts = prepareStatements(db);
     expect(() =>
       stmts.insertEntry.run(
         "test-local-01",
@@ -405,15 +272,15 @@ describe("prepareStatements — mode selection", () => {
     ).not.toThrow();
   });
 
-  it("local getByIdentityKey accepts 2 params (no user_id)", () => {
-    const stmts = prepareStatements(localDb, "local");
-    // Should not throw
+  it("getByIdentityKey accepts 2 params (kind, identity_key)", () => {
+    const stmts = prepareStatements(db);
     expect(() =>
       stmts.getByIdentityKey.get("insight", "some-key"),
     ).not.toThrow();
-    // Passing extra args throws in node:sqlite
-    expect(() =>
-      stmts.getByIdentityKey.get("insight", "some-key", null),
-    ).toThrow();
+  });
+
+  it("does not have insertEntryEncrypted (local-only schema)", () => {
+    const stmts = prepareStatements(db);
+    expect(stmts.insertEntryEncrypted).toBeUndefined();
   });
 });

@@ -18,10 +18,10 @@ import {
   resolveLinks,
   resolveBacklinks,
   collectLinkedEntries,
-} from "../../packages/core/src/core/linking.js";
+} from "../../packages/local/src/linking.js";
 
-import * as getContextTool from "../../packages/core/src/server/tools/get-context.js";
-import * as saveContextTool from "../../packages/core/src/server/tools/save-context.js";
+import * as getContextTool from "../../packages/local/src/tools/get-context.js";
+import * as saveContextTool from "../../packages/local/src/tools/save-context.js";
 
 const shared = { ensureIndexed: async () => {}, reindexFailed: false };
 

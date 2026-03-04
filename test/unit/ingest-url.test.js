@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   htmlToMarkdown,
   extractHtmlContent,
-} from "@context-vault/core/capture/ingest-url";
+} from "@context-vault/core/ingest-url";
 
 // ─── htmlToMarkdown ──────────────────────────────────────────────────────────
 

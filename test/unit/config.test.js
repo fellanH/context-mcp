@@ -7,7 +7,7 @@ describe("parseArgs", () => {
   let parseArgs;
 
   beforeEach(async () => {
-    ({ parseArgs } = await import("@context-vault/core/core/config"));
+    ({ parseArgs } = await import("@context-vault/core/config"));
   });
 
   it("returns empty object for no args", () => {
@@ -123,7 +123,7 @@ describe("resolveConfig", () => {
     }));
 
     // Re-import to pick up fresh mocks
-    const mod = await import("@context-vault/core/core/config");
+    const mod = await import("@context-vault/core/config");
     resolveConfig = mod.resolveConfig;
   });
 
@@ -228,24 +228,6 @@ describe("resolveConfig", () => {
     expect(cfg.eventDecayDays).toBe(30);
   });
 
-  it("hosted config fields are loaded from config file", () => {
-    const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
-    mockFiles[configPath] = JSON.stringify({
-      hostedUrl: "https://api.example.com",
-      apiKey: "sk-test-123",
-      userId: "user-abc",
-      email: "test@example.com",
-      linkedAt: "2026-01-01T00:00:00Z",
-    });
-
-    const cfg = resolveConfig();
-    expect(cfg.hostedUrl).toBe("https://api.example.com");
-    expect(cfg.apiKey).toBe("sk-test-123");
-    expect(cfg.userId).toBe("user-abc");
-    expect(cfg.email).toBe("test@example.com");
-    expect(cfg.linkedAt).toBe("2026-01-01T00:00:00Z");
-  });
-
   it("throws on invalid JSON config file", () => {
     const configPath = `${FAKE_HOME}/.context-mcp/config.json`;
     mockFiles[configPath] = "NOT VALID JSON {{{";
@@ -314,15 +296,6 @@ describe("resolveConfig", () => {
 
     const cfg = resolveConfig();
     expect(cfg.eventDecayDays).toBe(0);
-  });
-
-  it("hosted env overrides: CONTEXT_VAULT_API_KEY and CONTEXT_VAULT_HOSTED_URL", () => {
-    process.env.CONTEXT_VAULT_API_KEY = "sk-env-key";
-    process.env.CONTEXT_VAULT_HOSTED_URL = "https://env.example.com";
-
-    const cfg = resolveConfig();
-    expect(cfg.apiKey).toBe("sk-env-key");
-    expect(cfg.hostedUrl).toBe("https://env.example.com");
   });
 
   // --- Layer 4: CLI args ---

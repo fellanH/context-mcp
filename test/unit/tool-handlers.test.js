@@ -9,12 +9,12 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex } from "@context-vault/core/capture";
 
-import * as getContextTool from "../../packages/core/src/server/tools/get-context.js";
-import * as saveContextTool from "../../packages/core/src/server/tools/save-context.js";
-import * as deleteContextTool from "../../packages/core/src/server/tools/delete-context.js";
-import * as listContextTool from "../../packages/core/src/server/tools/list-context.js";
-import * as contextStatusTool from "../../packages/core/src/server/tools/context-status.js";
-import * as clearContextTool from "../../packages/core/src/server/tools/clear-context.js";
+import * as getContextTool from "../../packages/local/src/tools/get-context.js";
+import * as saveContextTool from "../../packages/local/src/tools/save-context.js";
+import * as deleteContextTool from "../../packages/local/src/tools/delete-context.js";
+import * as listContextTool from "../../packages/local/src/tools/list-context.js";
+import * as contextStatusTool from "../../packages/local/src/tools/context-status.js";
+import * as clearContextTool from "../../packages/local/src/tools/clear-context.js";
 
 const shared = { ensureIndexed: async () => {}, reindexFailed: false };
 
@@ -328,7 +328,7 @@ describe("save_context handler", () => {
 
 // ─── buildConflictCandidates (unit) ───────────────────────────────────────────
 
-import { buildConflictCandidates } from "../../packages/core/src/server/tools/save-context.js";
+import { buildConflictCandidates } from "../../packages/local/src/tools/save-context.js";
 
 describe("buildConflictCandidates", () => {
   const baseEntry = {
@@ -857,7 +857,7 @@ describe("get_context scope", () => {
 
 // ─── skeletonBody (unit) ──────────────────────────────────────────────────────
 
-import { skeletonBody } from "../../packages/core/src/server/tools/get-context.js";
+import { skeletonBody } from "../../packages/local/src/tools/get-context.js";
 
 describe("skeletonBody", () => {
   it("returns empty string for null/undefined body", () => {
@@ -1140,7 +1140,7 @@ describe("get_context detect_conflicts", () => {
 
 // ─── consolidation suggestions ────────────────────────────────────────────────
 
-import { detectConsolidationHints } from "../../packages/core/src/server/tools/get-context.js";
+import { detectConsolidationHints } from "../../packages/local/src/tools/get-context.js";
 
 describe("detectConsolidationHints", () => {
   let ctx, cleanup;

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex, updateEntryFile } from "@context-vault/core/capture";
 import { indexEntry } from "@context-vault/core/index";
-import { hybridSearch } from "@context-vault/core/retrieve";
+import { hybridSearch } from "@context-vault/core/search";
 
 describe("save → search → list → update → delete roundtrip", () => {
   let ctx, cleanup;

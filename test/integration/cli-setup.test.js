@@ -649,7 +649,7 @@ describe("seed entry searchability", () => {
 
   it("seed entry is findable via hybridSearch", async () => {
     const { captureAndIndex } = await import("@context-vault/core/capture");
-    const { hybridSearch } = await import("@context-vault/core/retrieve");
+    const { hybridSearch } = await import("@context-vault/core/search");
 
     // Write a seed-format entry
     const entry = {

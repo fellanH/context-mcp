@@ -7,7 +7,7 @@ import {
   buildFilterClauses,
   hybridSearch,
   dotProduct,
-} from "@context-vault/core/retrieve";
+} from "@context-vault/core/search";
 import { createTestCtx } from "../helpers/ctx.js";
 import { captureAndIndex } from "@context-vault/core/capture";
 
@@ -180,45 +180,15 @@ describe("buildFilterClauses", () => {
     expect(params).toContain("2026-12-31");
   });
 
-  it("adds userId filter", () => {
-    const { clauses, params } = buildFilterClauses({
-      userIdFilter: "user-123",
-    });
-    expect(clauses).toContain("e.user_id = ?");
-    expect(params).toContain("user-123");
-  });
-
-  it("adds teamId filter", () => {
-    const { clauses, params } = buildFilterClauses({
-      teamIdFilter: "team-456",
-    });
-    expect(clauses).toContain("e.team_id = ?");
-    expect(params).toContain("team-456");
-  });
-
   it("combines all filters", () => {
     const { clauses, params } = buildFilterClauses({
       categoryFilter: "entity",
       since: "2025-01-01",
       until: "2026-01-01",
-      userIdFilter: "u1",
-      teamIdFilter: "t1",
     });
-    // 5 explicit + 1 expiry + 1 superseded_by
-    expect(clauses).toHaveLength(7);
-    expect(params).toHaveLength(5);
-  });
-
-  it("skips falsy teamIdFilter", () => {
-    const { clauses } = buildFilterClauses({ teamIdFilter: null });
-    const teamClauses = clauses.filter((c) => c.includes("team_id"));
-    expect(teamClauses).toHaveLength(0);
-  });
-
-  it("includes userIdFilter even when value is null-ish string", () => {
-    // userIdFilter uses !== undefined check, so null should still be included
-    const { clauses } = buildFilterClauses({ userIdFilter: null });
-    expect(clauses).toContain("e.user_id = ?");
+    // 3 explicit + 1 expiry + 1 superseded_by
+    expect(clauses).toHaveLength(5);
+    expect(params).toHaveLength(3);
   });
 
   it("adds category exclusion when excludeEvents is true", () => {
