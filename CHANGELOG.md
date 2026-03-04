@@ -2,6 +2,31 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.1.0] — 2026-03-04
+
+### Added
+
+- `context-vault debug` CLI command — outputs a markdown diagnostic block for easy pasting into AI assistants
+- `errWithHint()` helper — error responses now include AI-assisted debugging prompts for common failure modes (VAULT_NOT_FOUND, SAVE_FAILED, DB_ERROR, TIMEOUT)
+- Startup error surfacing — fatal errors written to `.last-error` file, displayed in `context_status` output
+
+### Fixed
+
+- Harden all MCP tool handlers with try/catch — no more opaque protocol errors from unhandled exceptions
+- DB resilience: `PRAGMA busy_timeout = 3000` prevents lock contention errors; schema migration aborts safely if backup fails
+- Embedding resilience: failed embeddings log a warning and skip vec insert instead of crashing the save
+- `register-tools.js` returns clean `err()` responses instead of rethrowing unhandled exceptions
+- `delete-context.js` deletes DB record before file to prevent orphans
+- Node version guard updated from 20 to 22 to match `engines` field
+- Improved CLI top-level error output with error log path and AI debug prompt
+
+### Tests
+
+- Repaired entire test suite — all 20 suites, 478 tests passing (was 0/28 due to stale v3 imports)
+- Updated 16+ test files with correct v3 monorepo import paths
+- Removed 8 test files for deleted modules (consolidation, migrate-dirs, archive, session-end-hook, importers, path-guards, sync, portable-archive)
+- Removed hosted-mode test cases for features extracted to cloud tier
+
 ## [3.0.3] — 2026-03-04
 
 ### Fixed
