@@ -2,9 +2,9 @@
 
 // Node.js version guard — must run before any ESM imports
 const nodeVersion = parseInt(process.versions.node.split(".")[0], 10);
-if (nodeVersion < 20) {
+if (nodeVersion < 22) {
   process.stderr.write(
-    `\ncontext-vault requires Node.js >= 20 (you have ${process.versions.node}).\n` +
+    `\ncontext-vault requires Node.js >= 22 (you have ${process.versions.node}).\n` +
       `Install a newer version: https://nodejs.org/\n\n`,
   );
   process.exit(1);
@@ -303,6 +303,7 @@ ${bold("Commands:")}
   ${cyan("health")}                     Quick health check — vault, DB, entry count
   ${cyan("status")}                     Show vault diagnostics
   ${cyan("doctor")}                     Diagnose and repair common issues
+  ${cyan("debug")}                      Generate AI-pasteable debug report
   ${cyan("restart")}                    Stop running MCP server processes (client auto-restarts)
   ${cyan("search")}                     Search vault entries from CLI
   ${cyan("save")}                       Save an entry to the vault from CLI
@@ -5279,6 +5280,86 @@ async function runConsolidate() {
   console.log();
 }
 
+async function runDebug() {
+  const { resolveConfig } = await import("@context-vault/core/config");
+  const { errorLogPath, errorLogCount } = await import("../src/error-log.js");
+
+  let config;
+  try {
+    config = resolveConfig();
+  } catch {
+    config = null;
+  }
+
+  const dataDir = config?.dataDir || join(HOME, ".context-mcp");
+  const vaultDir = config?.vaultDir || join(HOME, "vault");
+  const dbPath = config?.dbPath || join(dataDir, "vault.db");
+  const configPath = config?.configPath || join(dataDir, "config.json");
+
+  const vaultExists = existsSync(vaultDir);
+  let vaultWritable = false;
+  if (vaultExists) {
+    try {
+      const probe = join(vaultDir, ".write-probe");
+      writeFileSync(probe, "");
+      unlinkSync(probe);
+      vaultWritable = true;
+    } catch {}
+  }
+
+  let dbAccessible = false;
+  let dbEntryCount = "n/a";
+  try {
+    const { initDatabase } = await import("@context-vault/core/db");
+    const db = await initDatabase(dbPath);
+    dbEntryCount = db.prepare("SELECT COUNT(*) as c FROM vault").get().c;
+    db.close();
+    dbAccessible = true;
+  } catch {}
+
+  const logCount = errorLogCount(dataDir);
+  const logPath = errorLogPath(dataDir);
+  let lastLogLines = [];
+  if (logCount > 0) {
+    try {
+      const lines = readFileSync(logPath, "utf-8")
+        .split("\n")
+        .filter((l) => l.trim());
+      lastLogLines = lines.slice(-5);
+    } catch {}
+  }
+
+  const lines = [
+    "```",
+    `context-vault debug report`,
+    `Generated: ${new Date().toISOString()}`,
+    ``,
+    `Node.js:    ${process.versions.node} (${process.execPath})`,
+    `Platform:   ${process.platform} ${process.arch}`,
+    `cv version: ${VERSION}`,
+    ``,
+    `Config:     ${configPath} (${existsSync(configPath) ? "found" : "missing"})`,
+    `Vault dir:  ${vaultDir} (${vaultExists ? "exists" : "missing"}${vaultExists ? `, writable: ${vaultWritable}` : ""})`,
+    `DB path:    ${dbPath} (${existsSync(dbPath) ? "exists" : "missing"})`,
+    `DB access:  ${dbAccessible ? `ok (${dbEntryCount} entries)` : "failed"}`,
+    ``,
+    `Error log:  ${logPath} (${logCount} entries)`,
+  ];
+
+  if (lastLogLines.length) {
+    lines.push(``, `Last 5 error log entries:`);
+    for (const l of lastLogLines) lines.push(`  ${l}`);
+  }
+
+  lines.push("```");
+  lines.push(
+    ``,
+    `Paste the above into Claude Code or your AI assistant to diagnose issues.`,
+  );
+
+  console.log(lines.join("\n"));
+}
+
 async function runServe() {
   await import("../src/server.js");
 }
@@ -5398,6 +5479,9 @@ async function main() {
     case "consolidate":
       await runConsolidate();
       break;
+    case "debug":
+      await runDebug();
+      break;
     default:
       console.error(red(`Unknown command: ${command}`));
       console.error(`Run ${cyan("context-vault --help")} for usage.`);
@@ -5406,6 +5490,15 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(red(e.message));
+  const dataDir = join(HOME, ".context-mcp");
+  const logPath = join(dataDir, "error.log");
+  console.error(red(`Error: ${e.message}`));
+  console.error(dim(`Error log: ${logPath}`));
+  console.error(dim(`Run: context-vault doctor`));
+  console.error(
+    dim(
+      `Debug with AI: "context-vault exited with: ${e.message} — how do I fix this?"`,
+    ),
+  );
   process.exit(1);
 });

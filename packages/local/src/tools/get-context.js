@@ -416,16 +416,7 @@ export async function handler(
   if (identity_key) {
     if (!kindFilter)
       return err("identity_key requires kind to be specified", "INVALID_INPUT");
-    // Local mode: getByIdentityKey takes 2 params (no user_id).
-    // Hosted mode: 3 params — (kind, identity_key).
-    const match =
-      ctx.stmts._mode === "local"
-        ? ctx.stmts.getByIdentityKey.get(kindFilter, identity_key)
-        : ctx.stmts.getByIdentityKey.get(
-            kindFilter,
-            identity_key,
-            null,
-          );
+    const match = ctx.stmts.getByIdentityKey.get(kindFilter, identity_key);
     if (match) {
       const entryTags = match.tags ? JSON.parse(match.tags) : [];
       const tagStr = entryTags.length ? entryTags.join(", ") : "none";

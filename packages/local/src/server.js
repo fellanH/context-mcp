@@ -221,6 +221,13 @@ async function main() {
       phase,
     };
     appendErrorLog(dataDir, logEntry);
+    try {
+      mkdirSync(dataDir, { recursive: true });
+      writeFileSync(
+        join(dataDir, ".last-error"),
+        `${logEntry.timestamp} [${phase}] ${err.message}`,
+      );
+    } catch {}
 
     sendTelemetryEvent(config, {
       event: "startup_error",

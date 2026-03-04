@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(
-  readFileSync(join(__dirname, "..", "..", "package.json"), "utf-8"),
+  readFileSync(join(__dirname, "..", "package.json"), "utf-8"),
 );
 
 export function ok(text) {
@@ -26,11 +26,19 @@ export function err(text, code = "UNKNOWN", meta = {}) {
   };
 }
 
+export function errWithHint(text, code, hint) {
+  const prompt = hint
+    ? `\n\n**Debug with AI:** Paste this into Claude Code or your AI assistant:\n> "${hint}"`
+    : "";
+  return err(text + prompt, code);
+}
+
 export function ensureVaultExists(config) {
   if (!config.vaultDirExists) {
-    return err(
+    return errWithHint(
       `Vault directory not found: ${config.vaultDir}. Run context-status for diagnostics.`,
       "VAULT_NOT_FOUND",
+      "My context-vault can't find the vault directory. Run `context-vault doctor` and help me fix it.",
     );
   }
   return null;
