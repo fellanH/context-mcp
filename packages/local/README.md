@@ -10,12 +10,15 @@ Persistent memory for AI agents — saves and searches knowledge across sessions
 ## Quick Start
 
 ```bash
-npx context-vault
+npm install -g context-vault
+context-vault setup
 ```
 
-One command — no global install required. Setup detects your AI tools (Claude Code, Codex, Claude Desktop, Cursor, Windsurf, Cline, and more), downloads the embedding model (~22MB), seeds your vault, and configures MCP.
+Setup detects your AI tools (Claude Code, Codex, Claude Desktop, Cursor, Windsurf, Cline, and more), downloads the embedding model (~22MB), seeds your vault, and configures MCP.
 
 Then open your AI tool and try: **"Search my vault for getting started"**
+
+> **Quick try without installing?** `npx context-vault` works too, but a global install is recommended for reliable MCP server startup.
 
 ## What It Does
 
@@ -73,7 +76,7 @@ Claude Code exposes shell hooks that fire on session events. context-vault integ
         "hooks": [
           {
             "type": "command",
-            "command": "npx context-vault flush",
+            "command": "context-vault flush",
             "timeout": 10
           }
         ]
