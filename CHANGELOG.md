@@ -2,6 +2,14 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.1.2] — 2026-03-05
+
+### Fixed
+
+- `setup` now detects stale tool configs using hardcoded Node.js paths and offers to auto-repair them
+- `doctor` flags stale MCP configs with `!` warning instead of showing them as healthy
+- Updated READMEs to recommend `npm install -g context-vault` as primary install command
+
 ## [3.1.1] — 2026-03-05
 
 ### Fixed

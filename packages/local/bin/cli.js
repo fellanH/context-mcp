@@ -379,6 +379,45 @@ async function runSetup() {
         green(`  ✓ context-vault v${VERSION} is up to date`) +
           dim(`  (vault: ${existingVault})`),
       );
+
+      // Check for stale tool configs using hardcoded node paths
+      const staleConfigs = findStaleToolConfigs();
+      if (staleConfigs.length > 0) {
+        console.log();
+        console.log(
+          yellow(`  ! ${staleConfigs.length} tool config(s) using legacy hardcoded paths`),
+        );
+        for (const s of staleConfigs) {
+          console.log(dim(`    ${s.name}: ${s.command}`));
+        }
+        console.log();
+        const fix = await prompt(
+          `  Auto-fix to use context-vault binary? (Y/n):`,
+          "Y",
+        );
+        if (fix.toLowerCase() !== "n") {
+          let customVaultDir = null;
+          try {
+            const cfg = JSON.parse(readFileSync(existingConfig, "utf-8"));
+            const defaultVDir = join(HOME, "vault");
+            if (cfg.vaultDir && resolve(cfg.vaultDir) !== resolve(defaultVDir)) {
+              customVaultDir = cfg.vaultDir;
+            }
+          } catch {}
+          for (const s of staleConfigs) {
+            try {
+              repairToolConfig(s, customVaultDir);
+              console.log(`  ${green("+")} ${s.name} — fixed`);
+            } catch (e) {
+              console.log(`  ${red("x")} ${s.name} — ${e.message}`);
+            }
+          }
+          console.log();
+          console.log(green("  ✓ Tool configs updated."));
+          console.log(dim("  Restart your AI tools to apply the changes."));
+        }
+      }
+
       console.log();
       return;
     }
@@ -1193,6 +1232,77 @@ async function configureCodex(tool, vaultDir) {
     const stderr = e.stderr?.toString().trim();
     throw new Error(stderr || e.message);
   }
+}
+
+function findStaleToolConfigs() {
+  const stale = [];
+
+  // Check Claude Code (~/.claude.json)
+  const claudePath = join(HOME, ".claude.json");
+  if (existsSync(claudePath)) {
+    try {
+      const cfg = JSON.parse(readFileSync(claudePath, "utf-8"));
+      const srv = cfg?.mcpServers?.["context-vault"];
+      if (srv && srv.command !== "context-vault" && srv.command !== "npx") {
+        stale.push({
+          name: "Claude Code",
+          id: "claude-code",
+          configType: "cli",
+          configPath: claudePath,
+          command: [srv.command, ...(srv.args || [])].join(" "),
+        });
+      }
+    } catch {}
+  }
+
+  // Check JSON-configured tools
+  for (const tool of TOOLS.filter((t) => t.configType === "json")) {
+    const cfgPath = tool.configPath;
+    if (!cfgPath || !existsSync(cfgPath)) continue;
+    try {
+      const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
+      const srv = cfg?.[tool.configKey]?.["context-vault"];
+      if (srv && srv.command !== "context-vault" && srv.command !== "npx") {
+        stale.push({
+          name: tool.name,
+          id: tool.id,
+          configType: "json",
+          configPath: cfgPath,
+          configKey: tool.configKey,
+          command: [srv.command, ...(srv.args || [])].join(" "),
+        });
+      }
+    } catch {}
+  }
+
+  return stale;
+}
+
+function repairToolConfig(staleEntry, vaultDir) {
+  const serverArgs = ["serve"];
+  if (vaultDir) serverArgs.push("--vault-dir", vaultDir);
+  const newConfig = { command: "context-vault", args: serverArgs };
+
+  if (staleEntry.id === "claude-code") {
+    // Use `claude mcp remove` + `claude mcp add`
+    try {
+      execFileSync("claude", ["mcp", "remove", "context-vault"], {
+        stdio: "pipe",
+      });
+    } catch {}
+    execFileSync(
+      "claude",
+      ["mcp", "add", "context-vault", "--", "context-vault", ...serverArgs],
+      { stdio: "pipe" },
+    );
+    return;
+  }
+
+  // JSON config tools
+  const cfgPath = staleEntry.configPath;
+  const cfg = JSON.parse(readFileSync(cfgPath, "utf-8"));
+  cfg[staleEntry.configKey]["context-vault"] = newConfig;
+  writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 }
 
 function configureJsonTool(tool, vaultDir) {
@@ -4729,6 +4839,8 @@ async function runDoctor() {
   console.log(bold("  Tool Configurations"));
   let anyToolConfigured = false;
 
+  const isStaleCmd = (cmd) => cmd !== "context-vault" && cmd !== "npx";
+
   // Check Claude Code
   const claudeConfigPath = join(HOME, ".claude.json");
   if (existsSync(claudeConfigPath)) {
@@ -4738,7 +4850,13 @@ async function runDoctor() {
       if (servers["context-vault"]) {
         const srv = servers["context-vault"];
         const cmd = [srv.command, ...(srv.args || [])].join(" ");
-        console.log(`  ${green("+")} Claude Code: ${dim(cmd)}`);
+        if (isStaleCmd(srv.command)) {
+          console.log(`  ${yellow("!")} Claude Code: ${dim(cmd)}`);
+          console.log(`    ${dim("Fix: run context-vault setup to update")}`);
+          allOk = false;
+        } else {
+          console.log(`  ${green("+")} Claude Code: ${dim(cmd)}`);
+        }
         anyToolConfigured = true;
       } else {
         console.log(`  ${dim("-")} Claude Code: not configured`);
@@ -4764,7 +4882,13 @@ async function runDoctor() {
       if (servers["context-vault"]) {
         const srv = servers["context-vault"];
         const cmd = [srv.command, ...(srv.args || [])].join(" ");
-        console.log(`  ${green("+")} ${tool.name}: ${dim(cmd)}`);
+        if (isStaleCmd(srv.command)) {
+          console.log(`  ${yellow("!")} ${tool.name}: ${dim(cmd)}`);
+          console.log(`    ${dim("Fix: run context-vault setup to update")}`);
+          allOk = false;
+        } else {
+          console.log(`  ${green("+")} ${tool.name}: ${dim(cmd)}`);
+        }
         anyToolConfigured = true;
       } else if (servers["context-mcp"]) {
         console.log(
