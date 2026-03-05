@@ -375,26 +375,6 @@ async function runSetup() {
     } catch {}
 
     if (latestVersion === VERSION) {
-      // Even when "up to date", ensure the launcher points to a valid server
-      const dataDir = join(HOME, ".context-mcp");
-      const launcherPath = join(dataDir, "server.mjs");
-      let launcherOk = false;
-      if (existsSync(launcherPath)) {
-        const content = readFileSync(launcherPath, "utf-8");
-        const m = content.match(/import "(.+?)"/);
-        if (m && existsSync(m[1])) launcherOk = true;
-      }
-      if (!launcherOk && !isNpx()) {
-        mkdirSync(dataDir, { recursive: true });
-        writeFileSync(launcherPath, `import "${SERVER_PATH}";\n`);
-        console.log(
-          green(`  ✓ context-vault v${VERSION} is up to date`) +
-            dim(`  (vault: ${existingVault})`),
-        );
-        console.log(dim(`  ↳ Repaired server launcher → ${SERVER_PATH}`));
-        console.log();
-        return;
-      }
       console.log(
         green(`  ✓ context-vault v${VERSION} is up to date`) +
           dim(`  (vault: ${existingVault})`),
@@ -513,12 +493,12 @@ async function runSetup() {
   if (detected.length === 0) {
     console.log(yellow("  No supported tools detected.\n"));
     console.log("  To manually configure, add to your tool's MCP config:\n");
-    if (isInstalledPackage()) {
+    if (isInstalledPackage() || isNpx()) {
       console.log(`  ${dim("{")}
     ${dim('"mcpServers": {')}
       ${dim('"context-vault": {')}
-        ${dim('"command": "npx",')}
-        ${dim(`"args": ["-y", "context-vault", "serve", "--vault-dir", "/path/to/vault"]`)}
+        ${dim('"command": "context-vault",')}
+        ${dim(`"args": ["serve", "--vault-dir", "/path/to/vault"]`)}
       ${dim("}")}
     ${dim("}")}
   ${dim("}")}\n`);
@@ -664,11 +644,6 @@ async function runSetup() {
   // Ensure data dir exists for DB storage
   const dataDir = join(HOME, ".context-mcp");
   mkdirSync(dataDir, { recursive: true });
-
-  // Keep server.mjs launcher up to date so it always resolves to the current installation
-  if (isInstalledPackage()) {
-    writeFileSync(join(dataDir, "server.mjs"), `import "${SERVER_PATH}";\n`);
-  }
 
   // Write config.json to data dir (persistent, survives reinstalls)
   const configPath = join(dataDir, "config.json");
@@ -1137,11 +1112,25 @@ async function configureClaude(tool, vaultDir) {
         ],
         { stdio: "pipe", env },
       );
+    } else if (isInstalledPackage()) {
+      const serverArgs = ["serve"];
+      if (vaultDir) serverArgs.push("--vault-dir", vaultDir);
+      execFileSync(
+        "claude",
+        [
+          "mcp",
+          "add",
+          "-s",
+          "user",
+          "context-vault",
+          "--",
+          "context-vault",
+          ...serverArgs,
+        ],
+        { stdio: "pipe", env },
+      );
     } else {
-      const serverPath = isInstalledPackage()
-        ? join(HOME, ".context-mcp", "server.mjs")
-        : SERVER_PATH;
-      const nodeArgs = [serverPath];
+      const nodeArgs = [SERVER_PATH];
       if (vaultDir) nodeArgs.push("--vault-dir", vaultDir);
       execFileSync(
         "claude",
@@ -1183,11 +1172,16 @@ async function configureCodex(tool, vaultDir) {
         ["mcp", "add", "context-vault", "--", "npx", ...serverArgs],
         { stdio: "pipe" },
       );
+    } else if (isInstalledPackage()) {
+      const serverArgs = ["serve"];
+      if (vaultDir) serverArgs.push("--vault-dir", vaultDir);
+      execFileSync(
+        "codex",
+        ["mcp", "add", "context-vault", "--", "context-vault", ...serverArgs],
+        { stdio: "pipe" },
+      );
     } else {
-      const serverPath = isInstalledPackage()
-        ? join(HOME, ".context-mcp", "server.mjs")
-        : SERVER_PATH;
-      const nodeArgs = [serverPath];
+      const nodeArgs = [SERVER_PATH];
       if (vaultDir) nodeArgs.push("--vault-dir", vaultDir);
       execFileSync(
         "codex",
@@ -1237,13 +1231,11 @@ function configureJsonTool(tool, vaultDir) {
       env: { NODE_OPTIONS: "--no-warnings=ExperimentalWarning" },
     };
   } else if (isInstalledPackage()) {
-    const launcherPath = join(HOME, ".context-mcp", "server.mjs");
-    const serverArgs = [];
+    const serverArgs = ["serve"];
     if (vaultDir) serverArgs.push("--vault-dir", vaultDir);
     config[tool.configKey]["context-vault"] = {
-      command: process.execPath,
-      args: [launcherPath, ...serverArgs],
-      env: { NODE_OPTIONS: "--no-warnings=ExperimentalWarning" },
+      command: "context-vault",
+      args: serverArgs,
     };
   } else {
     const serverArgs = [SERVER_PATH];
@@ -1598,13 +1590,6 @@ async function runSwitch() {
   const { detected } = await detectAllTools();
 
   if (target === "local") {
-    const launcherPath = join(dataDir, "server.mjs");
-    if (!existsSync(launcherPath)) {
-      const serverAbs = resolve(ROOT, "src", "server.js");
-      mkdirSync(dataDir, { recursive: true });
-      writeFileSync(launcherPath, `import "${serverAbs}";\n`);
-    }
-
     vaultConfig.mode = "local";
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + "\n");
@@ -1636,7 +1621,7 @@ async function runSwitch() {
     }
     console.log();
     console.log(green("  ✓ Switched to local mode."));
-    console.log(dim(`  Server: node ${launcherPath}`));
+    console.log(dim(`  Server: context-vault serve`));
     console.log();
   } else {
     const hostedUrl = getFlag("--url") || vaultConfig.hostedUrl || API_URL;
@@ -2044,8 +2029,7 @@ async function runStatus() {
         const email = raw.email ? ` · ${raw.email}` : "";
         modeDetail = ` (${raw.hostedUrl}${email})`;
       } else {
-        const launcherPath = join(HOME, ".context-mcp", "server.mjs");
-        modeDetail = ` (node ${launcherPath})`;
+        modeDetail = ` (context-vault serve)`;
       }
     } catch {}
   }
@@ -4687,33 +4671,32 @@ async function runDoctor() {
       db?.close();
     } catch {}
 
-    // ── Launcher (server.mjs) ─────────────────────────────────────────────
-    const launcherPath = join(HOME, ".context-mcp", "server.mjs");
-    if (existsSync(launcherPath)) {
-      const launcherContent = readFileSync(launcherPath, "utf-8");
-      const match = launcherContent.match(/import "(.+?)"/);
-      if (match) {
-        const serverEntryPath = match[1];
-        if (existsSync(serverEntryPath)) {
-          console.log(
-            `  ${green("✓")} Launcher ${dim(`→ ${serverEntryPath}`)}`,
-          );
-        } else {
-          console.log(
-            `  ${red("✘")} Launcher points to missing server: ${serverEntryPath}`,
-          );
-          console.log(
-            `    ${dim("Fix: run context-vault setup to reinstall")}`,
-          );
-          allOk = false;
-        }
-      } else {
-        console.log(`  ${green("✓")} Launcher exists ${dim(launcherPath)}`);
-      }
-    } else {
-      console.log(`  ${yellow("!")} Launcher not found at ${launcherPath}`);
-      console.log(`    ${dim("Fix: run context-vault setup")}`);
+    // ── CLI binary ──────────────────────────────────────────────────────
+    try {
+      const binVersion = execSync("context-vault --version", {
+        encoding: "utf-8",
+        timeout: 5000,
+      }).trim();
+      console.log(
+        `  ${green("✓")} CLI binary ${dim(`(${binVersion})`)}`,
+      );
+    } catch {
+      console.log(
+        `  ${red("✘")} CLI binary not found in PATH`,
+      );
+      console.log(
+        `    ${dim("Fix: npm install -g context-vault")}`,
+      );
       allOk = false;
+    }
+
+    // Clean up legacy launcher if it exists
+    const legacyLauncher = join(HOME, ".context-mcp", "server.mjs");
+    if (existsSync(legacyLauncher)) {
+      try {
+        unlinkSync(legacyLauncher);
+        console.log(`  ${green("✓")} Removed legacy launcher ${dim(legacyLauncher)}`);
+      } catch {}
     }
 
     // ── Error log ─────────────────────────────────────────────────────────

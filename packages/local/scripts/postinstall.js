@@ -6,11 +6,11 @@
  * 1. Installs @huggingface/transformers with --ignore-scripts to avoid sharp's
  *    broken install lifecycle in global contexts.  Semantic search degrades
  *    gracefully if this step fails.
- * 2. Writes local server launcher (global installs only).
+ * 2. Ensures data directory exists.
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -51,18 +51,9 @@ async function main() {
     }
   }
 
-  // ── 2. Write local server launcher (global installs only) ────────────
-  // Under npx the path would be stale after cache eviction — configs use
-  // `npx context-vault serve` instead, so skip writing the launcher.
-  const isNpx = PKG_ROOT.includes("/_npx/") || PKG_ROOT.includes("\\_npx\\");
-  if (!isNpx) {
-    const SERVER_ABS = join(PKG_ROOT, "src", "server.js");
-    const DATA_DIR = join(homedir(), ".context-mcp");
-    const LAUNCHER = join(DATA_DIR, "server.mjs");
-    mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(LAUNCHER, `import "${SERVER_ABS}";\n`);
-    console.log("[context-vault] Local server launcher written to " + LAUNCHER);
-  }
+  // ── 2. Ensure data dir exists ────────────────────────────────────────
+  const DATA_DIR = join(homedir(), ".context-mcp");
+  mkdirSync(DATA_DIR, { recursive: true });
 }
 
 main().catch(() => {});

@@ -2,6 +2,14 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.1.1] — 2026-03-05
+
+### Fixed
+
+- MCP config now uses `context-vault serve` binary instead of hardcoded `process.execPath` + launcher indirection — survives Node.js version upgrades and avoids stale path issues
+- Removed fragile `server.mjs` launcher pattern from setup, postinstall, and switch commands
+- `doctor` command now verifies CLI binary is in PATH and cleans up legacy `server.mjs` launchers
+
 ## [3.1.0] — 2026-03-04
 
 ### Added
