@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.1.3] — 2026-03-06
+
+### Fixed
+
+- Removed TypeScript type annotations from `linking.js`, `telemetry.js`, and `temporal.js` — plain `.js` files with TS syntax caused `SyntaxError: Unexpected token '{'` when running `context-vault serve`
+
 ## [3.1.2] — 2026-03-05
 
 ### Fixed
