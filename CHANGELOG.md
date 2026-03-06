@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.1.4] — 2026-03-06
+
+### Fixed
+
+- `server.js` and `register-tools.js` used incorrect `../../package.json` path that resolved outside the package root in global installs — corrected to `../package.json`
+
 ## [3.1.3] — 2026-03-06
 
 ### Fixed
