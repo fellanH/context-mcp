@@ -1,20 +1,15 @@
-import type { DatabaseSync } from "node:sqlite";
-
-export function parseRelatedTo(raw: string | null | undefined): string[] {
+export function parseRelatedTo(raw) {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((id: unknown) => typeof id === "string" && (id as string).trim());
+    return parsed.filter((id) => typeof id === "string" && id.trim());
   } catch {
     return [];
   }
 }
 
-export function resolveLinks(
-  db: DatabaseSync,
-  ids: string[],
-): Record<string, unknown>[] {
+export function resolveLinks(db, ids) {
   if (!ids.length) return [];
   const unique = [...new Set(ids)];
   const placeholders = unique.map(() => "?").join(",");
@@ -26,16 +21,13 @@ export function resolveLinks(
            AND (expires_at IS NULL OR expires_at > datetime('now'))
            AND superseded_by IS NULL`,
       )
-      .all(...unique) as unknown as Record<string, unknown>[];
+      .all(...unique);
   } catch {
     return [];
   }
 }
 
-export function resolveBacklinks(
-  db: DatabaseSync,
-  entryId: string,
-): Record<string, unknown>[] {
+export function resolveBacklinks(db, entryId) {
   if (!entryId) return [];
   const likePattern = `%"${entryId}"%`;
   try {
@@ -46,36 +38,33 @@ export function resolveBacklinks(
            AND (expires_at IS NULL OR expires_at > datetime('now'))
            AND superseded_by IS NULL`,
       )
-      .all(likePattern) as unknown as Record<string, unknown>[];
+      .all(likePattern);
   } catch {
     return [];
   }
 }
 
-export function collectLinkedEntries(
-  db: DatabaseSync,
-  primaryEntries: Record<string, unknown>[],
-): { forward: Record<string, unknown>[]; backward: Record<string, unknown>[] } {
-  const primaryIds = new Set(primaryEntries.map((e) => e.id as string));
+export function collectLinkedEntries(db, primaryEntries) {
+  const primaryIds = new Set(primaryEntries.map((e) => e.id));
 
-  const forwardIds: string[] = [];
+  const forwardIds = [];
   for (const entry of primaryEntries) {
-    const ids = parseRelatedTo(entry.related_to as string);
+    const ids = parseRelatedTo(entry.related_to);
     for (const id of ids) {
       if (!primaryIds.has(id)) forwardIds.push(id);
     }
   }
   const forwardEntries = resolveLinks(db, forwardIds).filter(
-    (e) => !primaryIds.has(e.id as string),
+    (e) => !primaryIds.has(e.id),
   );
 
-  const backwardSeen = new Set<string>();
-  const backwardEntries: Record<string, unknown>[] = [];
+  const backwardSeen = new Set();
+  const backwardEntries = [];
   for (const entry of primaryEntries) {
-    const backlinks = resolveBacklinks(db, entry.id as string);
+    const backlinks = resolveBacklinks(db, entry.id);
     for (const bl of backlinks) {
-      if (!primaryIds.has(bl.id as string) && !backwardSeen.has(bl.id as string)) {
-        backwardSeen.add(bl.id as string);
+      if (!primaryIds.has(bl.id) && !backwardSeen.has(bl.id)) {
+        backwardSeen.add(bl.id);
         backwardEntries.push(bl);
       }
     }
@@ -84,7 +73,7 @@ export function collectLinkedEntries(
   return { forward: forwardEntries, backward: backwardEntries };
 }
 
-export function validateRelatedTo(relatedTo: unknown): string | null {
+export function validateRelatedTo(relatedTo) {
   if (relatedTo === undefined || relatedTo === null) return null;
   if (!Array.isArray(relatedTo))
     return "related_to must be an array of entry IDs";

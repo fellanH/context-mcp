@@ -1,22 +1,18 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_URL, MARKETING_URL, GITHUB_ISSUES_URL } from "@context-vault/core/constants";
-import type { VaultConfig } from "@context-vault/core/types";
 
 const TELEMETRY_ENDPOINT = `${API_URL}/telemetry`;
 const NOTICE_MARKER = ".telemetry-notice-shown";
 const FEEDBACK_PROMPT_MARKER = ".feedback-prompt-shown";
 
-export function isTelemetryEnabled(config: VaultConfig | undefined): boolean {
+export function isTelemetryEnabled(config) {
   const envVal = process.env.CONTEXT_VAULT_TELEMETRY;
   if (envVal !== undefined) return envVal === "1" || envVal === "true";
   return config?.telemetry === true;
 }
 
-export function sendTelemetryEvent(
-  config: VaultConfig | undefined,
-  payload: { event: string; code?: string | null; tool?: string | null; cv_version: string },
-): void {
+export function sendTelemetryEvent(config, payload) {
   if (!isTelemetryEnabled(config)) return;
 
   const event = {
@@ -38,7 +34,7 @@ export function sendTelemetryEvent(
   }).catch(() => {});
 }
 
-export function maybeShowTelemetryNotice(dataDir: string): void {
+export function maybeShowTelemetryNotice(dataDir) {
   try {
     const markerPath = join(dataDir, NOTICE_MARKER);
     if (existsSync(markerPath)) return;
@@ -60,7 +56,7 @@ export function maybeShowTelemetryNotice(dataDir: string): void {
   }
 }
 
-export function maybeShowFeedbackPrompt(dataDir: string): void {
+export function maybeShowFeedbackPrompt(dataDir) {
   try {
     const markerPath = join(dataDir, FEEDBACK_PROMPT_MARKER);
     if (existsSync(markerPath)) return;
