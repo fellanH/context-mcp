@@ -2,6 +2,17 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.1.5] — 2026-03-07
+
+### Fixed
+
+- Fixed TypeScript build error in `search.ts` — narrowed `buildFilterClauses` return type from `unknown[]` to `(string | number | null)[]` for proper SQLite param type safety
+- Fixed indentation in `context-status.js` handler
+
+### Changed
+
+- Formatted codebase with consistent line-wrapping and argument-per-line style across core and local packages
+
 ## [3.1.4] — 2026-03-06
 
 ### Fixed
