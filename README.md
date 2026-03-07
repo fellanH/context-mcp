@@ -48,16 +48,38 @@ You’re done. The vault lives at `~/vault/` — plain markdown files you own.
 
 Your AI agent uses these automatically — you don’t call them directly.
 
-| Tool             | Description                        |
-| ---------------- | ---------------------------------- |
-| `get_context`    | Search vault (hybrid FTS + vector) |
-| `save_context`   | Save or update entries             |
-| `list_context`   | Browse with filters                |
-| `delete_context` | Remove by ID                       |
-| `ingest_url`     | Fetch URL, extract, save           |
-| `context_status` | Health and config                  |
+**Core**
 
-Kinds: `insight` · `decision` · `pattern` · `reference` · `contact` — derived from vault subdirectory names.
+| Tool             | Description                                               |
+| ---------------- | --------------------------------------------------------- |
+| `get_context`    | Search vault — hybrid full-text + semantic vector search  |
+| `save_context`   | Save or update entries (insights, decisions, patterns...) |
+| `list_context`   | Browse entries with filters (kind, tags, date range)      |
+| `delete_context` | Remove an entry by ID                                     |
+
+**Ingest**
+
+| Tool              | Description                                                                |
+| ----------------- | -------------------------------------------------------------------------- |
+| `ingest_url`      | Fetch a URL, extract readable content, save as a vault entry               |
+| `ingest_project`  | Scan a local project directory — extracts metadata and creates a bucket    |
+
+**Session**
+
+| Tool               | Description                                                                      |
+| ------------------ | -------------------------------------------------------------------------------- |
+| `session_start`    | Auto-assemble a context brief on session start — recent entries, decisions, blockers |
+| `clear_context`    | Reset in-memory session scope without deleting entries                            |
+| `create_snapshot`  | Compile vault entries on a topic into a single structured brief                   |
+
+**System**
+
+| Tool             | Description                                                        |
+| ---------------- | ------------------------------------------------------------------ |
+| `context_status` | Vault health — config, file counts, database size, issues          |
+| `list_buckets`   | List all registered buckets (named scopes for grouping entries)    |
+
+Kinds: `insight` · `decision` · `pattern` · `reference` · `contact` — or any custom kind. Derived from vault subdirectory names.
 
 ## CLI Reference
 
