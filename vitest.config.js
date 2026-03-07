@@ -3,7 +3,8 @@ import { transformWithEsbuild } from "vite";
 
 // packages/local/src ships TypeScript source with .js extensions.
 // Detect files that have TypeScript-specific syntax and strip it via esbuild.
-const TS_SYNTAX_RE = /(?:^|\n)(?:import type\b|export type\b)|:\s*(?:string|number|boolean|Date|void|unknown|never|null|undefined|Record|Array)\b|\)\s*:\s*\w|\bas\s+\w|<[A-Z]\w*>/;
+const TS_SYNTAX_RE =
+  /(?:^|\n)(?:import type\b|export type\b)|:\s*(?:string|number|boolean|Date|void|unknown|never|null|undefined|Record|Array)\b|\)\s*:\s*\w|\bas\s+\w|<[A-Z]\w*>/;
 
 const localSrcTsPlugin = {
   name: "local-src-ts-as-js",

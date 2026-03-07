@@ -7,14 +7,10 @@ import type { VaultConfig } from "./types.js";
 export function parseArgs(argv: string[]): Record<string, string | number> {
   const args: Record<string, string | number> = {};
   for (let i = 2; i < argv.length; i++) {
-    if (argv[i] === "--vault-dir" && argv[i + 1])
-      args.vaultDir = argv[++i];
-    else if (argv[i] === "--data-dir" && argv[i + 1])
-      args.dataDir = argv[++i];
-    else if (argv[i] === "--db-path" && argv[i + 1])
-      args.dbPath = argv[++i];
-    else if (argv[i] === "--dev-dir" && argv[i + 1])
-      args.devDir = argv[++i];
+    if (argv[i] === "--vault-dir" && argv[i + 1]) args.vaultDir = argv[++i];
+    else if (argv[i] === "--data-dir" && argv[i + 1]) args.dataDir = argv[++i];
+    else if (argv[i] === "--db-path" && argv[i + 1]) args.dbPath = argv[++i];
+    else if (argv[i] === "--dev-dir" && argv[i + 1]) args.devDir = argv[++i];
     else if (argv[i] === "--event-decay-days" && argv[i + 1])
       args.eventDecayDays = Number(argv[++i]);
   }

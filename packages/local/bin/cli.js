@@ -385,7 +385,9 @@ async function runSetup() {
       if (staleConfigs.length > 0) {
         console.log();
         console.log(
-          yellow(`  ! ${staleConfigs.length} tool config(s) using legacy hardcoded paths`),
+          yellow(
+            `  ! ${staleConfigs.length} tool config(s) using legacy hardcoded paths`,
+          ),
         );
         for (const s of staleConfigs) {
           console.log(dim(`    ${s.name}: ${s.command}`));
@@ -400,7 +402,10 @@ async function runSetup() {
           try {
             const cfg = JSON.parse(readFileSync(existingConfig, "utf-8"));
             const defaultVDir = join(HOME, "vault");
-            if (cfg.vaultDir && resolve(cfg.vaultDir) !== resolve(defaultVDir)) {
+            if (
+              cfg.vaultDir &&
+              resolve(cfg.vaultDir) !== resolve(defaultVDir)
+            ) {
               customVaultDir = cfg.vaultDir;
             }
           } catch {}
@@ -1998,7 +2003,9 @@ async function runArchive() {
       console.log(dim("\n  Retention windows:"));
       for (const [tier, rules] of Object.entries(lifecycle)) {
         if (rules?.archiveAfterDays) {
-          console.log(dim(`    ${tier}: archive after ${rules.archiveAfterDays} days`));
+          console.log(
+            dim(`    ${tier}: archive after ${rules.archiveAfterDays} days`),
+          );
         }
       }
       return;
@@ -2040,12 +2047,8 @@ async function runArchive() {
         `  ✓ Archived ${result.count} ${result.count === 1 ? "entry" : "entries"} to _archive/`,
       ),
     );
-    console.log(
-      dim(`  Files moved to: ${join(config.vaultDir, "_archive")}`),
-    );
-    console.log(
-      dim("  Restore with: context-vault restore <id>"),
-    );
+    console.log(dim(`  Files moved to: ${join(config.vaultDir, "_archive")}`));
+    console.log(dim("  Restore with: context-vault restore <id>"));
   }
 }
 
@@ -2054,8 +2057,7 @@ async function runRestore() {
 
   if (!entryId || entryId.startsWith("--")) {
     const { resolveConfig } = await import("@context-vault/core/config");
-    const { listArchivedEntries } =
-      await import("@context-vault/core/archive");
+    const { listArchivedEntries } = await import("@context-vault/core/archive");
 
     const config = resolveConfig();
 
@@ -2123,8 +2125,7 @@ async function runStatus() {
   const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase } = await import("@context-vault/core/db");
   const { gatherVaultStatus } = await import("../src/status.js");
-  const { errorLogPath, errorLogCount } =
-    await import("../src/error-log.js");
+  const { errorLogPath, errorLogCount } = await import("../src/error-log.js");
 
   const config = resolveConfig();
 
@@ -2466,13 +2467,17 @@ async function runImport() {
   const target = args[1];
   if (!target) {
     console.log(`\n  ${bold("context-vault import")} <path>\n`);
-    console.log(`  Import entries from a file, directory, or portable archive.\n`);
+    console.log(
+      `  Import entries from a file, directory, or portable archive.\n`,
+    );
     console.log(`  Supported formats: .md, .csv, .tsv, .json, .txt, .zip\n`);
     console.log(`  Options:`);
     console.log(`    --kind <kind>    Default kind (default: insight)`);
     console.log(`    --source <src>   Default source (default: cli-import)`);
     console.log(`    --dry-run        Show parsed entries without importing`);
-    console.log(`    --vault <path>   Target vault directory (default: configured vault)`);
+    console.log(
+      `    --vault <path>   Target vault directory (default: configured vault)`,
+    );
     console.log();
     return;
   }
@@ -2580,7 +2585,11 @@ async function runImportZip(zipPath, dryRun) {
   const { indexEntry } = await import("@context-vault/core/index");
   const { parseFrontmatter } = await import("@context-vault/core/frontmatter");
   const { categoryDirFor } = await import("@context-vault/core/categories");
-  const { mkdirSync, writeFileSync, existsSync: existsFn } = await import("node:fs");
+  const {
+    mkdirSync,
+    writeFileSync,
+    existsSync: existsFn,
+  } = await import("node:fs");
   const { join: joinPath, basename: baseName } = await import("node:path");
 
   let zip;
@@ -2625,21 +2634,31 @@ async function runImportZip(zipPath, dryRun) {
     return;
   }
 
-  console.log(`\n  ${bold("◇ context-vault import")} ${dim(baseName(zipPath))}`);
-  console.log(dim(`  Archive: v${manifest.version} · ${manifest.entry_count} entries · ${manifest.context_vault_version || "?"}`));
+  console.log(
+    `\n  ${bold("◇ context-vault import")} ${dim(baseName(zipPath))}`,
+  );
+  console.log(
+    dim(
+      `  Archive: v${manifest.version} · ${manifest.entry_count} entries · ${manifest.context_vault_version || "?"}`,
+    ),
+  );
 
   const kindCounts = {};
   for (const e of entries) {
     kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
   }
   console.log();
-  for (const [k, count] of Object.entries(kindCounts).sort((a, b) => b[1] - a[1])) {
+  for (const [k, count] of Object.entries(kindCounts).sort(
+    (a, b) => b[1] - a[1],
+  )) {
     console.log(`    ${k}: ${count}`);
   }
 
   const vaultDirOverride = getFlag("--vault");
   const config = (await import("@context-vault/core/config")).resolveConfig();
-  const targetVaultDir = vaultDirOverride ? resolve(vaultDirOverride) : config.vaultDir;
+  const targetVaultDir = vaultDirOverride
+    ? resolve(vaultDirOverride)
+    : config.vaultDir;
 
   if (!existsFn(targetVaultDir)) {
     console.error(red(`\n  Vault directory not found: ${targetVaultDir}`));
@@ -2675,13 +2694,17 @@ async function runImportZip(zipPath, dryRun) {
       const tagStr = e.tags?.length ? ` ${dim(`[${e.tags.join(", ")}]`)}` : "";
       const statusIcon = isDuplicate ? yellow("~") : green("+");
       const statusText = isDuplicate ? dim(" (duplicate, would skip)") : "";
-      console.log(`\n  ${statusIcon} ${dim(`[${i + 1}]`)} ${e.kind} — ${e.title || e.id}${tagStr}${statusText}`);
+      console.log(
+        `\n  ${statusIcon} ${dim(`[${i + 1}]`)} ${e.kind} — ${e.title || e.id}${tagStr}${statusText}`,
+      );
     }
     if (entries.length > 25) {
       console.log(dim(`\n  ... and ${entries.length - 25} more`));
     }
     const wouldSkip = entries.filter((e) => existingIds.has(e.id)).length;
-    console.log(`\n  ${dim(`Would import ${entries.length - wouldSkip}, skip ${wouldSkip} duplicates.`)}`);
+    console.log(
+      `\n  ${dim(`Would import ${entries.length - wouldSkip}, skip ${wouldSkip} duplicates.`)}`,
+    );
     console.log(dim("  Dry run — no entries were imported.\n"));
     db.close();
     return;
@@ -2717,12 +2740,16 @@ async function runImportZip(zipPath, dryRun) {
       writeFileSync(filePath, mdContent);
 
       const id = fmMeta.id || entryMeta.id;
-      const tags = Array.isArray(fmMeta.tags) ? fmMeta.tags : entryMeta.tags || [];
+      const tags = Array.isArray(fmMeta.tags)
+        ? fmMeta.tags
+        : entryMeta.tags || [];
       const title = fmMeta.title || entryMeta.title || null;
       const source = fmMeta.source || entryMeta.source || "archive-import";
-      const identity_key = fmMeta.identity_key || entryMeta.identity_key || null;
+      const identity_key =
+        fmMeta.identity_key || entryMeta.identity_key || null;
       const expires_at = fmMeta.expires_at || entryMeta.expires_at || null;
-      const createdAt = fmMeta.created || entryMeta.created_at || new Date().toISOString();
+      const createdAt =
+        fmMeta.created || entryMeta.created_at || new Date().toISOString();
 
       await indexEntry(ctx, {
         id,
@@ -2754,7 +2781,9 @@ async function runImportZip(zipPath, dryRun) {
     console.log(`    ${dim("~")} ${skippedDuplicate} skipped (already exist)`);
   }
   if (skippedMissing > 0) {
-    console.log(`    ${yellow("!")} ${skippedMissing} skipped (file missing in archive)`);
+    console.log(
+      `    ${yellow("!")} ${skippedMissing} skipped (file missing in archive)`,
+    );
   }
   if (failed > 0) {
     console.log(`    ${red("x")} ${failed} failed`);
@@ -2874,10 +2903,16 @@ async function runExportZip() {
   const exportAll = flags.has("--all");
 
   const tagsFilter = tagsRaw
-    ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
+    ? tagsRaw
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
     : null;
   const kindFilter = kindRaw
-    ? kindRaw.split(",").map((k) => k.trim()).filter(Boolean)
+    ? kindRaw
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean)
     : null;
 
   if (!exportAll && !tagsFilter && !kindFilter && !since && !until) {
@@ -2893,16 +2928,23 @@ async function runExportZip() {
     console.log(`    --output, -o <path>  Output file path`);
     console.log(`    --dry-run            Show what would be exported\n`);
     console.log(`  ${bold("Examples:")}`);
-    console.log(`    context-vault export --tags stormfors --format zip -o stormfors.zip`);
-    console.log(`    context-vault export --kind decision,pattern --format zip`);
-    console.log(`    context-vault export --since 2026-01-01 --until 2026-02-28 --format zip`);
+    console.log(
+      `    context-vault export --tags stormfors --format zip -o stormfors.zip`,
+    );
+    console.log(
+      `    context-vault export --kind decision,pattern --format zip`,
+    );
+    console.log(
+      `    context-vault export --since 2026-01-01 --until 2026-02-28 --format zip`,
+    );
     console.log(`    context-vault export --all --format zip --dry-run\n`);
     return;
   }
 
   const { resolveConfig } = await import("@context-vault/core/config");
   const { initDatabase } = await import("@context-vault/core/db");
-  const { readFileSync: readFs, existsSync: existsFn } = await import("node:fs");
+  const { readFileSync: readFs, existsSync: existsFn } =
+    await import("node:fs");
   const { basename } = await import("node:path");
 
   const config = resolveConfig();
@@ -2917,8 +2959,9 @@ async function runExportZip() {
   const params = [];
 
   if (tagsFilter) {
-    const tagClauses = tagsFilter.map(() =>
-      "EXISTS (SELECT 1 FROM json_each(vault.tags) WHERE json_each.value = ?)"
+    const tagClauses = tagsFilter.map(
+      () =>
+        "EXISTS (SELECT 1 FROM json_each(vault.tags) WHERE json_each.value = ?)",
     );
     conditions.push(`(${tagClauses.join(" OR ")})`);
     params.push(...tagsFilter);
@@ -2955,13 +2998,19 @@ async function runExportZip() {
   }
 
   console.log(`\n  ${bold(String(rows.length))} entries match filters:\n`);
-  for (const [k, count] of Object.entries(kindCounts).sort((a, b) => b[1] - a[1])) {
+  for (const [k, count] of Object.entries(kindCounts).sort(
+    (a, b) => b[1] - a[1],
+  )) {
     console.log(`    ${k}: ${count}`);
   }
 
   const earliest = rows[rows.length - 1]?.created_at;
   const latest = rows[0]?.created_at;
-  console.log(dim(`\n  Date range: ${earliest?.slice(0, 10) || "?"} → ${latest?.slice(0, 10) || "?"}`));
+  console.log(
+    dim(
+      `\n  Date range: ${earliest?.slice(0, 10) || "?"} → ${latest?.slice(0, 10) || "?"}`,
+    ),
+  );
 
   if (dryRun) {
     console.log();
@@ -2969,7 +3018,9 @@ async function runExportZip() {
       const r = rows[i];
       const tags = safeJsonParse(r.tags, []);
       const tagStr = tags.length ? ` ${dim(`[${tags.join(", ")}]`)}` : "";
-      console.log(`  ${dim(`[${i + 1}]`)} ${r.kind} — ${r.title || (r.body || "").slice(0, 60)}${tagStr}`);
+      console.log(
+        `  ${dim(`[${i + 1}]`)} ${r.kind} — ${r.title || (r.body || "").slice(0, 60)}${tagStr}`,
+      );
     }
     if (rows.length > 25) {
       console.log(dim(`  ... and ${rows.length - 25} more`));
@@ -3029,7 +3080,10 @@ async function runExportZip() {
   };
 
   zip.addFile("manifest.json", Buffer.from(JSON.stringify(manifest, null, 2)));
-  zip.addFile("index.json", Buffer.from(JSON.stringify({ entries: indexEntries }, null, 2)));
+  zip.addFile(
+    "index.json",
+    Buffer.from(JSON.stringify({ entries: indexEntries }, null, 2)),
+  );
 
   const today = new Date().toISOString().slice(0, 10);
   const defaultName = tagsFilter
@@ -3039,9 +3093,13 @@ async function runExportZip() {
 
   zip.writeZip(outputPath);
 
-  console.log(`\n  ${green("✓")} Exported ${indexEntries.length} entries to ${outputPath}`);
+  console.log(
+    `\n  ${green("✓")} Exported ${indexEntries.length} entries to ${outputPath}`,
+  );
   if (filesSkipped > 0) {
-    console.log(yellow(`  ⚠ ${filesSkipped} entries skipped (file not found on disk)`));
+    console.log(
+      yellow(`  ⚠ ${filesSkipped} entries skipped (file not found on disk)`),
+    );
   }
   console.log();
 }
@@ -3555,14 +3613,21 @@ async function runSessionEnd() {
       for (const line of transcriptRaw.split("\n")) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        try { turns.push(JSON.parse(trimmed)); } catch {}
+        try {
+          turns.push(JSON.parse(trimmed));
+        } catch {}
       }
-    } catch { return; }
+    } catch {
+      return;
+    }
 
     const extractText = (turn) => {
       if (typeof turn.content === "string") return turn.content;
       if (Array.isArray(turn.content))
-        return turn.content.filter((b) => b.type === "text").map((b) => b.text).join(" ");
+        return turn.content
+          .filter((b) => b.type === "text")
+          .map((b) => b.text)
+          .join(" ");
       return "";
     };
 
@@ -3584,7 +3649,10 @@ async function runSessionEnd() {
     for (const block of allToolUse) {
       if (block.name === "Write" || block.name === "Edit") {
         const path = block.input?.file_path ?? block.input?.path ?? null;
-        if (path && !seenFiles.has(path)) { seenFiles.add(path); filesModified.push(path); }
+        if (path && !seenFiles.has(path)) {
+          seenFiles.add(path);
+          filesModified.push(path);
+        }
       }
     }
 
@@ -3612,40 +3680,54 @@ async function runSessionEnd() {
     let durationStr = null;
     const timestampedTurns = turns.filter((t) => t.timestamp != null);
     if (timestampedTurns.length >= 2) {
-      const diffMs = new Date(timestampedTurns[timestampedTurns.length - 1].timestamp) - new Date(timestampedTurns[0].timestamp);
+      const diffMs =
+        new Date(timestampedTurns[timestampedTurns.length - 1].timestamp) -
+        new Date(timestampedTurns[0].timestamp);
       if (!isNaN(diffMs) && diffMs >= 0) {
         const totalSec = Math.round(diffMs / 1000);
         const hours = Math.floor(totalSec / 3600);
         const minutes = Math.floor((totalSec % 3600) / 60);
         const seconds = totalSec % 60;
-        durationStr = hours > 0 ? `${hours}h ${minutes}m` : minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+        durationStr =
+          hours > 0
+            ? `${hours}h ${minutes}m`
+            : minutes > 0
+              ? `${minutes}m ${seconds}s`
+              : `${seconds}s`;
       }
     }
 
     const message_count = userTurns.length;
     const project = cwd.split("/").pop() || "unknown";
     const first_prompt = extractText(userTurns[0]).slice(0, 200);
-    const last_prompt = message_count > 1 ? extractText(userTurns[message_count - 1]).slice(0, 200) : first_prompt;
+    const last_prompt =
+      message_count > 1
+        ? extractText(userTurns[message_count - 1]).slice(0, 200)
+        : first_prompt;
 
     // Build body
     const durationPart = durationStr ? `, ~${durationStr}` : "";
     const bodyLines = [
       `Session in ${project} (${message_count} exchange${message_count !== 1 ? "s" : ""}${durationPart}).`,
-      "", "## What was done",
-      `Opened with: ${first_prompt}`, "",
+      "",
+      "## What was done",
+      `Opened with: ${first_prompt}`,
+      "",
       `Closed with: ${last_prompt}`,
     ];
     const limitedFiles = filesModified.slice(0, 20);
     if (limitedFiles.length > 0) {
       bodyLines.push("", "## Files modified");
       for (const f of limitedFiles) bodyLines.push(`- ${f}`);
-      if (filesModified.length > 20) bodyLines.push(`- ... and ${filesModified.length - 20} more`);
+      if (filesModified.length > 20)
+        bodyLines.push(`- ... and ${filesModified.length - 20} more`);
     }
     const limitedCmds = commandsRun.slice(0, 10);
     if (limitedCmds.length > 0) {
       bodyLines.push("", "## Key commands");
       for (const c of limitedCmds) bodyLines.push(`- ${c}`);
-      if (commandsRun.length > 10) bodyLines.push(`- ... and ${commandsRun.length - 10} more`);
+      if (commandsRun.length > 10)
+        bodyLines.push(`- ... and ${commandsRun.length - 10} more`);
     }
     if (toolSummary) bodyLines.push("", "## Tools used", toolSummary);
     const body = bodyLines.join("\n");
@@ -3660,7 +3742,9 @@ async function runSessionEnd() {
     db = await initDatabase(config.dbPath);
     const stmts = prepareStatements(db);
     const ctx = {
-      db, config, stmts,
+      db,
+      config,
+      stmts,
       embed: async () => null,
       insertVec: (rowid, embedding) => insertVec(stmts, rowid, embedding),
       deleteVec: (rowid) => deleteVec(stmts, rowid),
@@ -3677,7 +3761,9 @@ async function runSessionEnd() {
   } catch {
     // fail silently — never block session end
   } finally {
-    try { db?.close(); } catch {}
+    try {
+      db?.close();
+    } catch {}
   }
 }
 
@@ -4591,8 +4677,7 @@ ${bold("Commands:")}
 
 async function runDoctor() {
   const { resolveConfig } = await import("@context-vault/core/config");
-  const { errorLogPath, errorLogCount } =
-    await import("../src/error-log.js");
+  const { errorLogPath, errorLogCount } = await import("../src/error-log.js");
 
   console.log();
   console.log(`  ${bold("◇ context-vault doctor")} ${dim(`v${VERSION}`)}`);
@@ -4787,16 +4872,10 @@ async function runDoctor() {
         encoding: "utf-8",
         timeout: 5000,
       }).trim();
-      console.log(
-        `  ${green("✓")} CLI binary ${dim(`(${binVersion})`)}`,
-      );
+      console.log(`  ${green("✓")} CLI binary ${dim(`(${binVersion})`)}`);
     } catch {
-      console.log(
-        `  ${red("✘")} CLI binary not found in PATH`,
-      );
-      console.log(
-        `    ${dim("Fix: npm install -g context-vault")}`,
-      );
+      console.log(`  ${red("✘")} CLI binary not found in PATH`);
+      console.log(`    ${dim("Fix: npm install -g context-vault")}`);
       allOk = false;
     }
 
@@ -4805,7 +4884,9 @@ async function runDoctor() {
     if (existsSync(legacyLauncher)) {
       try {
         unlinkSync(legacyLauncher);
-        console.log(`  ${green("✓")} Removed legacy launcher ${dim(legacyLauncher)}`);
+        console.log(
+          `  ${green("✓")} Removed legacy launcher ${dim(legacyLauncher)}`,
+        );
       } catch {}
     }
 

@@ -25,7 +25,6 @@ export async function handler(
   ctx,
   { ensureIndexed, reindexFailed },
 ) {
-
   await ensureIndexed();
 
   const userClause = "";
@@ -45,7 +44,7 @@ export async function handler(
 
   if (!buckets.length) {
     return ok(
-      "No buckets registered.\n\nCreate one with `save_context(kind: \"bucket\", identity_key: \"bucket:myproject\", title: \"My Project\", body: \"...\")` to register a bucket.",
+      'No buckets registered.\n\nCreate one with `save_context(kind: "bucket", identity_key: "bucket:myproject", title: "My Project", body: "...")` to register a bucket.',
     );
   }
 
@@ -75,8 +74,7 @@ export async function handler(
 
     let entryCount = null;
     if (include_counts && b.identity_key) {
-      const countUserClause =
-        "";
+      const countUserClause = "";
       const countParams = [];
       const row = ctx.db
         .prepare(
@@ -108,7 +106,7 @@ export async function handler(
   }
 
   lines.push(
-    "\n_Register a new bucket with `save_context(kind: \"bucket\", identity_key: \"bucket:<name>\", title: \"...\", body: \"...\")`_",
+    '\n_Register a new bucket with `save_context(kind: "bucket", identity_key: "bucket:<name>", title: "...", body: "...")`_',
   );
 
   return ok(lines.join("\n"));

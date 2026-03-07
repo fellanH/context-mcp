@@ -71,7 +71,9 @@ export function gatherVaultStatus(ctx, opts = {}) {
   let staleCount = 0;
   try {
     const result = db
-      .prepare(`SELECT COUNT(*) as c FROM vault WHERE file_path NOT LIKE ? || '%'`)
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE file_path NOT LIKE ? || '%'`,
+      )
       .get(config.vaultDir);
     staleCount = result.c;
     stalePaths = staleCount > 0;
@@ -82,7 +84,9 @@ export function gatherVaultStatus(ctx, opts = {}) {
   let expiredCount = 0;
   try {
     expiredCount = db
-      .prepare(`SELECT COUNT(*) as c FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`)
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`,
+      )
       .get().c;
   } catch (e) {
     errors.push(`Expired count failed: ${e.message}`);
@@ -100,7 +104,9 @@ export function gatherVaultStatus(ctx, opts = {}) {
   let eventsWithoutTtlCount = 0;
   try {
     eventsWithoutTtlCount = db
-      .prepare(`SELECT COUNT(*) as c FROM vault WHERE category = 'event' AND expires_at IS NULL`)
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE category = 'event' AND expires_at IS NULL`,
+      )
       .get().c;
   } catch (e) {
     errors.push(`Events without TTL count failed: ${e.message}`);
@@ -110,7 +116,9 @@ export function gatherVaultStatus(ctx, opts = {}) {
   try {
     const total = db.prepare(`SELECT COUNT(*) as c FROM vault`).get().c;
     const indexed = db
-      .prepare(`SELECT COUNT(*) as c FROM vault WHERE rowid IN (SELECT rowid FROM vault_vec)`)
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE rowid IN (SELECT rowid FROM vault_vec)`,
+      )
       .get().c;
     embeddingStatus = { indexed, total, missing: total - indexed };
   } catch (e) {
@@ -122,7 +130,9 @@ export function gatherVaultStatus(ctx, opts = {}) {
   let autoCapturedFeedbackCount = 0;
   try {
     autoCapturedFeedbackCount = db
-      .prepare(`SELECT COUNT(*) as c FROM vault WHERE kind = 'feedback' AND tags LIKE '%"auto-captured"%'`)
+      .prepare(
+        `SELECT COUNT(*) as c FROM vault WHERE kind = 'feedback' AND tags LIKE '%"auto-captured"%'`,
+      )
       .get().c;
   } catch (e) {
     errors.push(`Auto-captured feedback count failed: ${e.message}`);
@@ -179,57 +189,130 @@ export function gatherVaultStatus(ctx, opts = {}) {
 
 export function computeGrowthWarnings(status, thresholds) {
   if (!thresholds)
-    return { warnings: [], hasCritical: false, hasWarnings: false, actions: [], kindBreakdown: [] };
+    return {
+      warnings: [],
+      hasCritical: false,
+      hasWarnings: false,
+      actions: [],
+      kindBreakdown: [],
+    };
 
   const t = thresholds;
   const warnings = [];
   const actions = [];
 
   const total = status.embeddingStatus?.total ?? 0;
-  const { eventCount = 0, eventsWithoutTtlCount = 0, expiredCount = 0, dbSizeBytes = 0 } = status;
+  const {
+    eventCount = 0,
+    eventsWithoutTtlCount = 0,
+    expiredCount = 0,
+    dbSizeBytes = 0,
+  } = status;
 
   let totalExceeded = false;
 
   if (t.totalEntries?.critical != null && total >= t.totalEntries.critical) {
     totalExceeded = true;
-    warnings.push({ level: "critical", message: `Total entries: ${total.toLocaleString()} (exceeds critical limit of ${t.totalEntries.critical.toLocaleString()})` });
+    warnings.push({
+      level: "critical",
+      message: `Total entries: ${total.toLocaleString()} (exceeds critical limit of ${t.totalEntries.critical.toLocaleString()})`,
+    });
   } else if (t.totalEntries?.warn != null && total >= t.totalEntries.warn) {
     totalExceeded = true;
-    warnings.push({ level: "warn", message: `Total entries: ${total.toLocaleString()} (exceeds recommended ${t.totalEntries.warn.toLocaleString()})` });
+    warnings.push({
+      level: "warn",
+      message: `Total entries: ${total.toLocaleString()} (exceeds recommended ${t.totalEntries.warn.toLocaleString()})`,
+    });
   }
 
-  if (t.eventEntries?.critical != null && eventCount >= t.eventEntries.critical) {
-    warnings.push({ level: "critical", message: `Event entries: ${eventCount.toLocaleString()} (exceeds critical limit of ${t.eventEntries.critical.toLocaleString()})` });
-  } else if (t.eventEntries?.warn != null && eventCount >= t.eventEntries.warn) {
-    const ttlNote = eventsWithoutTtlCount > 0 ? ` (${eventsWithoutTtlCount.toLocaleString()} without TTL)` : "";
-    warnings.push({ level: "warn", message: `Event entries: ${eventCount.toLocaleString()}${ttlNote} (exceeds recommended ${t.eventEntries.warn.toLocaleString()})` });
+  if (
+    t.eventEntries?.critical != null &&
+    eventCount >= t.eventEntries.critical
+  ) {
+    warnings.push({
+      level: "critical",
+      message: `Event entries: ${eventCount.toLocaleString()} (exceeds critical limit of ${t.eventEntries.critical.toLocaleString()})`,
+    });
+  } else if (
+    t.eventEntries?.warn != null &&
+    eventCount >= t.eventEntries.warn
+  ) {
+    const ttlNote =
+      eventsWithoutTtlCount > 0
+        ? ` (${eventsWithoutTtlCount.toLocaleString()} without TTL)`
+        : "";
+    warnings.push({
+      level: "warn",
+      message: `Event entries: ${eventCount.toLocaleString()}${ttlNote} (exceeds recommended ${t.eventEntries.warn.toLocaleString()})`,
+    });
   }
 
-  if (t.vaultSizeBytes?.critical != null && dbSizeBytes >= t.vaultSizeBytes.critical) {
-    warnings.push({ level: "critical", message: `Database size: ${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB (exceeds critical limit of ${(t.vaultSizeBytes.critical / 1024 / 1024).toFixed(0)}MB)` });
-  } else if (t.vaultSizeBytes?.warn != null && dbSizeBytes >= t.vaultSizeBytes.warn) {
-    warnings.push({ level: "warn", message: `Database size: ${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB (exceeds recommended ${(t.vaultSizeBytes.warn / 1024 / 1024).toFixed(0)}MB)` });
+  if (
+    t.vaultSizeBytes?.critical != null &&
+    dbSizeBytes >= t.vaultSizeBytes.critical
+  ) {
+    warnings.push({
+      level: "critical",
+      message: `Database size: ${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB (exceeds critical limit of ${(t.vaultSizeBytes.critical / 1024 / 1024).toFixed(0)}MB)`,
+    });
+  } else if (
+    t.vaultSizeBytes?.warn != null &&
+    dbSizeBytes >= t.vaultSizeBytes.warn
+  ) {
+    warnings.push({
+      level: "warn",
+      message: `Database size: ${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB (exceeds recommended ${(t.vaultSizeBytes.warn / 1024 / 1024).toFixed(0)}MB)`,
+    });
   }
 
-  if (t.eventsWithoutTtl?.warn != null && eventsWithoutTtlCount >= t.eventsWithoutTtl.warn) {
-    warnings.push({ level: "warn", message: `Event entries without expires_at: ${eventsWithoutTtlCount.toLocaleString()} (exceeds recommended ${t.eventsWithoutTtl.warn.toLocaleString()})` });
+  if (
+    t.eventsWithoutTtl?.warn != null &&
+    eventsWithoutTtlCount >= t.eventsWithoutTtl.warn
+  ) {
+    warnings.push({
+      level: "warn",
+      message: `Event entries without expires_at: ${eventsWithoutTtlCount.toLocaleString()} (exceeds recommended ${t.eventsWithoutTtl.warn.toLocaleString()})`,
+    });
   }
 
   const hasCritical = warnings.some((w) => w.level === "critical");
 
   if (expiredCount > 0) {
-    actions.push(`Run \`context-vault prune\` to remove ${expiredCount} expired event entr${expiredCount === 1 ? "y" : "ies"}`);
+    actions.push(
+      `Run \`context-vault prune\` to remove ${expiredCount} expired event entr${expiredCount === 1 ? "y" : "ies"}`,
+    );
   }
-  if (eventsWithoutTtlCount > 0 && (eventCount >= (t.eventEntries?.warn ?? Infinity) || eventsWithoutTtlCount >= (t.eventsWithoutTtl?.warn ?? Infinity))) {
-    actions.push("Add `expires_at` to event/session entries to enable automatic cleanup");
+  if (
+    eventsWithoutTtlCount > 0 &&
+    (eventCount >= (t.eventEntries?.warn ?? Infinity) ||
+      eventsWithoutTtlCount >= (t.eventsWithoutTtl?.warn ?? Infinity))
+  ) {
+    actions.push(
+      "Add `expires_at` to event/session entries to enable automatic cleanup",
+    );
   }
   if (total >= (t.totalEntries?.warn ?? Infinity)) {
-    actions.push("Run `context-vault archive` to move old ephemeral/event entries to _archive/");
+    actions.push(
+      "Run `context-vault archive` to move old ephemeral/event entries to _archive/",
+    );
   }
 
-  const kindBreakdown = totalExceeded && status.kindCounts?.length
-    ? [...status.kindCounts].sort((a, b) => b.c - a.c).map(({ kind, c }) => ({ kind, count: c, pct: Math.round((c / total) * 100) }))
-    : [];
+  const kindBreakdown =
+    totalExceeded && status.kindCounts?.length
+      ? [...status.kindCounts]
+          .sort((a, b) => b.c - a.c)
+          .map(({ kind, c }) => ({
+            kind,
+            count: c,
+            pct: Math.round((c / total) * 100),
+          }))
+      : [];
 
-  return { warnings, hasCritical, hasWarnings: warnings.length > 0, actions, kindBreakdown };
+  return {
+    warnings,
+    hasCritical,
+    hasWarnings: warnings.length > 0,
+    actions,
+    kindBreakdown,
+  };
 }

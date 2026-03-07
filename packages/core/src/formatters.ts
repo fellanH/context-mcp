@@ -22,10 +22,7 @@ const FORMATTERS: Record<string, (input: FormatInput) => string> = {
 const DEFAULT_FORMATTER = ({ title, body }: FormatInput): string =>
   title ? "\n# " + title + "\n\n" + body + "\n" : "\n" + body + "\n";
 
-export function formatBody(
-  kind: string,
-  input: FormatInput,
-): string {
+export function formatBody(kind: string, input: FormatInput): string {
   const fn = FORMATTERS[kind] || DEFAULT_FORMATTER;
   return fn(input);
 }

@@ -77,7 +77,11 @@ function formatEntry(entry) {
   ].join("\n");
 }
 
-export async function handler({ project, max_tokens, buckets }, ctx, { ensureIndexed }) {
+export async function handler(
+  { project, max_tokens, buckets },
+  ctx,
+  { ensureIndexed },
+) {
   const { config } = ctx;
 
   const vaultErr = ensureVaultExists(config);
@@ -103,7 +107,9 @@ export async function handler({ project, max_tokens, buckets }, ctx, { ensureInd
   sections.push(
     `# Session Brief${effectiveProject ? ` — ${effectiveProject}` : ""}`,
   );
-  const bucketsLabel = buckets?.length ? ` | buckets: ${buckets.join(", ")}` : "";
+  const bucketsLabel = buckets?.length
+    ? ` | buckets: ${buckets.join(", ")}`
+    : "";
   sections.push(
     `_Generated ${new Date().toISOString().slice(0, 10)} | budget: ${tokenBudget} tokens${bucketsLabel}_\n`,
   );
@@ -127,7 +133,7 @@ export async function handler({ project, max_tokens, buckets }, ctx, { ensureInd
     ctx,
     PRIORITY_KINDS,
     sinceDate,
-    
+
     effectiveTags,
   );
   if (decisions.length > 0) {

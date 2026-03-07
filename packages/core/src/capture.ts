@@ -1,13 +1,28 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+  mkdirSync,
+} from "node:fs";
 import { resolve, relative } from "node:path";
 import { ulid, slugify, kindToPath } from "./files.js";
 import { categoryFor, defaultTierFor } from "./categories.js";
 import { parseFrontmatter, formatFrontmatter } from "./frontmatter.js";
 import { formatBody } from "./formatters.js";
-import type { BaseCtx, CaptureInput, CaptureResult, IndexEntryInput } from "./types.js";
+import type {
+  BaseCtx,
+  CaptureInput,
+  CaptureResult,
+  IndexEntryInput,
+} from "./types.js";
 import { indexEntry } from "./index.js";
 
-function safeFolderPath(vaultDir: string, kind: string, folder?: string | null): string {
+function safeFolderPath(
+  vaultDir: string,
+  kind: string,
+  folder?: string | null,
+): string {
   const base = resolve(vaultDir, kindToPath(kind));
   if (!folder) return base;
   const resolved = resolve(base, folder);
@@ -44,7 +59,9 @@ function writeEntryFile(
   try {
     mkdirSync(dir, { recursive: true });
   } catch (e) {
-    throw new Error(`Failed to create directory "${dir}": ${(e as Error).message}`);
+    throw new Error(
+      `Failed to create directory "${dir}": ${(e as Error).message}`,
+    );
   }
 
   const created = params.createdAt || new Date().toISOString();
@@ -91,7 +108,9 @@ function writeEntryFile(
   try {
     writeFileSync(filePath, md);
   } catch (e) {
-    throw new Error(`Failed to write entry file "${filePath}": ${(e as Error).message}`);
+    throw new Error(
+      `Failed to write entry file "${filePath}": ${(e as Error).message}`,
+    );
   }
 
   return filePath;
@@ -190,7 +209,10 @@ export function updateEntryFile(
     related_to?: string[] | null;
     source_files?: Array<{ path: string; hash: string }> | null;
   },
-): IndexEntryInput & { supersedes?: string[] | null; related_to?: string[] | null } {
+): IndexEntryInput & {
+  supersedes?: string[] | null;
+  related_to?: string[] | null;
+} {
   const raw = readFileSync(existing.file_path as string, "utf-8");
   const { meta: fmMeta } = parseFrontmatter(raw);
 
@@ -200,18 +222,35 @@ export function updateEntryFile(
     ? JSON.parse(existing.related_to as string)
     : (fmMeta.related_to as string[]) || null;
 
-  const title = updates.title !== undefined ? updates.title : (existing.title as string | null);
-  const body = updates.body !== undefined ? (updates.body as string) : (existing.body as string);
+  const title =
+    updates.title !== undefined
+      ? updates.title
+      : (existing.title as string | null);
+  const body =
+    updates.body !== undefined
+      ? (updates.body as string)
+      : (existing.body as string);
   const tags = updates.tags !== undefined ? updates.tags : existingTags;
-  const source = updates.source !== undefined ? updates.source : (existing.source as string | null);
-  const expires_at = updates.expires_at !== undefined ? updates.expires_at : (existing.expires_at as string | null);
-  const supersedes = updates.supersedes !== undefined ? updates.supersedes : (fmMeta.supersedes as string[] || null);
-  const related_to = updates.related_to !== undefined ? updates.related_to : existingRelatedTo;
-  const source_files = updates.source_files !== undefined
-    ? updates.source_files
-    : existing.source_files
-      ? JSON.parse(existing.source_files as string)
-      : null;
+  const source =
+    updates.source !== undefined
+      ? updates.source
+      : (existing.source as string | null);
+  const expires_at =
+    updates.expires_at !== undefined
+      ? updates.expires_at
+      : (existing.expires_at as string | null);
+  const supersedes =
+    updates.supersedes !== undefined
+      ? updates.supersedes
+      : (fmMeta.supersedes as string[]) || null;
+  const related_to =
+    updates.related_to !== undefined ? updates.related_to : existingRelatedTo;
+  const source_files =
+    updates.source_files !== undefined
+      ? updates.source_files
+      : existing.source_files
+        ? JSON.parse(existing.source_files as string)
+        : null;
 
   let mergedMeta: Record<string, unknown>;
   if (updates.meta !== undefined) {
@@ -232,7 +271,8 @@ export function updateEntryFile(
   if (related_to?.length) fmFields.related_to = related_to;
   fmFields.tags = tags;
   fmFields.source = source || "claude-code";
-  fmFields.created = (fmMeta.created as string) || (existing.created_at as string);
+  fmFields.created =
+    (fmMeta.created as string) || (existing.created_at as string);
   if (now !== fmFields.created) fmFields.updated = now;
 
   const mdBody = formatBody(existing.kind as string, {
@@ -266,7 +306,11 @@ export function updateEntryFile(
   };
 }
 
-export async function captureAndIndex(ctx: BaseCtx, data: CaptureInput, precomputedEmbedding?: Float32Array | null): Promise<CaptureResult> {
+export async function captureAndIndex(
+  ctx: BaseCtx,
+  data: CaptureInput,
+  precomputedEmbedding?: Float32Array | null,
+): Promise<CaptureResult> {
   let previousContent: string | null = null;
   if (categoryFor(data.kind) === "entity" && data.identity_key) {
     const identitySlug = slugify(data.identity_key);

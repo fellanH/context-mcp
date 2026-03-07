@@ -60,7 +60,9 @@ export async function embed(text: string): Promise<Float32Array | null> {
   return new Float32Array(result.data);
 }
 
-export async function embedBatch(texts: string[]): Promise<(Float32Array | null)[]> {
+export async function embedBatch(
+  texts: string[],
+): Promise<(Float32Array | null)[]> {
   if (!texts.length) return [];
   const ext = await ensurePipeline();
   if (!ext) return texts.map(() => null);

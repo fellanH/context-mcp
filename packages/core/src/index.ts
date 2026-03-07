@@ -12,12 +12,27 @@ const EMBED_BATCH_SIZE = 32;
 
 export async function indexEntry(
   ctx: BaseCtx,
-  entry: IndexEntryInput & { supersedes?: string[] | null; related_to?: string[] | null },
+  entry: IndexEntryInput & {
+    supersedes?: string[] | null;
+    related_to?: string[] | null;
+  },
   precomputedEmbedding?: Float32Array | null,
 ): Promise<void> {
   const {
-    id, kind, category, title, body, meta, tags, source,
-    filePath, createdAt, identity_key, expires_at, source_files, tier,
+    id,
+    kind,
+    category,
+    title,
+    body,
+    meta,
+    tags,
+    source,
+    filePath,
+    createdAt,
+    identity_key,
+    expires_at,
+    source_files,
+    tier,
   } = entry;
 
   if (expires_at && new Date(expires_at) <= new Date()) return;
@@ -31,13 +46,22 @@ export async function indexEntry(
   let wasUpdate = false;
 
   if (cat === "entity" && identity_key) {
-    const existing = ctx.stmts.getByIdentityKey.get(kind, identity_key) as Record<string, unknown> | undefined;
+    const existing = ctx.stmts.getByIdentityKey.get(kind, identity_key) as
+      | Record<string, unknown>
+      | undefined;
     if (existing) {
       ctx.stmts.upsertByIdentityKey.run(
-        title || null, body, metaJson, tagsJson,
-        source || "claude-code", cat, filePath,
-        expires_at || null, sourceFilesJson,
-        kind, identity_key,
+        title || null,
+        body,
+        metaJson,
+        tagsJson,
+        source || "claude-code",
+        cat,
+        filePath,
+        expires_at || null,
+        sourceFilesJson,
+        kind,
+        identity_key,
       );
       wasUpdate = true;
     }
@@ -46,20 +70,39 @@ export async function indexEntry(
   if (!wasUpdate) {
     try {
       ctx.stmts.insertEntry.run(
-        id, kind, cat, title || null, body, metaJson, tagsJson,
-        source || "claude-code", filePath,
-        identity_key || null, expires_at || null,
-        createdAt, createdAt, sourceFilesJson, effectiveTier,
+        id,
+        kind,
+        cat,
+        title || null,
+        body,
+        metaJson,
+        tagsJson,
+        source || "claude-code",
+        filePath,
+        identity_key || null,
+        expires_at || null,
+        createdAt,
+        createdAt,
+        sourceFilesJson,
+        effectiveTier,
       );
     } catch (e) {
       if ((e as Error).message.includes("UNIQUE constraint")) {
         ctx.stmts.updateEntry.run(
-          title || null, body, metaJson, tagsJson,
-          source || "claude-code", cat,
-          identity_key || null, expires_at || null, filePath,
+          title || null,
+          body,
+          metaJson,
+          tagsJson,
+          source || "claude-code",
+          cat,
+          identity_key || null,
+          expires_at || null,
+          filePath,
         );
         if (sourceFilesJson !== null && ctx.stmts.updateSourceFiles) {
-          const entryRow = ctx.stmts.getRowidByPath.get(filePath) as { rowid: number } | undefined;
+          const entryRow = ctx.stmts.getRowidByPath.get(filePath) as
+            | { rowid: number }
+            | undefined;
           if (entryRow) {
             const idRow = ctx.db
               .prepare("SELECT id FROM vault WHERE file_path = ?")
@@ -76,8 +119,8 @@ export async function indexEntry(
   }
 
   const rowidResult = wasUpdate
-    ? ctx.stmts.getRowidByPath.get(filePath) as { rowid: number } | undefined
-    : ctx.stmts.getRowid.get(id) as { rowid: number } | undefined;
+    ? (ctx.stmts.getRowidByPath.get(filePath) as { rowid: number } | undefined)
+    : (ctx.stmts.getRowid.get(id) as { rowid: number } | undefined);
 
   if (!rowidResult || rowidResult.rowid == null) {
     throw new Error(
@@ -100,12 +143,18 @@ export async function indexEntry(
       try {
         embedding = await ctx.embed([title, body].filter(Boolean).join(" "));
       } catch (embedErr) {
-        console.warn(`[context-vault] embed() failed for entry ${id} — skipping vec insert: ${(embedErr as Error).message}`);
+        console.warn(
+          `[context-vault] embed() failed for entry ${id} — skipping vec insert: ${(embedErr as Error).message}`,
+        );
       }
     }
 
     if (embedding) {
-      try { ctx.deleteVec(rowid); } catch { /* no-op */ }
+      try {
+        ctx.deleteVec(rowid);
+      } catch {
+        /* no-op */
+      }
       ctx.insertVec(rowid, embedding);
     }
   }
@@ -120,11 +169,17 @@ export async function pruneExpired(ctx: BaseCtx): Promise<number> {
 
   for (const row of expired) {
     if (row.file_path) {
-      try { unlinkSync(row.file_path); } catch {}
+      try {
+        unlinkSync(row.file_path);
+      } catch {}
     }
-    const vRowid = (ctx.stmts.getRowid.get(row.id) as { rowid: number } | undefined)?.rowid;
+    const vRowid = (
+      ctx.stmts.getRowid.get(row.id) as { rowid: number } | undefined
+    )?.rowid;
     if (vRowid) {
-      try { ctx.deleteVec(Number(vRowid)); } catch {}
+      try {
+        ctx.deleteVec(Number(vRowid));
+      } catch {}
     }
     ctx.stmts.deleteEntry.run(row.id);
   }
@@ -137,7 +192,12 @@ export async function reindex(
   opts: { fullSync?: boolean } = {},
 ): Promise<ReindexStats> {
   const { fullSync = true } = opts;
-  const stats: ReindexStats = { added: 0, updated: 0, removed: 0, unchanged: 0 };
+  const stats: ReindexStats = {
+    added: 0,
+    updated: 0,
+    removed: 0,
+    unchanged: 0,
+  };
 
   if (!existsSync(ctx.config.vaultDir)) return stats;
 
@@ -224,20 +284,32 @@ export async function reindex(
         if (!existing) {
           const id = (fmMeta.id as string) || ulid();
           const tagsJson = fmMeta.tags ? JSON.stringify(fmMeta.tags) : null;
-          const created = (fmMeta.created as string) || new Date().toISOString();
+          const created =
+            (fmMeta.created as string) || new Date().toISOString();
 
           const result = upsertEntry.run(
-            id, kind, category, parsed.title || null, parsed.body,
-            metaJson, tagsJson, (fmMeta.source as string) || "file",
-            filePath, identity_key, expires_at,
-            created, (fmMeta.updated as string) || created,
+            id,
+            kind,
+            category,
+            parsed.title || null,
+            parsed.body,
+            metaJson,
+            tagsJson,
+            (fmMeta.source as string) || "file",
+            filePath,
+            identity_key,
+            expires_at,
+            created,
+            (fmMeta.updated as string) || created,
           );
           if ((result as { changes: number }).changes > 0) {
             if (relatedToJson && ctx.stmts.updateRelatedTo) {
               ctx.stmts.updateRelatedTo.run(relatedToJson, id);
             }
             if (category !== "event") {
-              const rowidResult = ctx.stmts.getRowid.get(id) as { rowid: number } | undefined;
+              const rowidResult = ctx.stmts.getRowid.get(id) as
+                | { rowid: number }
+                | undefined;
               if (rowidResult?.rowid) {
                 const embeddingText = [parsed.title, parsed.body]
                   .filter(Boolean)
@@ -254,24 +326,45 @@ export async function reindex(
           }
         } else if (fullSync) {
           const tagsJson = fmMeta.tags ? JSON.stringify(fmMeta.tags) : null;
-          const titleChanged = (parsed.title || null) !== ((existing.title as string) || null);
+          const titleChanged =
+            (parsed.title || null) !== ((existing.title as string) || null);
           const bodyChanged = (existing.body as string) !== parsed.body;
           const tagsChanged = tagsJson !== ((existing.tags as string) || null);
           const metaChanged = metaJson !== ((existing.meta as string) || null);
-          const relatedToChanged = relatedToJson !== ((existing.related_to as string) || null);
+          const relatedToChanged =
+            relatedToJson !== ((existing.related_to as string) || null);
 
-          if (bodyChanged || titleChanged || tagsChanged || metaChanged || relatedToChanged) {
+          if (
+            bodyChanged ||
+            titleChanged ||
+            tagsChanged ||
+            metaChanged ||
+            relatedToChanged
+          ) {
             ctx.stmts.updateEntry.run(
-              parsed.title || null, parsed.body, metaJson, tagsJson,
-              (fmMeta.source as string) || "file", category,
-              identity_key, expires_at, filePath,
+              parsed.title || null,
+              parsed.body,
+              metaJson,
+              tagsJson,
+              (fmMeta.source as string) || "file",
+              category,
+              identity_key,
+              expires_at,
+              filePath,
             );
             if (relatedToChanged && ctx.stmts.updateRelatedTo) {
-              ctx.stmts.updateRelatedTo.run(relatedToJson, existing.id as string);
+              ctx.stmts.updateRelatedTo.run(
+                relatedToJson,
+                existing.id as string,
+              );
             }
 
             if ((bodyChanged || titleChanged) && category !== "event") {
-              const rowid = (ctx.stmts.getRowid.get(existing.id as string) as { rowid: number } | undefined)?.rowid;
+              const rowid = (
+                ctx.stmts.getRowid.get(existing.id as string) as
+                  | { rowid: number }
+                  | undefined
+              )?.rowid;
               if (rowid) {
                 const embeddingText = [parsed.title, parsed.body]
                   .filter(Boolean)
@@ -291,9 +384,15 @@ export async function reindex(
       if (fullSync) {
         for (const [dbPath, row] of dbByPath) {
           if (!diskPaths.has(dbPath)) {
-            const vRowid = (ctx.stmts.getRowid.get(row.id as string) as { rowid: number } | undefined)?.rowid;
+            const vRowid = (
+              ctx.stmts.getRowid.get(row.id as string) as
+                | { rowid: number }
+                | undefined
+            )?.rowid;
             if (vRowid) {
-              try { ctx.deleteVec(vRowid); } catch {}
+              try {
+                ctx.deleteVec(vRowid);
+              } catch {}
             }
             ctx.stmts.deleteEntry.run(row.id as string);
             stats.removed++;
@@ -313,7 +412,9 @@ export async function reindex(
             .prepare("SELECT id, rowid FROM vault WHERE kind = ?")
             .all(kind) as { id: string; rowid: number }[];
           for (const row of orphaned) {
-            try { ctx.deleteVec(row.rowid); } catch {}
+            try {
+              ctx.deleteVec(row.rowid);
+            } catch {}
             ctx.stmts.deleteEntry.run(row.id);
             stats.removed++;
           }
@@ -329,11 +430,17 @@ export async function reindex(
 
     for (const row of expired) {
       if (row.file_path) {
-        try { unlinkSync(row.file_path); } catch {}
+        try {
+          unlinkSync(row.file_path);
+        } catch {}
       }
-      const vRowid = (ctx.stmts.getRowid.get(row.id) as { rowid: number } | undefined)?.rowid;
+      const vRowid = (
+        ctx.stmts.getRowid.get(row.id) as { rowid: number } | undefined
+      )?.rowid;
       if (vRowid) {
-        try { ctx.deleteVec(Number(vRowid)); } catch {}
+        try {
+          ctx.deleteVec(Number(vRowid));
+        } catch {}
       }
       ctx.stmts.deleteEntry.run(row.id);
       stats.removed++;
@@ -350,7 +457,9 @@ export async function reindex(
     const embeddings = await embedBatch(batch.map((e) => e.text));
     for (let j = 0; j < batch.length; j++) {
       if (embeddings[j]) {
-        try { ctx.deleteVec(batch[j].rowid); } catch {}
+        try {
+          ctx.deleteVec(batch[j].rowid);
+        } catch {}
         ctx.insertVec(batch[j].rowid, embeddings[j]!);
       }
     }

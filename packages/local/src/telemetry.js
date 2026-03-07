@@ -1,6 +1,10 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { API_URL, MARKETING_URL, GITHUB_ISSUES_URL } from "@context-vault/core/constants";
+import {
+  API_URL,
+  MARKETING_URL,
+  GITHUB_ISSUES_URL,
+} from "@context-vault/core/constants";
 
 const TELEMETRY_ENDPOINT = `${API_URL}/telemetry`;
 const NOTICE_MARKER = ".telemetry-notice-shown";

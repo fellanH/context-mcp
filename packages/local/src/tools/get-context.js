@@ -156,8 +156,7 @@ export function detectConsolidationHints(entries, db, opts = {}) {
       // When userId is defined (hosted mode), scope to that user.
       // When userId is undefined (local mode), no user scoping — column may not exist.
       const userClause = "";
-      const countParams =
-        false ? [`%"${tag}"%`] : [`%"${tag}"%`];
+      const countParams = false ? [`%"${tag}"%`] : [`%"${tag}"%`];
       const countRow = db
         .prepare(
           `SELECT COUNT(*) as c FROM vault WHERE kind != 'brief' AND tags LIKE ?${userClause} AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL`,
@@ -173,8 +172,7 @@ export function detectConsolidationHints(entries, db, opts = {}) {
     let lastSnapshotAgeDays = null;
     try {
       const userClause = "";
-      const params =
-        false ? [`%"${tag}"%`] : [`%"${tag}"%`];
+      const params = false ? [`%"${tag}"%`] : [`%"${tag}"%`];
       const recentBrief = db
         .prepare(
           `SELECT created_at FROM vault WHERE kind = 'brief' AND tags LIKE ?${userClause} ORDER BY created_at DESC LIMIT 1`,
@@ -290,7 +288,11 @@ export const inputSchema = {
     .describe(
       "Return entries created before this date. Accepts ISO date strings or the same natural shortcuts as `since`. When `since` is 'yesterday' and `until` is omitted, `until` is automatically set to the end of yesterday.",
     ),
-  limit: z.number().max(500).optional().describe("Max results to return (default 10)"),
+  limit: z
+    .number()
+    .max(500)
+    .optional()
+    .describe("Max results to return (default 10)"),
   include_superseded: z
     .boolean()
     .optional()
@@ -465,7 +467,7 @@ export async function handler(
       until: effectiveUntil,
       limit: fetchLimit,
       decayDays: config.eventDecayDays || 30,
-      
+
       includeSuperseeded: include_superseded ?? false,
     });
 
@@ -509,7 +511,9 @@ export async function handler(
     let rows;
     try {
       rows = ctx.db
-        .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT ?`)
+        .prepare(
+          `SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT ?`,
+        )
         .all(...params);
     } catch (e) {
       return errWithHint(
@@ -680,11 +684,7 @@ export async function handler(
 
   // Graph traversal: follow related_to links bidirectionally
   if (follow_links) {
-    const { forward, backward } = collectLinkedEntries(
-      ctx.db,
-      filtered,
-      
-    );
+    const { forward, backward } = collectLinkedEntries(ctx.db, filtered);
     const allLinked = [...forward, ...backward];
     const seen = new Set();
     const uniqueLinked = allLinked.filter((e) => {
@@ -727,7 +727,7 @@ export async function handler(
   const consolidationSuggestions = detectConsolidationHints(
     filtered,
     ctx.db,
-    
+
     consolidationOpts,
   );
 

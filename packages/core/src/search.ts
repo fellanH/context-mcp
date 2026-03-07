@@ -1,9 +1,17 @@
-import type { BaseCtx, SearchResult, SearchOptions, VaultEntry } from "./types.js";
+import type {
+  BaseCtx,
+  SearchResult,
+  SearchOptions,
+  VaultEntry,
+} from "./types.js";
 
 const NEAR_DUP_THRESHOLD = 0.92;
 const RRF_K = 60;
 
-export function recencyDecayScore(updatedAt: string | null | undefined, decayRate = 0.05): number {
+export function recencyDecayScore(
+  updatedAt: string | null | undefined,
+  decayRate = 0.05,
+): number {
   if (updatedAt == null) return 0.5;
   const ageDays = (Date.now() - new Date(updatedAt).getTime()) / 86400000;
   return Math.exp(-decayRate * ageDays);
@@ -28,7 +36,11 @@ export function buildFtsQuery(query: string): string | null {
   return `${phrase} OR ${near} OR ${and}`;
 }
 
-export function recencyBoost(createdAt: string, category: string, decayDays = 30): number {
+export function recencyBoost(
+  createdAt: string,
+  category: string,
+  decayDays = 30,
+): number {
   if (category !== "event") return 1.0;
   const ageDays = (Date.now() - new Date(createdAt).getTime()) / 86400000;
   return 1 / (1 + ageDays / decayDays);
@@ -46,9 +58,9 @@ export function buildFilterClauses({
   since?: string | null;
   until?: string | null;
   includeSuperseeded?: boolean;
-}): { clauses: string[]; params: unknown[] } {
+}): { clauses: string[]; params: (string | number | null)[] } {
   const clauses: string[] = [];
-  const params: unknown[] = [];
+  const params: (string | number | null)[] = [];
   if (categoryFilter) {
     clauses.push("e.category = ?");
     params.push(categoryFilter);
@@ -120,7 +132,7 @@ export async function hybridSearch(
   if (ftsQuery) {
     try {
       const whereParts = ["vault_fts MATCH ?"];
-      const ftsParams: unknown[] = [ftsQuery];
+      const ftsParams: (string | number | null)[] = [ftsQuery];
 
       if (kindFilter) {
         whereParts.push("e.kind = ?");
@@ -130,8 +142,9 @@ export async function hybridSearch(
       ftsParams.push(...extraFilters.params);
 
       const ftsSQL = `SELECT e.*, rank FROM vault_fts f JOIN vault e ON f.rowid = e.rowid WHERE ${whereParts.join(" AND ")} ORDER BY rank LIMIT 15`;
-      // @ts-expect-error -- node:sqlite types are overly strict for dynamic SQL params
-      const rows = ctx.db.prepare(ftsSQL).all(...ftsParams) as unknown as (VaultEntry & { rank: number })[];
+      const rows = ctx.db
+        .prepare(ftsSQL)
+        .all(...ftsParams) as unknown as (VaultEntry & { rank: number })[];
 
       for (const { rank: _rank, ...row } of rows) {
         ftsRankedIds.push(row.id);
@@ -148,7 +161,11 @@ export async function hybridSearch(
   const vecSimMap = new Map<string, number>();
 
   try {
-    const vecCount = (ctx.db.prepare("SELECT COUNT(*) as c FROM vault_vec").get() as { c: number }).c;
+    const vecCount = (
+      ctx.db.prepare("SELECT COUNT(*) as c FROM vault_vec").get() as {
+        c: number;
+      }
+    ).c;
     if (vecCount > 0) {
       queryVec = await ctx.embed(query);
       if (queryVec) {
@@ -196,7 +213,9 @@ export async function hybridSearch(
     }
   } catch (err) {
     if (!(err as Error).message?.includes("no such table")) {
-      console.error(`[retrieve] Vector search error: ${(err as Error).message}`);
+      console.error(
+        `[retrieve] Vector search error: ${(err as Error).message}`,
+      );
     }
   }
 

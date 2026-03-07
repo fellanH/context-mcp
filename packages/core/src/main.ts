@@ -80,7 +80,12 @@ export {
 } from "./db.js";
 
 // Embeddings
-export { embed, embedBatch, resetEmbedPipeline, isEmbedAvailable } from "./embed.js";
+export {
+  embed,
+  embedBatch,
+  resetEmbedPipeline,
+  isEmbedAvailable,
+} from "./embed.js";
 
 // Index (reindex + indexEntry)
 export { indexEntry, reindex, pruneExpired } from "./index.js";
@@ -97,15 +102,7 @@ export {
 } from "./search.js";
 
 // Capture
-export {
-  writeEntry,
-  updateEntryFile,
-  captureAndIndex,
-} from "./capture.js";
+export { writeEntry, updateEntryFile, captureAndIndex } from "./capture.js";
 
 // Ingest URL
-export {
-  htmlToMarkdown,
-  extractHtmlContent,
-  ingestUrl,
-} from "./ingest-url.js";
+export { htmlToMarkdown, extractHtmlContent, ingestUrl } from "./ingest-url.js";

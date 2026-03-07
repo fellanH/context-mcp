@@ -117,7 +117,9 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
   }
 
   const db = createDb(dbPath);
-  const version = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  const version = (
+    db.prepare("PRAGMA user_version").get() as { user_version: number }
+  ).user_version;
 
   if (version > 0 && version < 15) {
     console.error(
@@ -146,13 +148,17 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
     if (!backupSucceeded) {
       throw new Error(
         `[context-vault] Aborting schema migration: backup failed for ${dbPath}. ` +
-        `Fix the backup issue or manually back up the file before upgrading.`,
+          `Fix the backup issue or manually back up the file before upgrading.`,
       );
     }
 
     unlinkSync(dbPath);
-    try { unlinkSync(dbPath + "-wal"); } catch {}
-    try { unlinkSync(dbPath + "-shm"); } catch {}
+    try {
+      unlinkSync(dbPath + "-wal");
+    } catch {}
+    try {
+      unlinkSync(dbPath + "-shm");
+    } catch {}
 
     const freshDb = createDb(dbPath);
     freshDb.exec(SCHEMA_DDL);
@@ -179,9 +185,7 @@ export function prepareStatements(db: DatabaseSync): PreparedStatements {
       ),
       deleteEntry: db.prepare(`DELETE FROM vault WHERE id = ?`),
       getRowid: db.prepare(`SELECT rowid FROM vault WHERE id = ?`),
-      getRowidByPath: db.prepare(
-        `SELECT rowid FROM vault WHERE file_path = ?`,
-      ),
+      getRowidByPath: db.prepare(`SELECT rowid FROM vault WHERE file_path = ?`),
       getEntryById: db.prepare(`SELECT * FROM vault WHERE id = ?`),
       getByIdentityKey: db.prepare(
         `SELECT * FROM vault WHERE kind = ? AND identity_key = ?`,

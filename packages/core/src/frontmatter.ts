@@ -84,15 +84,17 @@ export function parseEntryFromMarkdown(
   kind: string,
   body: string,
   fmMeta: Record<string, unknown>,
-): { title: string | null; body: string; meta: Record<string, unknown> | null } {
+): {
+  title: string | null;
+  body: string;
+  meta: Record<string, unknown> | null;
+} {
   if (kind === "insight") {
     return { title: null, body, meta: extractCustomMeta(fmMeta) };
   }
 
   if (kind === "decision") {
-    const titleMatch = body.match(
-      /^## Decision\s*\n+([\s\S]*?)(?=\n## |\n*$)/,
-    );
+    const titleMatch = body.match(/^## Decision\s*\n+([\s\S]*?)(?=\n## |\n*$)/);
     const rationaleMatch = body.match(/## Rationale\s*\n+([\s\S]*?)$/);
     const title = titleMatch ? titleMatch[1].trim() : body.slice(0, 100);
     const rationale = rationaleMatch ? rationaleMatch[1].trim() : body;

@@ -20,10 +20,8 @@ export const DEFAULT_GROWTH_THRESHOLDS = {
   eventsWithoutTtl: { warn: 200 },
 };
 
-export const DEFAULT_LIFECYCLE: Record<
-  string,
-  { archiveAfterDays?: number }
-> = {
-  event: { archiveAfterDays: 90 },
-  ephemeral: { archiveAfterDays: 30 },
-};
+export const DEFAULT_LIFECYCLE: Record<string, { archiveAfterDays?: number }> =
+  {
+    event: { archiveAfterDays: 90 },
+    ephemeral: { archiveAfterDays: 30 },
+  };

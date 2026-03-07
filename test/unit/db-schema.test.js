@@ -106,11 +106,15 @@ describe("schema DDL exports", () => {
   });
 
   it("SCHEMA_DDL creates vault_fts virtual table", () => {
-    expect(SCHEMA_DDL).toContain("CREATE VIRTUAL TABLE IF NOT EXISTS vault_fts");
+    expect(SCHEMA_DDL).toContain(
+      "CREATE VIRTUAL TABLE IF NOT EXISTS vault_fts",
+    );
   });
 
   it("SCHEMA_DDL creates vault_vec virtual table", () => {
-    expect(SCHEMA_DDL).toContain("CREATE VIRTUAL TABLE IF NOT EXISTS vault_vec");
+    expect(SCHEMA_DDL).toContain(
+      "CREATE VIRTUAL TABLE IF NOT EXISTS vault_vec",
+    );
   });
 });
 

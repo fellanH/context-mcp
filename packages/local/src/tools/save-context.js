@@ -3,7 +3,13 @@ import { captureAndIndex, updateEntryFile } from "@context-vault/core/capture";
 import { indexEntry } from "@context-vault/core/index";
 import { categoryFor, defaultTierFor } from "@context-vault/core/categories";
 import { normalizeKind } from "@context-vault/core/files";
-import { ok, err, errWithHint, ensureVaultExists, ensureValidKind } from "../helpers.js";
+import {
+  ok,
+  err,
+  errWithHint,
+  ensureVaultExists,
+  ensureValidKind,
+} from "../helpers.js";
 import { maybeShowFeedbackPrompt } from "../telemetry.js";
 import { validateRelatedTo } from "../linking.js";
 import {
@@ -25,7 +31,7 @@ async function findSimilar(
   ctx,
   embedding,
   threshold,
-  
+
   { hydrate = false } = {},
 ) {
   try {
@@ -548,24 +554,32 @@ export async function handler(
 
   let entry;
   try {
-    entry = await captureAndIndex(ctx, {
-      kind: normalizedKind,
-      title,
-      body,
-      meta: finalMeta,
-      tags,
-      source,
-      folder,
-      identity_key,
-      expires_at,
-      supersedes,
-      related_to,
-      source_files,
+    entry = await captureAndIndex(
+      ctx,
+      {
+        kind: normalizedKind,
+        title,
+        body,
+        meta: finalMeta,
+        tags,
+        source,
+        folder,
+        identity_key,
+        expires_at,
+        supersedes,
+        related_to,
+        source_files,
 
-      tier: effectiveTier,
-    }, embeddingToReuse);
+        tier: effectiveTier,
+      },
+      embeddingToReuse,
+    );
   } catch (e) {
-    return errWithHint(e.message, "SAVE_FAILED", "context-vault save_context is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.");
+    return errWithHint(
+      e.message,
+      "SAVE_FAILED",
+      "context-vault save_context is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.",
+    );
   }
 
   if (ctx.config?.dataDir) {
@@ -620,9 +634,7 @@ export async function handler(
   const criticalLimit = config.thresholds?.totalEntries?.critical;
   if (criticalLimit != null) {
     try {
-      const countRow = ctx.db
-        .prepare("SELECT COUNT(*) as c FROM vault")
-        .get();
+      const countRow = ctx.db.prepare("SELECT COUNT(*) as c FROM vault").get();
       if (countRow.c >= criticalLimit) {
         parts.push(
           ``,

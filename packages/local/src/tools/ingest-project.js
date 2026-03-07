@@ -32,7 +32,11 @@ function safeRead(filePath) {
 
 function safeExec(cmd, cwd) {
   try {
-    return execSync(cmd, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    return execSync(cmd, {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
   } catch {
     return null;
   }
@@ -41,7 +45,10 @@ function safeExec(cmd, cwd) {
 function detectTechStack(projectPath, pkgJson) {
   const stack = [];
 
-  if (existsSync(join(projectPath, "pyproject.toml")) || existsSync(join(projectPath, "setup.py"))) {
+  if (
+    existsSync(join(projectPath, "pyproject.toml")) ||
+    existsSync(join(projectPath, "setup.py"))
+  ) {
     stack.push("python");
   }
   if (existsSync(join(projectPath, "Cargo.toml"))) {
@@ -75,7 +82,9 @@ function detectTechStack(projectPath, pkgJson) {
 }
 
 function extractReadmeDescription(projectPath) {
-  const raw = safeRead(join(projectPath, "README.md")) || safeRead(join(projectPath, "readme.md"));
+  const raw =
+    safeRead(join(projectPath, "README.md")) ||
+    safeRead(join(projectPath, "readme.md"));
   if (!raw) return null;
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();
@@ -85,7 +94,15 @@ function extractReadmeDescription(projectPath) {
   return null;
 }
 
-function buildProjectBody({ projectName, description, techStack, repoUrl, lastCommit, projectPath, hasClaudeMd }) {
+function buildProjectBody({
+  projectName,
+  description,
+  techStack,
+  repoUrl,
+  lastCommit,
+  projectPath,
+  hasClaudeMd,
+}) {
   const lines = [];
   lines.push(`## ${projectName}`);
   if (description) lines.push("", description);
@@ -103,14 +120,21 @@ function buildProjectBody({ projectName, description, techStack, repoUrl, lastCo
  * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
  * @param {import('../types.js').ToolShared} shared
  */
-export async function handler({ path: projectPath, tags, pillar }, ctx, { ensureIndexed }) {
+export async function handler(
+  { path: projectPath, tags, pillar },
+  ctx,
+  { ensureIndexed },
+) {
   const { config } = ctx;
 
   const vaultErr = ensureVaultExists(config);
   if (vaultErr) return vaultErr;
 
   if (!projectPath?.trim()) {
-    return err("Required: path (absolute path to project directory)", "INVALID_INPUT");
+    return err(
+      "Required: path (absolute path to project directory)",
+      "INVALID_INPUT",
+    );
   }
   if (!existsSync(projectPath)) {
     return err(`Directory not found: ${projectPath}`, "INVALID_INPUT");
@@ -136,7 +160,11 @@ export async function handler({ path: projectPath, tags, pillar }, ctx, { ensure
   }
 
   // Slug-safe identity_key
-  const identityKey = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  const identityKey = projectName
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 
   // Description: package.json > README
   const description =
@@ -190,7 +218,6 @@ export async function handler({ path: projectPath, tags, pillar }, ctx, { ensure
     tags: allTags,
     identity_key: identityKey,
     meta,
-    
   });
 
   // Save bucket entity if it doesn't already exist
@@ -211,7 +238,6 @@ export async function handler({ path: projectPath, tags, pillar }, ctx, { ensure
       tags: allTags,
       identity_key: bucketTag,
       meta: { project_path: projectPath },
-      
     });
   }
 
@@ -238,6 +264,9 @@ export async function handler({ path: projectPath, tags, pillar }, ctx, { ensure
     parts.push(``, `  (bucket '${bucketTag}' already exists — skipped)`);
   }
 
-  parts.push("", "_Use get_context with bucket tag to retrieve project-scoped entries._");
+  parts.push(
+    "",
+    "_Use get_context with bucket tag to retrieve project-scoped entries._",
+  );
   return ok(parts.join("\n"));
 }
