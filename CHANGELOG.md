@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.1.6] — 2026-03-07
+
+### Changed
+
+- README now documents all 11 MCP tools (was 6), organized into Core, Ingest, Session, and System categories
+
 ## [3.1.5] — 2026-03-07
 
 ### Fixed
