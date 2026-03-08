@@ -2,6 +2,16 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.1.8] — 2026-03-09
+
+### Changed
+
+- Complete TypeScript migration for `packages/local` — all 22 source files are now `.ts`, compiled to `dist/`
+- CLI imports now point to `dist/` instead of `src/`, matching the standard TypeScript build pipeline
+- Root build script builds both `core` and `local` workspaces
+- Release script includes build step before publish
+- Removed Vitest `.js-as-TS` transform hack (no longer needed with proper `.ts` source)
+
 ## [3.1.7] — 2026-03-08
 
 ### Fixed
