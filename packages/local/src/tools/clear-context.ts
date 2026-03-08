@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ok } from '../helpers.js';
+import type { ToolResult } from '../types.js';
 
 export const name = 'clear_context';
 
@@ -15,11 +16,7 @@ export const inputSchema = {
     ),
 };
 
-/**
- * @param {object} args
- * @param {import('@context-vault/core/types').BaseCtx} _ctx
- */
-export function handler({ scope } = {}) {
+export function handler({ scope }: { scope?: string } = {}): ToolResult {
   const lines = [
     '## Context Reset',
     '',

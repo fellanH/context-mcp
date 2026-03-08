@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { execSync } from 'node:child_process';
 import { ok, err, ensureVaultExists } from '../helpers.js';
+import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const DEFAULT_MAX_TOKENS = 4000;
 const RECENT_DAYS = 7;
@@ -54,17 +55,17 @@ function detectProject() {
   return null;
 }
 
-function truncateBody(body, maxLen = MAX_BODY_PER_ENTRY) {
+function truncateBody(body: string | null | undefined, maxLen = MAX_BODY_PER_ENTRY): string {
   if (!body) return '(no body)';
   if (body.length <= maxLen) return body;
   return body.slice(0, maxLen) + '...';
 }
 
-function estimateTokens(text) {
+function estimateTokens(text: string | null | undefined): number {
   return Math.ceil((text || '').length / 4);
 }
 
-function formatEntry(entry) {
+function formatEntry(entry: any): string {
   const tags = entry.tags ? JSON.parse(entry.tags) : [];
   const tagStr = tags.length ? tags.join(', ') : 'none';
   const date = entry.updated_at || entry.created_at || 'unknown';
@@ -75,7 +76,11 @@ function formatEntry(entry) {
   ].join('\n');
 }
 
-export async function handler({ project, max_tokens, buckets }, ctx, { ensureIndexed }) {
+export async function handler(
+  { project, max_tokens, buckets }: Record<string, any>,
+  ctx: LocalCtx,
+  { ensureIndexed }: SharedCtx
+): Promise<ToolResult> {
   const { config } = ctx;
 
   const vaultErr = ensureVaultExists(config);
@@ -86,7 +91,7 @@ export async function handler({ project, max_tokens, buckets }, ctx, { ensureInd
   const effectiveProject = project?.trim() || detectProject();
   const tokenBudget = max_tokens || DEFAULT_MAX_TOKENS;
 
-  const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
+  const bucketTags = buckets?.length ? buckets.map((b: string) => `bucket:${b}`) : [];
   const effectiveTags = bucketTags.length ? bucketTags : effectiveProject ? [effectiveProject] : [];
 
   const sinceDate = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString();
@@ -140,9 +145,9 @@ export async function handler({ project, max_tokens, buckets }, ctx, { ensureInd
   }
 
   const recent = queryRecent(ctx, sinceDate, effectiveTags);
-  const seenIds = new Set(decisions.map((d) => d.id));
+  const seenIds = new Set(decisions.map((d: any) => d.id));
   if (lastSession) seenIds.add(lastSession.id);
-  const deduped = recent.filter((r) => !seenIds.has(r.id));
+  const deduped = recent.filter((r: any) => !seenIds.has(r.id));
 
   if (deduped.length > 0) {
     const header = `## Recent Entries (last ${RECENT_DAYS} days)\n`;
@@ -166,8 +171,7 @@ export async function handler({ project, max_tokens, buckets }, ctx, { ensureInd
   const totalEntries =
     (lastSession ? 1 : 0) +
     decisions.length +
-    deduped.filter((d) => {
-      const line = formatEntry(d);
+    deduped.filter((_d: any) => {
       return true;
     }).length;
 
@@ -176,7 +180,7 @@ export async function handler({ project, max_tokens, buckets }, ctx, { ensureInd
     `_${tokensUsed} / ${tokenBudget} tokens used | project: ${effectiveProject || 'unscoped'}_`
   );
 
-  const result = ok(sections.join('\n'));
+  const result: ToolResult = ok(sections.join('\n'));
   result._meta = {
     project: effectiveProject || null,
     buckets: buckets || null,
@@ -191,9 +195,9 @@ export async function handler({ project, max_tokens, buckets }, ctx, { ensureInd
   return result;
 }
 
-function queryLastSession(ctx, effectiveTags) {
+function queryLastSession(ctx: LocalCtx, effectiveTags: string[]): any {
   const clauses = [`kind = '${SESSION_SUMMARY_KIND}'`];
-  const params = [];
+  const params: any[] = [];
 
   if (false) {
   }
@@ -206,16 +210,21 @@ function queryLastSession(ctx, effectiveTags) {
     .all(...params);
 
   if (effectiveTags.length) {
-    const match = rows.find((r) => {
+    const match = rows.find((r: any) => {
       const tags = r.tags ? JSON.parse(r.tags) : [];
-      return effectiveTags.some((t) => tags.includes(t));
+      return effectiveTags.some((t: string) => tags.includes(t));
     });
     if (match) return match;
   }
   return rows[0] || null;
 }
 
-function queryByKinds(ctx, kinds, since, effectiveTags) {
+function queryByKinds(
+  ctx: LocalCtx,
+  kinds: string[],
+  since: string,
+  effectiveTags: string[]
+): any[] {
   const kindPlaceholders = kinds.map(() => '?').join(',');
   const clauses = [`kind IN (${kindPlaceholders})`];
   const params = [...kinds];
@@ -234,16 +243,16 @@ function queryByKinds(ctx, kinds, since, effectiveTags) {
     .all(...params);
 
   if (effectiveTags.length) {
-    const tagged = rows.filter((r) => {
+    const tagged = rows.filter((r: any) => {
       const tags = r.tags ? JSON.parse(r.tags) : [];
-      return effectiveTags.some((t) => tags.includes(t));
+      return effectiveTags.some((t: string) => tags.includes(t));
     });
     if (tagged.length > 0) return tagged;
   }
   return rows;
 }
 
-function queryRecent(ctx, since, effectiveTags) {
+function queryRecent(ctx: LocalCtx, since: string, effectiveTags: string[]): any[] {
   const clauses = ['created_at >= ?'];
   const params = [since];
 
@@ -258,9 +267,9 @@ function queryRecent(ctx, since, effectiveTags) {
     .all(...params);
 
   if (effectiveTags.length) {
-    const tagged = rows.filter((r) => {
+    const tagged = rows.filter((r: any) => {
       const tags = r.tags ? JSON.parse(r.tags) : [];
-      return effectiveTags.some((t) => tags.includes(t));
+      return effectiveTags.some((t: string) => tags.includes(t));
     });
     if (tagged.length > 0) return tagged;
   }

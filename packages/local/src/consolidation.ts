@@ -1,4 +1,9 @@
-export function findHotTags(db, opts = {}) {
+import type { DatabaseSync } from 'node:sqlite';
+
+export function findHotTags(
+  db: DatabaseSync,
+  opts: { tagThreshold?: number; maxSnapshotAgeDays?: number } = {}
+): Array<{ tag: string; entryCount: number; lastSnapshotAge: number | null }> {
   const tagThreshold = opts.tagThreshold ?? 10;
   const maxSnapshotAgeDays = opts.maxSnapshotAgeDays ?? 7;
   const cutoff = new Date(Date.now() - maxSnapshotAgeDays * 86400000).toISOString();
@@ -12,8 +17,8 @@ export function findHotTags(db, opts = {}) {
     )
     .all();
 
-  const tagCounts = new Map();
-  for (const row of rows) {
+  const tagCounts = new Map<string, number>();
+  for (const row of rows as Array<{ tags: string | null }>) {
     if (!row.tags) continue;
     try {
       const tags = JSON.parse(row.tags);
@@ -38,12 +43,11 @@ export function findHotTags(db, opts = {}) {
       )
       .get(`%"${tag}"%`);
 
-    let lastSnapshotAge = null;
+    let lastSnapshotAge: number | null = null;
     if (recentBrief) {
-      lastSnapshotAge = Math.round(
-        (Date.now() - new Date(recentBrief.created_at).getTime()) / 86400000
-      );
-      if (recentBrief.created_at >= cutoff) continue;
+      const brief = recentBrief as { created_at: string };
+      lastSnapshotAge = Math.round((Date.now() - new Date(brief.created_at).getTime()) / 86400000);
+      if (brief.created_at >= cutoff) continue;
     }
 
     results.push({ tag, entryCount: count, lastSnapshotAge });
@@ -52,7 +56,10 @@ export function findHotTags(db, opts = {}) {
   return results.sort((a, b) => b.entryCount - a.entryCount);
 }
 
-export function findColdEntries(db, opts = {}) {
+export function findColdEntries(
+  db: DatabaseSync,
+  opts: { maxAgeDays?: number; maxHitCount?: number } = {}
+): string[] {
   const maxAgeDays = opts.maxAgeDays ?? 90;
   const maxHitCount = opts.maxHitCount ?? 0;
   const cutoff = new Date(Date.now() - maxAgeDays * 86400000).toISOString();
@@ -67,5 +74,5 @@ export function findColdEntries(db, opts = {}) {
     )
     .all(cutoff, maxHitCount);
 
-  return rows.map((r) => r.id);
+  return (rows as Array<{ id: string }>).map((r) => r.id);
 }

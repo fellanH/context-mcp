@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { unlinkSync } from 'node:fs';
 import { ok, err } from '../helpers.js';
+import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 export const name = 'delete_context';
 
@@ -11,12 +12,11 @@ export const inputSchema = {
   id: z.string().describe('The entry ULID to delete'),
 };
 
-/**
- * @param {object} args
- * @param {import('@context-vault/core/types').BaseCtx} ctx
- * @param {object} shared
- */
-export async function handler({ id }, ctx, { ensureIndexed }) {
+export async function handler(
+  { id }: Record<string, any>,
+  ctx: LocalCtx,
+  { ensureIndexed }: SharedCtx
+): Promise<ToolResult> {
   if (!id?.trim()) return err('Required: id (non-empty string)', 'INVALID_INPUT');
   await ensureIndexed();
 
@@ -37,8 +37,8 @@ export async function handler({ id }, ctx, { ensureIndexed }) {
     let fileWarning = null;
     if (entry.file_path) {
       try {
-        unlinkSync(entry.file_path);
-      } catch (e) {
+        unlinkSync(entry.file_path as string);
+      } catch (e: any) {
         if (e.code !== 'ENOENT') {
           fileWarning = `file could not be removed from disk (${e.code}): ${entry.file_path}`;
         }
@@ -48,6 +48,6 @@ export async function handler({ id }, ctx, { ensureIndexed }) {
     const msg = `Deleted ${entry.kind}: ${entry.title || '(untitled)'} [${id}]`;
     return ok(fileWarning ? `${msg}\nWarning: ${fileWarning}` : msg);
   } catch (e) {
-    return err(e.message, 'DELETE_FAILED');
+    return err(e instanceof Error ? e.message : String(e), 'DELETE_FAILED');
   }
 }

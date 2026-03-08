@@ -3,8 +3,10 @@ import { join } from 'node:path';
 import { walkDir } from '@context-vault/core/files';
 import { isEmbedAvailable } from '@context-vault/core/embed';
 import { KIND_STALENESS_DAYS } from '@context-vault/core/categories';
+import type { LocalCtx } from './types.js';
+import type { GrowthThresholds } from '@context-vault/core/types';
 
-function countArchivedEntries(vaultDir) {
+function countArchivedEntries(vaultDir: string): number {
   const archRoot = join(vaultDir, '_archive');
   if (!existsSync(archRoot)) return 0;
   try {
@@ -14,12 +16,13 @@ function countArchivedEntries(vaultDir) {
   }
 }
 
-export function gatherVaultStatus(ctx, opts = {}) {
+export function gatherVaultStatus(ctx: LocalCtx, opts: Record<string, unknown> = {}): any {
+  void opts;
   const { db, config } = ctx;
-  const errors = [];
+  const errors: string[] = [];
 
   let fileCount = 0;
-  const subdirs = [];
+  const subdirs: Array<{ name: string; count: number }> = [];
   try {
     if (existsSync(config.vaultDir)) {
       for (const d of readdirSync(config.vaultDir, { withFileTypes: true })) {
@@ -32,23 +35,23 @@ export function gatherVaultStatus(ctx, opts = {}) {
       }
     }
   } catch (e) {
-    errors.push(`File scan failed: ${e.message}`);
+    errors.push(`File scan failed: ${(e as Error).message}`);
   }
 
-  let kindCounts = [];
+  let kindCounts: unknown[] = [];
   try {
     kindCounts = db.prepare(`SELECT kind, COUNT(*) as c FROM vault GROUP BY kind`).all();
   } catch (e) {
-    errors.push(`Kind count query failed: ${e.message}`);
+    errors.push(`Kind count query failed: ${(e as Error).message}`);
   }
 
-  let categoryCounts = [];
+  let categoryCounts: unknown[] = [];
   try {
     categoryCounts = db
       .prepare(`SELECT category, COUNT(*) as c FROM vault GROUP BY category`)
       .all();
   } catch (e) {
-    errors.push(`Category count query failed: ${e.message}`);
+    errors.push(`Category count query failed: ${(e as Error).message}`);
   }
 
   let dbSize = 'n/a';
@@ -62,7 +65,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
           : `${(dbSizeBytes / 1024).toFixed(1)}KB`;
     }
   } catch (e) {
-    errors.push(`DB size check failed: ${e.message}`);
+    errors.push(`DB size check failed: ${(e as Error).message}`);
   }
 
   let stalePaths = false;
@@ -70,72 +73,82 @@ export function gatherVaultStatus(ctx, opts = {}) {
   try {
     const result = db
       .prepare(`SELECT COUNT(*) as c FROM vault WHERE file_path NOT LIKE ? || '%'`)
-      .get(config.vaultDir);
-    staleCount = result.c;
+      .get(config.vaultDir) as { c: number } | undefined;
+    staleCount = result?.c ?? 0;
     stalePaths = staleCount > 0;
   } catch (e) {
-    errors.push(`Stale path check failed: ${e.message}`);
+    errors.push(`Stale path check failed: ${(e as Error).message}`);
   }
 
   let expiredCount = 0;
   try {
-    expiredCount = db
+    const row = db
       .prepare(
         `SELECT COUNT(*) as c FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`
       )
-      .get().c;
+      .get() as { c: number } | undefined;
+    expiredCount = row?.c ?? 0;
   } catch (e) {
-    errors.push(`Expired count failed: ${e.message}`);
+    errors.push(`Expired count failed: ${(e as Error).message}`);
   }
 
   let eventCount = 0;
   try {
-    eventCount = db.prepare(`SELECT COUNT(*) as c FROM vault WHERE category = 'event'`).get().c;
+    const row = db.prepare(`SELECT COUNT(*) as c FROM vault WHERE category = 'event'`).get() as
+      | { c: number }
+      | undefined;
+    eventCount = row?.c ?? 0;
   } catch (e) {
-    errors.push(`Event count failed: ${e.message}`);
+    errors.push(`Event count failed: ${(e as Error).message}`);
   }
 
   let eventsWithoutTtlCount = 0;
   try {
-    eventsWithoutTtlCount = db
+    const row = db
       .prepare(`SELECT COUNT(*) as c FROM vault WHERE category = 'event' AND expires_at IS NULL`)
-      .get().c;
+      .get() as { c: number } | undefined;
+    eventsWithoutTtlCount = row?.c ?? 0;
   } catch (e) {
-    errors.push(`Events without TTL count failed: ${e.message}`);
+    errors.push(`Events without TTL count failed: ${(e as Error).message}`);
   }
 
-  let embeddingStatus = null;
+  let embeddingStatus: { indexed: number; total: number; missing: number } | null = null;
   try {
-    const total = db.prepare(`SELECT COUNT(*) as c FROM vault`).get().c;
-    const indexed = db
+    const totalRow = db.prepare(`SELECT COUNT(*) as c FROM vault`).get() as
+      | { c: number }
+      | undefined;
+    const indexedRow = db
       .prepare(`SELECT COUNT(*) as c FROM vault WHERE rowid IN (SELECT rowid FROM vault_vec)`)
-      .get().c;
+      .get() as { c: number } | undefined;
+    const total = totalRow?.c ?? 0;
+    const indexed = indexedRow?.c ?? 0;
     embeddingStatus = { indexed, total, missing: total - indexed };
   } catch (e) {
-    errors.push(`Embedding status check failed: ${e.message}`);
+    errors.push(`Embedding status check failed: ${(e as Error).message}`);
   }
 
   const embedModelAvailable = isEmbedAvailable();
 
   let autoCapturedFeedbackCount = 0;
   try {
-    autoCapturedFeedbackCount = db
+    const row = db
       .prepare(
         `SELECT COUNT(*) as c FROM vault WHERE kind = 'feedback' AND tags LIKE '%"auto-captured"%'`
       )
-      .get().c;
+      .get() as { c: number } | undefined;
+    autoCapturedFeedbackCount = row?.c ?? 0;
   } catch (e) {
-    errors.push(`Auto-captured feedback count failed: ${e.message}`);
+    errors.push(`Auto-captured feedback count failed: ${(e as Error).message}`);
   }
 
   let archivedCount = 0;
   try {
     archivedCount = countArchivedEntries(config.vaultDir);
   } catch (e) {
-    errors.push(`Archived count failed: ${e.message}`);
+    errors.push(`Archived count failed: ${(e as Error).message}`);
   }
 
-  let staleKnowledge = [];
+  let staleKnowledge: unknown[] = [];
   try {
     const stalenessKinds = Object.entries(KIND_STALENESS_DAYS);
     if (stalenessKinds.length > 0) {
@@ -152,7 +165,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
         .all();
     }
   } catch (e) {
-    errors.push(`Stale knowledge check failed: ${e.message}`);
+    errors.push(`Stale knowledge check failed: ${(e as Error).message}`);
   }
 
   return {
@@ -177,7 +190,16 @@ export function gatherVaultStatus(ctx, opts = {}) {
   };
 }
 
-export function computeGrowthWarnings(status, thresholds) {
+export function computeGrowthWarnings(
+  status: Record<string, any>,
+  thresholds: GrowthThresholds | null | undefined
+): {
+  warnings: Array<{ level: string; message: string }>;
+  hasCritical: boolean;
+  hasWarnings: boolean;
+  actions: string[];
+  kindBreakdown: Array<{ kind: string; count: number; pct: number }>;
+} {
   if (!thresholds)
     return {
       warnings: [],
@@ -188,10 +210,10 @@ export function computeGrowthWarnings(status, thresholds) {
     };
 
   const t = thresholds;
-  const warnings = [];
-  const actions = [];
+  const warnings: Array<{ level: string; message: string }> = [];
+  const actions: string[] = [];
 
-  const total = status.embeddingStatus?.total ?? 0;
+  const total: number = status.embeddingStatus?.total ?? 0;
   const { eventCount = 0, eventsWithoutTtlCount = 0, expiredCount = 0, dbSizeBytes = 0 } = status;
 
   let totalExceeded = false;
@@ -261,9 +283,9 @@ export function computeGrowthWarnings(status, thresholds) {
     actions.push('Run `context-vault archive` to move old ephemeral/event entries to _archive/');
   }
 
-  const kindBreakdown =
+  const kindBreakdown: Array<{ kind: string; count: number; pct: number }> =
     totalExceeded && status.kindCounts?.length
-      ? [...status.kindCounts]
+      ? [...(status.kindCounts as Array<{ kind: string; c: number }>)]
           .sort((a, b) => b.c - a.c)
           .map(({ kind, c }) => ({
             kind,

@@ -10,11 +10,11 @@ import { join } from 'node:path';
 
 const MAX_LOG_SIZE = 1024 * 1024;
 
-export function errorLogPath(dataDir) {
+export function errorLogPath(dataDir: string): string {
   return join(dataDir, 'error.log');
 }
 
-export function appendErrorLog(dataDir, entry) {
+export function appendErrorLog(dataDir: string, entry: Record<string, unknown>): void {
   try {
     mkdirSync(dataDir, { recursive: true });
     const logPath = errorLogPath(dataDir);
@@ -27,7 +27,7 @@ export function appendErrorLog(dataDir, entry) {
   }
 }
 
-export function errorLogCount(dataDir) {
+export function errorLogCount(dataDir: string): number {
   try {
     const logPath = errorLogPath(dataDir);
     if (!existsSync(logPath)) return 0;

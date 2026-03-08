@@ -2,6 +2,7 @@ import { reindex } from '@context-vault/core/index';
 import { captureAndIndex } from '@context-vault/core/capture';
 import { err } from './helpers.js';
 import { sendTelemetryEvent } from './telemetry.js';
+import type { LocalCtx, SharedCtx, ToolResult } from './types.js';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,9 +38,12 @@ const toolModules = [
 
 const TOOL_TIMEOUT_MS = 120_000;
 
-export function registerTools(server, ctx) {
-  function tracked(handler, toolName) {
-    return async (...args) => {
+export function registerTools(server: any, ctx: LocalCtx): void {
+  function tracked(
+    handler: (...args: any[]) => Promise<ToolResult>,
+    toolName: string
+  ): (...args: any[]) => Promise<ToolResult> {
+    return async (...args: any[]): Promise<ToolResult> => {
       if (ctx.activeOps) ctx.activeOps.count++;
       let timer;
       let handlerPromise;
@@ -52,8 +56,9 @@ export function registerTools(server, ctx) {
           }),
         ]);
         if (ctx.toolStats) ctx.toolStats.ok++;
-        return result;
-      } catch (e) {
+        return result as ToolResult;
+      } catch (rawErr) {
+        const e = rawErr as Error;
         if (e.message === 'TOOL_TIMEOUT') {
           handlerPromise?.catch(() => {});
           if (ctx.toolStats) {
@@ -93,12 +98,12 @@ export function registerTools(server, ctx) {
           await captureAndIndex(ctx, {
             kind: 'feedback',
             title: `Unhandled error in ${toolName ?? 'tool'} call`,
-            body: `${e.message}\n\n${e.stack ?? ''}`,
+            body: `${e.message}\n\n${(e as any).stack ?? ''}`,
             tags: ['bug', 'auto-captured'],
             source: 'auto-capture',
             meta: {
               tool: toolName,
-              error_type: e.constructor?.name,
+              error_type: (e as any).constructor?.name,
               cv_version: pkg.version,
               auto: true,
             },
@@ -113,12 +118,12 @@ export function registerTools(server, ctx) {
   }
 
   let reindexDone = false;
-  let reindexPromise = null;
+  let reindexPromise: Promise<void> | null = null;
   let reindexAttempts = 0;
   let reindexFailed = false;
   const MAX_REINDEX_ATTEMPTS = 2;
 
-  async function ensureIndexed({ blocking = true } = {}) {
+  async function ensureIndexed({ blocking = true }: { blocking?: boolean } = {}): Promise<void> {
     if (reindexDone) return;
     if (reindexPromise) {
       if (blocking) return reindexPromise;
@@ -134,7 +139,7 @@ export function registerTools(server, ctx) {
           );
         }
       })
-      .catch((e) => {
+      .catch((e: Error) => {
         reindexAttempts++;
         console.error(
           `[context-vault] Auto-reindex failed (attempt ${reindexAttempts}/${MAX_REINDEX_ATTEMPTS}): ${e.message}`
@@ -165,7 +170,12 @@ export function registerTools(server, ctx) {
       mod.name,
       mod.description,
       mod.inputSchema,
-      tracked((args) => mod.handler(args, ctx, shared), mod.name)
+      tracked(
+        ((args: Record<string, unknown>) => mod.handler(args, ctx, shared)) as (
+          ...args: any[]
+        ) => Promise<ToolResult>,
+        mod.name
+      )
     );
   }
 

@@ -9,6 +9,7 @@ import { resolveTemporalParams } from '../temporal.js';
 import { collectLinkedEntries } from '../linking.js';
 import { ok, err, errWithHint } from '../helpers.js';
 import { isEmbedAvailable } from '@context-vault/core/embed';
+import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const STALE_DUPLICATE_DAYS = 7;
 const DEFAULT_PIVOT_COUNT = 2;
@@ -21,7 +22,7 @@ const BRIEF_SCORE_BOOST = 0.05;
  * Truncate a body string to ~SKELETON_BODY_CHARS, breaking at sentence or
  * word boundary. Returns the truncated string with "..." appended.
  */
-export function skeletonBody(body) {
+export function skeletonBody(body: string | null | undefined): string {
   if (!body) return '';
   if (body.length <= SKELETON_BODY_CHARS) return body;
   const slice = body.slice(0, SKELETON_BODY_CHARS);
@@ -53,7 +54,10 @@ export function skeletonBody(body) {
  * @param {import('@context-vault/core/types').BaseCtx} _ctx
  * @returns {Array<{entry_a_id: string, entry_b_id: string, reason: string, recommendation: string}>}
  */
-export function detectConflicts(entries, _ctx) {
+export function detectConflicts(
+  entries: any[],
+  _ctx: any
+): Array<{ entry_a_id: string; entry_b_id: string; reason: string; recommendation: string }> {
   const conflicts = [];
   const idSet = new Set(entries.map((e) => e.id));
 
@@ -90,14 +94,14 @@ export function detectConflicts(entries, _ctx) {
       if (!tagsA.length || !tagsB.length) continue;
 
       const tagsSetA = new Set(tagsA);
-      const sharedTag = tagsB.some((t) => tagsSetA.has(t));
+      const sharedTag = tagsB.some((t: any) => tagsSetA.has(t));
       if (!sharedTag) continue;
 
       const dateA = new Date(a.updated_at || a.created_at);
       const dateB = new Date(b.updated_at || b.created_at);
       if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) continue;
 
-      const diffDays = Math.abs(dateA - dateB) / 86400000;
+      const diffDays = Math.abs(dateA.getTime() - dateB.getTime()) / 86400000;
       if (diffDays <= STALE_DUPLICATE_DAYS) continue;
 
       const [older, newer] = dateA < dateB ? [a, b] : [b, a];
@@ -129,11 +133,15 @@ export function detectConflicts(entries, _ctx) {
  * @param {{ tagThreshold?: number, maxAgeDays?: number }} opts - Configurable thresholds
  * @returns {Array<{tag: string, entry_count: number, last_snapshot_age_days: number|null}>}
  */
-export function detectConsolidationHints(entries, db, opts = {}) {
+export function detectConsolidationHints(
+  entries: any[],
+  db: any,
+  opts: { tagThreshold?: number; maxAgeDays?: number } = {}
+): Array<{ tag: string; entry_count: number; last_snapshot_age_days: number | null }> {
   const tagThreshold = opts.tagThreshold ?? CONSOLIDATION_TAG_THRESHOLD;
   const maxAgeDays = opts.maxAgeDays ?? CONSOLIDATION_SNAPSHOT_MAX_AGE_DAYS;
 
-  const candidateTags = new Set();
+  const candidateTags = new Set<string>();
   for (const entry of entries) {
     if (entry.kind === 'brief') continue;
     const entryTags = entry.tags ? JSON.parse(entry.tags) : [];
@@ -196,7 +204,7 @@ export function detectConsolidationHints(entries, db, opts = {}) {
  * @param {object} entry - DB row with source_files JSON column
  * @returns {{ stale: boolean, stale_reason: string } | null}
  */
-function checkStaleness(entry) {
+function checkStaleness(entry: any): { stale: boolean; stale_reason: string } | null {
   if (!entry.source_files) return null;
   let sourceFiles;
   try {
@@ -319,11 +327,6 @@ export const inputSchema = {
     ),
 };
 
-/**
- * @param {object} args
- * @param {import('@context-vault/core/types').BaseCtx} ctx
- * @param {object} shared
- */
 export async function handler(
   {
     query,
@@ -343,10 +346,10 @@ export async function handler(
     include_events,
     scope,
     follow_links,
-  },
-  ctx,
-  { ensureIndexed, reindexFailed }
-) {
+  }: Record<string, any>,
+  ctx: LocalCtx,
+  { ensureIndexed, reindexFailed }: SharedCtx
+): Promise<ToolResult> {
   const { config } = ctx;
 
   // Resolve natural-language temporal shortcuts → ISO date strings
@@ -369,7 +372,7 @@ export async function handler(
   const scopedCategory = !category && effectiveScope === 'events' ? 'event' : category;
   const shouldExcludeEvents = hasQuery && effectiveScope === 'hot' && !scopedCategory;
   // Expand buckets to bucket: prefixed tags and merge with explicit tags
-  const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
+  const bucketTags = buckets?.length ? buckets.map((b: string) => `bucket:${b}`) : [];
   const effectiveTags = [...(tags ?? []), ...bucketTags];
   const hasFilters =
     kind || scopedCategory || effectiveTags.length || since || until || identity_key;
@@ -385,7 +388,7 @@ export async function handler(
   // Gap 1: Entity exact-match by identity_key
   if (identity_key) {
     if (!kindFilter) return err('identity_key requires kind to be specified', 'INVALID_INPUT');
-    const match = ctx.stmts.getByIdentityKey.get(kindFilter, identity_key);
+    const match = ctx.stmts.getByIdentityKey.get(kindFilter, identity_key) as any;
     if (match) {
       const entryTags = match.tags ? JSON.parse(match.tags) : [];
       const tagStr = entryTags.length ? entryTags.join(', ') : 'none';
@@ -422,7 +425,7 @@ export async function handler(
     ? Math.min(effectiveLimit * 10, MAX_FETCH_LIMIT)
     : effectiveLimit;
 
-  let filtered;
+  let filtered: any[];
   if (hasQuery) {
     // Hybrid search mode
     const sorted = await hybridSearch(ctx, query, {
@@ -481,7 +484,7 @@ export async function handler(
         .all(...params);
     } catch (e) {
       return errWithHint(
-        e.message,
+        e instanceof Error ? e.message : String(e),
         'DB_ERROR',
         'context-vault get_context DB_ERROR. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
       );
@@ -490,9 +493,9 @@ export async function handler(
     // Post-filter by tags if provided, then apply requested limit
     filtered = effectiveTags.length
       ? rows
-          .filter((r) => {
+          .filter((r: any) => {
             const entryTags = r.tags ? JSON.parse(r.tags) : [];
-            return effectiveTags.some((t) => entryTags.includes(t));
+            return effectiveTags.some((t: string) => entryTags.includes(t));
           })
           .slice(0, effectiveLimit)
       : rows;
@@ -506,16 +509,16 @@ export async function handler(
   for (const r of filtered) {
     if (r.kind === 'brief') r.score = (r.score || 0) + BRIEF_SCORE_BOOST;
   }
-  filtered.sort((a, b) => b.score - a.score);
+  filtered.sort((a: any, b: any) => b.score - a.score);
 
   // Tier filter: exclude ephemeral entries by default (NULL tier treated as working)
   if (!include_ephemeral) {
-    filtered = filtered.filter((r) => r.tier !== 'ephemeral');
+    filtered = filtered.filter((r: any) => r.tier !== 'ephemeral');
   }
 
   // Event category filter: exclude events from semantic search by default
   if (shouldExcludeEvents) {
-    filtered = filtered.filter((r) => r.category !== 'event');
+    filtered = filtered.filter((r: any) => r.category !== 'event');
   }
 
   if (!filtered.length) {
@@ -627,10 +630,10 @@ export async function handler(
 
   // Graph traversal: follow related_to links bidirectionally
   if (follow_links) {
-    const { forward, backward } = collectLinkedEntries(ctx.db, filtered);
-    const allLinked = [...forward, ...backward];
+    const { forward, backward } = collectLinkedEntries(ctx.db, filtered as any);
+    const allLinked: any[] = [...(forward as any[]), ...(backward as any[])];
     const seen = new Set();
-    const uniqueLinked = allLinked.filter((e) => {
+    const uniqueLinked = allLinked.filter((e: any) => {
       if (seen.has(e.id)) return false;
       seen.add(e.id);
       return true;
@@ -639,7 +642,7 @@ export async function handler(
     if (uniqueLinked.length > 0) {
       lines.push(`## Linked Entries (${uniqueLinked.length} via related_to)\n`);
       for (const r of uniqueLinked) {
-        const direction = forward.some((f) => f.id === r.id) ? '→ forward' : '← backlink';
+        const direction = forward.some((f: any) => f.id === r.id) ? '→ forward' : '← backlink';
         const entryTags = r.tags ? JSON.parse(r.tags) : [];
         const tagStr = entryTags.length ? entryTags.join(', ') : 'none';
         const relPath =
@@ -678,8 +681,8 @@ export async function handler(
     }
   }
 
-  const result = ok(lines.join('\n'));
-  const meta = {};
+  const result: ToolResult = ok(lines.join('\n'));
+  const meta: Record<string, unknown> = {};
   meta.scope = effectiveScope;
   if (tokensBudget != null) {
     meta.tokens_used = tokensUsed;

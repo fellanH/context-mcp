@@ -11,6 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
 
 import { resolveConfig } from '@context-vault/core/config';
+import type { LocalCtx } from './types.js';
 import { appendErrorLog } from './error-log.js';
 import { sendTelemetryEvent, maybeShowTelemetryNotice } from './telemetry.js';
 import { embed } from '@context-vault/core/embed';
@@ -24,10 +25,10 @@ import {
 import { registerTools } from './register-tools.js';
 import { pruneExpired } from '@context-vault/core/index';
 
-async function main() {
+async function main(): Promise<void> {
   let phase = 'CONFIG';
-  let db;
-  let config;
+  let db: import('node:sqlite').DatabaseSync | undefined;
+  let config: import('@context-vault/core/types').VaultConfig | undefined;
 
   try {
     config = resolveConfig();
@@ -43,7 +44,7 @@ async function main() {
       unlinkSync(probe);
     } catch (writeErr) {
       console.error(`[context-vault] FATAL: Vault directory is not writable: ${config.vaultDir}`);
-      console.error(`[context-vault] ${writeErr.message}`);
+      console.error(`[context-vault] ${(writeErr as Error).message}`);
       console.error(`[context-vault] Fix permissions: chmod u+w "${config.vaultDir}"`);
       process.exit(1);
     }
@@ -65,7 +66,9 @@ async function main() {
         ) + '\n'
       );
     } catch (markerErr) {
-      console.error(`[context-vault] Warning: could not write marker file: ${markerErr.message}`);
+      console.error(
+        `[context-vault] Warning: could not write marker file: ${(markerErr as Error).message}`
+      );
     }
 
     config.vaultDirExists = existsSync(config.vaultDir);
@@ -81,13 +84,13 @@ async function main() {
     db = await initDatabase(config.dbPath);
     const stmts = prepareStatements(db);
 
-    const ctx = {
+    const ctx: LocalCtx = {
       db,
       config,
       stmts,
       embed,
-      insertVec: (rowid, embedding) => insertVec(stmts, rowid, embedding),
-      deleteVec: (rowid) => deleteVec(stmts, rowid),
+      insertVec: (rowid: number, embedding: Float32Array) => insertVec(stmts, rowid, embedding),
+      deleteVec: (rowid: number) => deleteVec(stmts, rowid),
       activeOps: { count: 0 },
       toolStats: { ok: 0, errors: 0, lastError: null },
     };
@@ -100,7 +103,9 @@ async function main() {
         );
       }
     } catch (pruneErr) {
-      console.error(`[context-vault] Warning: startup prune failed: ${pruneErr.message}`);
+      console.error(
+        `[context-vault] Warning: startup prune failed: ${(pruneErr as Error).message}`
+      );
     }
 
     phase = 'SERVER';
@@ -110,7 +115,7 @@ async function main() {
     );
 
     let lastVaultDir = config.vaultDir;
-    Object.defineProperty(ctx, 'config', {
+    Object.defineProperty(ctx as object, 'config', {
       get() {
         const fresh = resolveConfig();
         if (fresh.vaultDir !== lastVaultDir) {
@@ -125,22 +130,22 @@ async function main() {
 
     registerTools(server, ctx);
 
-    function closeDb() {
+    function closeDb(): void {
       try {
-        if (db.inTransaction) {
+        if ((db as any).inTransaction) {
           console.error('[context-vault] Rolling back active transaction...');
-          db.exec('ROLLBACK');
+          db!.exec('ROLLBACK');
         }
-        db.pragma('wal_checkpoint(TRUNCATE)');
-        db.close();
+        (db as any).pragma('wal_checkpoint(TRUNCATE)');
+        db!.close();
         console.error('[context-vault] Database closed cleanly.');
       } catch (shutdownErr) {
-        console.error(`[context-vault] Shutdown error: ${shutdownErr.message}`);
+        console.error(`[context-vault] Shutdown error: ${(shutdownErr as Error).message}`);
       }
       process.exit(0);
     }
 
-    function shutdown(signal) {
+    function shutdown(signal: string): void {
       console.error(`[context-vault] Received ${signal}, shutting down...`);
 
       if (ctx.activeOps.count > 0) {
@@ -189,12 +194,13 @@ async function main() {
         })
         .catch(() => {});
     }, 3000);
-  } catch (err) {
+  } catch (rawErr) {
+    const err = rawErr as Error;
     const dataDir = config?.dataDir || join(homedir(), '.context-mcp');
 
     const logEntry = {
       timestamp: new Date().toISOString(),
-      error_type: err.constructor?.name || 'Error',
+      error_type: (err as any).constructor?.name || 'Error',
       message: err.message,
       node_version: process.version,
       platform: process.platform,
@@ -218,7 +224,7 @@ async function main() {
       cv_version: pkg.version,
     });
 
-    if (err instanceof NativeModuleError) {
+    if (rawErr instanceof NativeModuleError) {
       console.error('');
       console.error('╔══════════════════════════════════════════════════════════════╗');
       console.error('║  context-vault: Native Module Error                         ║');

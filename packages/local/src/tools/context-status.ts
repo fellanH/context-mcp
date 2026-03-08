@@ -3,8 +3,9 @@ import { join } from 'node:path';
 import { gatherVaultStatus, computeGrowthWarnings } from '../status.js';
 import { errorLogPath, errorLogCount } from '../error-log.js';
 import { ok, err } from '../helpers.js';
+import type { LocalCtx, ToolResult } from '../types.js';
 
-function relativeTime(ts) {
+function relativeTime(ts: number): string {
   const secs = Math.floor((Date.now() - ts) / 1000);
   if (secs < 60) return `${secs}s ago`;
   const mins = Math.floor(secs / 60);
@@ -20,17 +21,13 @@ export const description =
 
 export const inputSchema = {};
 
-/**
- * @param {object} _args
- * @param {import('@context-vault/core/types').BaseCtx} ctx
- */
-export function handler(_args, ctx) {
+export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
   try {
     const { config } = ctx;
 
     const status = gatherVaultStatus(ctx);
 
-    const hasIssues = status.stalePaths || status.embeddingStatus?.missing > 0;
+    const hasIssues = status.stalePaths || (status.embeddingStatus?.missing ?? 0) > 0;
     const healthIcon = hasIssues ? '⚠' : '✓';
 
     const lines = [
@@ -164,7 +161,7 @@ export function handler(_args, ctx) {
     // Suggested actions
     const actions = [];
     if (status.stalePaths) actions.push('- Run `context-vault reindex` to fix stale paths');
-    if (status.embeddingStatus?.missing > 0)
+    if ((status.embeddingStatus?.missing ?? 0) > 0)
       actions.push('- Run `context-vault reindex` to generate missing embeddings');
     if (!config.vaultDirExists)
       actions.push('- Run `context-vault setup` to create the vault directory');
@@ -177,6 +174,6 @@ export function handler(_args, ctx) {
 
     return ok(lines.join('\n'));
   } catch (e) {
-    return err(e.message, 'STATUS_FAILED');
+    return err(e instanceof Error ? e.message : String(e), 'STATUS_FAILED');
   }
 }

@@ -4,6 +4,7 @@ import { execSync } from 'node:child_process';
 import { join, basename } from 'node:path';
 import { captureAndIndex } from '@context-vault/core/capture';
 import { ok, err, ensureVaultExists } from '../helpers.js';
+import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 export const name = 'ingest_project';
 
@@ -19,7 +20,7 @@ export const inputSchema = {
   pillar: z.string().optional().describe('Parent pillar/domain name — creates a bucket:pillar tag'),
 };
 
-function safeRead(filePath) {
+function safeRead(filePath: string): string | null {
   try {
     return readFileSync(filePath, 'utf-8');
   } catch {
@@ -27,7 +28,7 @@ function safeRead(filePath) {
   }
 }
 
-function safeExec(cmd, cwd) {
+function safeExec(cmd: string, cwd: string): string | null {
   try {
     return execSync(cmd, {
       cwd,
@@ -39,7 +40,7 @@ function safeExec(cmd, cwd) {
   }
 }
 
-function detectTechStack(projectPath, pkgJson) {
+function detectTechStack(projectPath: string, pkgJson: any): string[] {
   const stack = [];
 
   if (
@@ -78,7 +79,7 @@ function detectTechStack(projectPath, pkgJson) {
   return [...new Set(stack)];
 }
 
-function extractReadmeDescription(projectPath) {
+function extractReadmeDescription(projectPath: string): string | null {
   const raw = safeRead(join(projectPath, 'README.md')) || safeRead(join(projectPath, 'readme.md'));
   if (!raw) return null;
   for (const line of raw.split('\n')) {
@@ -97,7 +98,15 @@ function buildProjectBody({
   lastCommit,
   projectPath,
   hasClaudeMd,
-}) {
+}: {
+  projectName: string;
+  description: string | null;
+  techStack: string[];
+  repoUrl: string | null;
+  lastCommit: string | null;
+  projectPath: string;
+  hasClaudeMd: boolean;
+}): string {
   const lines = [];
   lines.push(`## ${projectName}`);
   if (description) lines.push('', description);
@@ -110,12 +119,11 @@ function buildProjectBody({
   return lines.join('\n');
 }
 
-/**
- * @param {object} args
- * @param {import('@context-vault/core/types').BaseCtx} ctx
- * @param {object} shared
- */
-export async function handler({ path: projectPath, tags, pillar }, ctx, { ensureIndexed }) {
+export async function handler(
+  { path: projectPath, tags, pillar }: Record<string, any>,
+  ctx: LocalCtx,
+  { ensureIndexed }: SharedCtx
+): Promise<ToolResult> {
   const { config } = ctx;
 
   const vaultErr = ensureVaultExists(config);

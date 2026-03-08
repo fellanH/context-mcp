@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { captureAndIndex } from '@context-vault/core/capture';
 import { ok, err, ensureVaultExists } from '../helpers.js';
 import { MAX_KIND_LENGTH, MAX_TAG_LENGTH, MAX_TAGS_COUNT } from '@context-vault/core/constants';
+import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const MAX_URL_LENGTH = 2048;
 
@@ -16,12 +17,11 @@ export const inputSchema = {
   tags: z.array(z.string()).optional().describe('Tags for the entry'),
 };
 
-/**
- * @param {object} args
- * @param {import('@context-vault/core/types').BaseCtx} ctx
- * @param {object} shared
- */
-export async function handler({ url: targetUrl, kind, tags }, ctx, { ensureIndexed }) {
+export async function handler(
+  { url: targetUrl, kind, tags }: Record<string, any>,
+  ctx: LocalCtx,
+  { ensureIndexed }: SharedCtx
+): Promise<ToolResult> {
   const { config } = ctx;
 
   const vaultErr = ensureVaultExists(config);
@@ -49,7 +49,7 @@ export async function handler({ url: targetUrl, kind, tags }, ctx, { ensureIndex
   await ensureIndexed();
 
   try {
-    const { ingestUrl } = await import('../../capture/ingest-url.js');
+    const { ingestUrl } = await import('@context-vault/core/ingest-url');
     const entryData = await ingestUrl(targetUrl, { kind, tags });
     const entry = await captureAndIndex(ctx, { ...entryData });
     const relPath = entry.filePath
@@ -66,6 +66,9 @@ export async function handler({ url: targetUrl, kind, tags }, ctx, { ensureIndex
     parts.push('', '_Use this id to update or delete later._');
     return ok(parts.join('\n'));
   } catch (e) {
-    return err(`Failed to ingest URL: ${e.message}`, 'INGEST_FAILED');
+    return err(
+      `Failed to ingest URL: ${e instanceof Error ? e.message : String(e)}`,
+      'INGEST_FAILED'
+    );
   }
 }

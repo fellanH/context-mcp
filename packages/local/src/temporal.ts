@@ -1,12 +1,16 @@
 const SHORTCUT_RE = /^last[_ ](\d+)[_ ](day|days|week|weeks|month|months)$/i;
 
-function startOfToday(now) {
+function startOfToday(now: Date): Date {
   const d = new Date(now);
   d.setUTCHours(0, 0, 0, 0);
   return d;
 }
 
-export function resolveTemporalShortcut(role, value, now = new Date()) {
+export function resolveTemporalShortcut(
+  role: 'since' | 'until',
+  value: string,
+  now: Date = new Date()
+): string {
   if (!value || typeof value !== 'string') return value;
   const trimmed = value.trim().toLowerCase().replace(/\s+/g, '_');
 
@@ -63,7 +67,10 @@ export function resolveTemporalShortcut(role, value, now = new Date()) {
   return value;
 }
 
-export function resolveTemporalParams(params, now = new Date()) {
+export function resolveTemporalParams(
+  params: { since?: string; until?: string },
+  now: Date = new Date()
+): { since?: string; until?: string } {
   let { since, until } = params;
 
   if (since?.trim().toLowerCase() === 'yesterday' && (until === undefined || until === null)) {

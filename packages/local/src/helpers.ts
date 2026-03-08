@@ -1,15 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { VaultConfig } from '@context-vault/core/types';
+import type { ToolResult } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
 
-export function ok(text) {
+export function ok(text: string): ToolResult {
   return { content: [{ type: 'text', text }] };
 }
 
-export function err(text, code = 'UNKNOWN', meta = {}) {
+export function err(
+  text: string,
+  code = 'UNKNOWN',
+  meta: Record<string, unknown> = {}
+): ToolResult {
   return {
     content: [{ type: 'text', text }],
     isError: true,
@@ -24,14 +30,14 @@ export function err(text, code = 'UNKNOWN', meta = {}) {
   };
 }
 
-export function errWithHint(text, code, hint) {
+export function errWithHint(text: string, code: string, hint?: string): ToolResult {
   const prompt = hint
     ? `\n\n**Debug with AI:** Paste this into Claude Code or your AI assistant:\n> "${hint}"`
     : '';
   return err(text + prompt, code);
 }
 
-export function ensureVaultExists(config) {
+export function ensureVaultExists(config: VaultConfig): ToolResult | null {
   if (!config.vaultDirExists) {
     return errWithHint(
       `Vault directory not found: ${config.vaultDir}. Run context-status for diagnostics.`,
@@ -42,7 +48,7 @@ export function ensureVaultExists(config) {
   return null;
 }
 
-export function ensureValidKind(kind) {
+export function ensureValidKind(kind: string): ToolResult | null {
   if (!/^[a-z][a-z0-9_-]*$/.test(kind)) {
     return err(
       "Required: kind (lowercase alphanumeric, e.g. 'insight', 'reference')",

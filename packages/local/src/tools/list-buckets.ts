@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ok } from '../helpers.js';
+import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 export const name = 'list_buckets';
 
@@ -15,12 +16,11 @@ export const inputSchema = {
     ),
 };
 
-/**
- * @param {object} args
- * @param {import('@context-vault/core/types').BaseCtx} ctx
- * @param {object} shared
- */
-export async function handler({ include_counts = true }, ctx, { ensureIndexed, reindexFailed }) {
+export async function handler(
+  { include_counts = true }: Record<string, any>,
+  ctx: LocalCtx,
+  { ensureIndexed, reindexFailed }: SharedCtx
+): Promise<ToolResult> {
   await ensureIndexed();
 
   const buckets = ctx.db
@@ -48,8 +48,8 @@ export async function handler({ include_counts = true }, ctx, { ensureIndexed, r
   }
   lines.push(`## Registered Buckets (${buckets.length})\n`);
 
-  for (const b of buckets) {
-    let meta = {};
+  for (const b of buckets as any[]) {
+    let meta: Record<string, any> = {};
     if (b.meta) {
       try {
         meta = typeof b.meta === 'string' ? JSON.parse(b.meta) : b.meta;
@@ -60,12 +60,12 @@ export async function handler({ include_counts = true }, ctx, { ensureIndexed, r
 
     const bucketTags = b.tags ? JSON.parse(b.tags) : [];
     const name = b.identity_key ? b.identity_key.replace(/^bucket:/, '') : b.title || b.id;
-    const parent = meta.parent || null;
+    const parent: string | null = meta.parent || null;
 
     let entryCount = null;
     if (include_counts && b.identity_key) {
       const countUserClause = '';
-      const countParams = [];
+      const countParams: any[] = [];
       const row = ctx.db
         .prepare(
           `SELECT COUNT(*) as c FROM vault

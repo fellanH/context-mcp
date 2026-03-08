@@ -3,6 +3,7 @@ import { hybridSearch } from '@context-vault/core/search';
 import { captureAndIndex } from '@context-vault/core/capture';
 import { normalizeKind } from '@context-vault/core/files';
 import { ok, err, ensureVaultExists } from '../helpers.js';
+import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const NOISE_KINDS = new Set(['prompt-history', 'task-notification']);
 const MAX_ENTRIES_FOR_GATHER = 40;
@@ -37,7 +38,7 @@ export const inputSchema = {
     ),
 };
 
-function formatGatheredEntries(topic, entries) {
+function formatGatheredEntries(topic: string, entries: any[]): string {
   const header = [
     `# ${topic} — Context Brief`,
     '',
@@ -48,7 +49,7 @@ function formatGatheredEntries(topic, entries) {
   ].join('\n');
 
   const body = entries
-    .map((e, i) => {
+    .map((e: any, i: number) => {
       const tags = e.tags ? JSON.parse(e.tags) : [];
       const tagStr = tags.length ? tags.join(', ') : 'none';
       const updated = e.updated_at || e.created_at || 'unknown';
@@ -74,7 +75,7 @@ function formatGatheredEntries(topic, entries) {
   return header + body;
 }
 
-function slugifyTopic(topic) {
+function slugifyTopic(topic: string): string {
   return topic
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -83,10 +84,10 @@ function slugifyTopic(topic) {
 }
 
 export async function handler(
-  { topic, tags, buckets, kinds, identity_key },
-  ctx,
-  { ensureIndexed }
-) {
+  { topic, tags, buckets, kinds, identity_key }: Record<string, any>,
+  ctx: LocalCtx,
+  { ensureIndexed }: SharedCtx
+): Promise<ToolResult> {
   const { config } = ctx;
 
   const vaultErr = ensureVaultExists(config);
@@ -99,7 +100,7 @@ export async function handler(
   await ensureIndexed();
 
   const normalizedKinds = kinds?.map(normalizeKind) ?? [];
-  const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
+  const bucketTags = buckets?.length ? buckets.map((b: string) => `bucket:${b}`) : [];
   const effectiveTags = [...(tags ?? []), ...bucketTags];
 
   let candidates = [];
@@ -129,7 +130,7 @@ export async function handler(
       });
     }
   } catch (e) {
-    return err(e.message, 'SEARCH_FAILED');
+    return err(e instanceof Error ? e.message : String(e), 'SEARCH_FAILED');
   }
 
   if (effectiveTags.length) {
@@ -177,7 +178,7 @@ export async function handler(
       },
     });
   } catch (e) {
-    return err(e.message, 'SAVE_FAILED');
+    return err(e instanceof Error ? e.message : String(e), 'SAVE_FAILED');
   }
 
   const parts = [

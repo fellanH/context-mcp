@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
-export const PLURAL_TO_SINGULAR = {
+export const PLURAL_TO_SINGULAR: Record<string, string> = {
   insights: 'insight',
   decisions: 'decision',
   patterns: 'pattern',
@@ -45,7 +45,7 @@ export const PLURAL_TO_SINGULAR = {
 
 const CATEGORY_DIRS = ['knowledge', 'entities', 'events'];
 
-function countMdFiles(dir) {
+function countMdFiles(dir: string): number {
   let count = 0;
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -59,7 +59,16 @@ function countMdFiles(dir) {
   return count;
 }
 
-export function planMigration(vaultDir) {
+export interface MigrationOp {
+  action: 'rename' | 'merge';
+  pluralDir: string;
+  singularDir: string;
+  pluralName: string;
+  singularName: string;
+  fileCount: number;
+}
+
+export function planMigration(vaultDir: string): MigrationOp[] {
   const ops = [];
 
   for (const catName of CATEGORY_DIRS) {
@@ -87,7 +96,7 @@ export function planMigration(vaultDir) {
       const singularExists = existsSync(singularDir);
 
       ops.push({
-        action: singularExists ? 'merge' : 'rename',
+        action: (singularExists ? 'merge' : 'rename') as 'rename' | 'merge',
         pluralDir,
         singularDir,
         pluralName: dirName,
@@ -100,7 +109,7 @@ export function planMigration(vaultDir) {
   return ops;
 }
 
-function mergeDir(src, dst) {
+function mergeDir(src: string, dst: string): void {
   mkdirSync(dst, { recursive: true });
   for (const entry of readdirSync(src, { withFileTypes: true })) {
     const srcPath = join(src, entry.name);
@@ -115,10 +124,14 @@ function mergeDir(src, dst) {
   }
 }
 
-export function executeMigration(ops) {
+export function executeMigration(ops: MigrationOp[]): {
+  renamed: number;
+  merged: number;
+  errors: string[];
+} {
   let renamed = 0;
   let merged = 0;
-  const errors = [];
+  const errors: string[] = [];
 
   for (const op of ops) {
     try {
@@ -131,7 +144,7 @@ export function executeMigration(ops) {
         merged++;
       }
     } catch (e) {
-      errors.push(`${op.pluralName} → ${op.singularName}: ${e.message}`);
+      errors.push(`${op.pluralName} → ${op.singularName}: ${(e as Error).message}`);
     }
   }
 

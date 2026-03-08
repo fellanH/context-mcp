@@ -1,7 +1,9 @@
-export function parseRelatedTo(raw) {
+import type { DatabaseSync } from 'node:sqlite';
+
+export function parseRelatedTo(raw: unknown): string[] {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw as string);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((id) => typeof id === 'string' && id.trim());
   } catch {
@@ -9,7 +11,7 @@ export function parseRelatedTo(raw) {
   }
 }
 
-export function resolveLinks(db, ids) {
+export function resolveLinks(db: DatabaseSync, ids: string[]): any[] {
   if (!ids.length) return [];
   const unique = [...new Set(ids)];
   const placeholders = unique.map(() => '?').join(',');
@@ -27,7 +29,7 @@ export function resolveLinks(db, ids) {
   }
 }
 
-export function resolveBacklinks(db, entryId) {
+export function resolveBacklinks(db: DatabaseSync, entryId: string): any[] {
   if (!entryId) return [];
   const likePattern = `%"${entryId}"%`;
   try {
@@ -44,10 +46,13 @@ export function resolveBacklinks(db, entryId) {
   }
 }
 
-export function collectLinkedEntries(db, primaryEntries) {
+export function collectLinkedEntries(
+  db: DatabaseSync,
+  primaryEntries: Array<{ id: string; related_to?: string | null }>
+): { forward: any[]; backward: any[] } {
   const primaryIds = new Set(primaryEntries.map((e) => e.id));
 
-  const forwardIds = [];
+  const forwardIds: string[] = [];
   for (const entry of primaryEntries) {
     const ids = parseRelatedTo(entry.related_to);
     for (const id of ids) {
@@ -56,8 +61,8 @@ export function collectLinkedEntries(db, primaryEntries) {
   }
   const forwardEntries = resolveLinks(db, forwardIds).filter((e) => !primaryIds.has(e.id));
 
-  const backwardSeen = new Set();
-  const backwardEntries = [];
+  const backwardSeen = new Set<string>();
+  const backwardEntries: any[] = [];
   for (const entry of primaryEntries) {
     const backlinks = resolveBacklinks(db, entry.id);
     for (const bl of backlinks) {
@@ -71,7 +76,7 @@ export function collectLinkedEntries(db, primaryEntries) {
   return { forward: forwardEntries, backward: backwardEntries };
 }
 
-export function validateRelatedTo(relatedTo) {
+export function validateRelatedTo(relatedTo: unknown): string | null {
   if (relatedTo === undefined || relatedTo === null) return null;
   if (!Array.isArray(relatedTo)) return 'related_to must be an array of entry IDs';
   for (const id of relatedTo) {

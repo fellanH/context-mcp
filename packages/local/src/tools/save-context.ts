@@ -6,6 +6,7 @@ import { normalizeKind } from '@context-vault/core/files';
 import { ok, err, errWithHint, ensureVaultExists, ensureValidKind } from '../helpers.js';
 import { maybeShowFeedbackPrompt } from '../telemetry.js';
 import { validateRelatedTo } from '../linking.js';
+import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 import {
   MAX_BODY_LENGTH,
   MAX_TITLE_LENGTH,
@@ -22,28 +23,27 @@ const SKIP_THRESHOLD = 0.95;
 const UPDATE_THRESHOLD = 0.85;
 
 async function findSimilar(
-  ctx,
-  embedding,
-  threshold,
-
+  ctx: LocalCtx,
+  embedding: any,
+  threshold: number,
   { hydrate = false } = {}
-) {
+): Promise<any[]> {
   try {
-    const vecCount = ctx.db.prepare('SELECT COUNT(*) as c FROM vault_vec').get().c;
+    const vecCount = (ctx.db.prepare('SELECT COUNT(*) as c FROM vault_vec').get() as any)?.c ?? 0;
     if (vecCount === 0) return [];
 
-    const vecRows = ctx.db
+    const vecRows: any[] = ctx.db
       .prepare(
         `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ?`
       )
-      .all(embedding, 10);
+      .all(embedding, 10) as any[];
 
     if (!vecRows.length) return [];
 
-    const rowids = vecRows.map((vr) => vr.rowid);
+    const rowids = vecRows.map((vr: any) => vr.rowid);
     const placeholders = rowids.map(() => '?').join(',');
     // Local mode has no user_id column — omit it from the SELECT list.
-    const isLocal = ctx.stmts._mode === 'local';
+    const isLocal = (ctx.stmts as any)._mode === 'local';
     const columns = isLocal
       ? hydrate
         ? 'rowid, id, title, body, kind, tags, category, updated_at'
@@ -60,12 +60,12 @@ async function findSimilar(
 
     const results = [];
     for (const vr of vecRows) {
-      const similarity = Math.max(0, 1 - vr.distance / 2);
+      const similarity = Math.max(0, 1 - (vr.distance as number) / 2);
       if (similarity < threshold) continue;
       const row = byRowid.get(vr.rowid);
       if (!row) continue;
       if (row.category === 'entity') continue;
-      const entry = { id: row.id, title: row.title, score: similarity };
+      const entry: Record<string, any> = { id: row.id, title: row.title, score: similarity };
       if (hydrate) {
         entry.body = row.body;
         entry.kind = row.kind;
@@ -80,7 +80,7 @@ async function findSimilar(
   }
 }
 
-function formatSimilarWarning(similar) {
+function formatSimilarWarning(similar: any[]): string {
   const lines = ['', '⚠ Similar entries already exist:'];
   for (const e of similar) {
     const score = e.score.toFixed(2);
@@ -91,8 +91,8 @@ function formatSimilarWarning(similar) {
   return lines.join('\n');
 }
 
-export function buildConflictCandidates(similarEntries) {
-  return similarEntries.map((entry) => {
+export function buildConflictCandidates(similarEntries: any[]): any[] {
+  return similarEntries.map((entry: any) => {
     let suggested_action;
     let reasoning_context;
 
@@ -140,7 +140,7 @@ export function buildConflictCandidates(similarEntries) {
   });
 }
 
-function formatConflictSuggestions(candidates) {
+function formatConflictSuggestions(candidates: any[]): string {
   const lines = ['', '── Conflict Resolution Suggestions ──'];
   for (const c of candidates) {
     const titleDisplay = c.title ? `"${c.title}"` : '(no title)';
@@ -155,7 +155,16 @@ function formatConflictSuggestions(candidates) {
 /**
  * Validate input fields for save_context. Returns an error response or null.
  */
-function validateSaveInput({ kind, title, body, tags, meta, source, identity_key, expires_at }) {
+function validateSaveInput({
+  kind,
+  title,
+  body,
+  tags,
+  meta,
+  source,
+  identity_key,
+  expires_at,
+}: Record<string, any>): ToolResult | null {
   if (kind !== undefined && kind !== null) {
     if (typeof kind !== 'string' || kind.length > MAX_KIND_LENGTH) {
       return err(`kind must be a string, max ${MAX_KIND_LENGTH} chars`, 'INVALID_INPUT');
@@ -303,11 +312,6 @@ export const inputSchema = {
     ),
 };
 
-/**
- * @param {object} args
- * @param {import('@context-vault/core/types').BaseCtx} ctx
- * @param {object} shared
- */
 export async function handler(
   {
     id,
@@ -327,10 +331,10 @@ export async function handler(
     similarity_threshold,
     tier,
     conflict_resolution,
-  },
-  ctx,
-  { ensureIndexed }
-) {
+  }: Record<string, any>,
+  ctx: LocalCtx,
+  { ensureIndexed }: SharedCtx
+): Promise<ToolResult> {
   const { config } = ctx;
   const suggestMode = conflict_resolution !== 'off';
 
@@ -388,7 +392,7 @@ export async function handler(
       await indexEntry(ctx, entry);
     } catch (e) {
       return errWithHint(
-        e.message,
+        e instanceof Error ? e.message : String(e),
         'UPDATE_FAILED',
         'context-vault save_context update is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
       );
@@ -428,8 +432,8 @@ export async function handler(
 
   // ── Similarity check (knowledge + event only) ────────────────────────────
   const category = categoryFor(normalizedKind);
-  let similarEntries = [];
-  let queryEmbedding = null;
+  let similarEntries: any[] = [];
+  let queryEmbedding: any = null;
 
   if (category === 'knowledge' || category === 'event') {
     const threshold = similarity_threshold ?? DEFAULT_SIMILARITY_THRESHOLD;
@@ -516,7 +520,7 @@ export async function handler(
     );
   } catch (e) {
     return errWithHint(
-      e.message,
+      e instanceof Error ? e.message : String(e),
       'SAVE_FAILED',
       'context-vault save_context is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
     );
@@ -534,14 +538,18 @@ export async function handler(
   if (tags?.length) parts.push(`  tags: ${tags.join(', ')}`);
   parts.push(`  tier: ${effectiveTier}`);
   parts.push('', '_Use this id to update or delete later._');
-  const hasBucketTag = (tags || []).some((t) => typeof t === 'string' && t.startsWith('bucket:'));
+  const hasBucketTag = (tags || []).some(
+    (t: any) => typeof t === 'string' && t.startsWith('bucket:')
+  );
   if (tags && tags.length > 0 && !hasBucketTag) {
     parts.push(
       '',
       '_Tip: Consider adding a `bucket:` tag (e.g., `bucket:myproject`) for project-scoped retrieval._'
     );
   }
-  const bucketTags = (tags || []).filter((t) => typeof t === 'string' && t.startsWith('bucket:'));
+  const bucketTags = (tags || []).filter(
+    (t: any) => typeof t === 'string' && t.startsWith('bucket:')
+  );
   for (const bt of bucketTags) {
     const bucketUserClause = '';
     const bucketParams = false ? [bt] : [bt];
@@ -570,8 +578,8 @@ export async function handler(
   const criticalLimit = config.thresholds?.totalEntries?.critical;
   if (criticalLimit != null) {
     try {
-      const countRow = ctx.db.prepare('SELECT COUNT(*) as c FROM vault').get();
-      if (countRow.c >= criticalLimit) {
+      const countRow = ctx.db.prepare('SELECT COUNT(*) as c FROM vault').get() as any;
+      if (countRow?.c != null && countRow.c >= criticalLimit) {
         parts.push(
           ``,
           `ℹ Vault has ${countRow.c.toLocaleString()} entries. Consider running \`context-vault reindex\` or reviewing old entries.`

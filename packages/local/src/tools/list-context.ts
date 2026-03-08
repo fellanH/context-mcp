@@ -3,6 +3,7 @@ import { normalizeKind } from '@context-vault/core/files';
 import { categoryFor } from '@context-vault/core/categories';
 import { ok, err, errWithHint } from '../helpers.js';
 import { resolveTemporalParams } from '../temporal.js';
+import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 export const name = 'list_context';
 
@@ -19,16 +20,11 @@ export const inputSchema = {
   offset: z.number().optional().describe('Skip first N results for pagination'),
 };
 
-/**
- * @param {object} args
- * @param {import('@context-vault/core/types').BaseCtx} ctx
- * @param {object} shared
- */
 export async function handler(
-  { kind, category, tags, since, until, limit, offset },
-  ctx,
-  { ensureIndexed, reindexFailed }
-) {
+  { kind, category, tags, since, until, limit, offset }: Record<string, any>,
+  ctx: LocalCtx,
+  { ensureIndexed, reindexFailed }: SharedCtx
+): Promise<ToolResult> {
   const { config } = ctx;
 
   await ensureIndexed();
@@ -76,19 +72,19 @@ export async function handler(
 
   const countParams = [...params];
   let total;
-  let rows;
+  let rows: any[];
   try {
-    total = ctx.db.prepare(`SELECT COUNT(*) as c FROM vault ${where}`).get(...countParams).c;
+    total = (ctx.db.prepare(`SELECT COUNT(*) as c FROM vault ${where}`).get(...countParams) as any)?.c ?? 0;
 
     params.push(fetchLimit, effectiveOffset);
     rows = ctx.db
       .prepare(
         `SELECT id, title, kind, category, tags, created_at, updated_at, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
       )
-      .all(...params);
+      .all(...params) as any[];
   } catch (e) {
     return errWithHint(
-      e.message,
+      e instanceof Error ? e.message : String(e),
       'DB_ERROR',
       'context-vault list_context DB_ERROR. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
     );
@@ -97,9 +93,9 @@ export async function handler(
   // Post-filter by tags if provided, then apply requested limit
   const filtered = tags?.length
     ? rows
-        .filter((r) => {
+        .filter((r: any) => {
           const entryTags = r.tags ? JSON.parse(r.tags) : [];
-          return tags.some((t) => entryTags.includes(t));
+          return tags.some((t: string) => entryTags.includes(t));
         })
         .slice(0, effectiveLimit)
     : rows;
