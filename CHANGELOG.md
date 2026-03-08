@@ -2,6 +2,15 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.1.7] — 2026-03-08
+
+### Fixed
+
+- CLI `archive` and `migrate-dirs` commands crash with missing module error — modules moved from deleted core location to local package (#192)
+- `save_context` timeouts on larger entries — `ensureIndexed()` no longer blocks the save path, timeout increased from 60s to 120s (#188)
+- `reindex` now detects and regenerates missing embeddings for entries already in the database (#193)
+- MCP configs point to dev source instead of installed npm package — `setup` now detects `context-vault` binary on PATH (#195)
+
 ## [3.1.6] — 2026-03-07
 
 ### Changed
