@@ -123,6 +123,12 @@ console.log('\n  running tests...');
 run('npm test');
 console.log('  tests passed\n');
 
+// --- Build ---
+
+console.log('  building...');
+run('npm run build');
+console.log('  build passed\n');
+
 // --- Publish to npm ---
 
 console.log('  publishing to npm...');

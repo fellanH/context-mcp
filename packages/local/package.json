@@ -8,18 +8,24 @@
     "context-mcp": "bin/cli.js",
     "memory": "bin/cli.js"
   },
-  "main": "src/server.js",
+  "main": "dist/server.js",
   "exports": {
-    ".": "./src/server.js",
+    ".": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
     "./cli": "./bin/cli.js"
   },
   "scripts": {
+    "build": "tsc",
+    "dev": "tsx --watch src/server.ts",
     "postinstall": "node scripts/postinstall.js",
     "prepack": "node scripts/prepack.js"
   },
   "files": [
     "assets/",
     "bin/",
+    "dist/",
     "src/",
     "scripts/",
     "README.md",

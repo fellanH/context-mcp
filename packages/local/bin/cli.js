@@ -34,7 +34,7 @@ const HOME = homedir();
 
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'));
 const VERSION = pkg.version;
-const SERVER_PATH = resolve(ROOT, 'src', 'server.js');
+const SERVER_PATH = resolve(ROOT, 'dist', 'server.js');
 
 /** Detect if running as an npm-installed package (global or local) vs local dev clone */
 function isInstalledPackage() {
@@ -1707,7 +1707,7 @@ async function runMigrateDirs() {
     process.exit(1);
   }
 
-  const { planMigration, executeMigration } = await import('../src/migrate-dirs.js');
+  const { planMigration, executeMigration } = await import('../dist/migrate-dirs.js');
 
   const ops = planMigration(vaultDir);
 
@@ -1822,7 +1822,7 @@ async function runArchive() {
   const { resolveConfig } = await import('@context-vault/core/config');
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
     await import('@context-vault/core/db');
-  const { findArchiveCandidates, archiveEntries } = await import('../src/archive.js');
+  const { findArchiveCandidates, archiveEntries } = await import('../dist/archive.js');
 
   const config = resolveConfig();
   if (!config.vaultDirExists) {
@@ -1899,7 +1899,7 @@ async function runRestore() {
 
   if (!entryId || entryId.startsWith('--')) {
     const { resolveConfig } = await import('@context-vault/core/config');
-    const { listArchivedEntries } = await import('../src/archive.js');
+    const { listArchivedEntries } = await import('../dist/archive.js');
 
     const config = resolveConfig();
 
@@ -1929,7 +1929,7 @@ async function runRestore() {
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
     await import('@context-vault/core/db');
   const { embed } = await import('@context-vault/core/embed');
-  const { restoreEntry } = await import('../src/archive.js');
+  const { restoreEntry } = await import('../dist/archive.js');
 
   const config = resolveConfig();
   if (!config.vaultDirExists) {
@@ -1964,8 +1964,8 @@ async function runRestore() {
 async function runStatus() {
   const { resolveConfig } = await import('@context-vault/core/config');
   const { initDatabase } = await import('@context-vault/core/db');
-  const { gatherVaultStatus } = await import('../src/status.js');
-  const { errorLogPath, errorLogCount } = await import('../src/error-log.js');
+  const { gatherVaultStatus } = await import('../dist/status.js');
+  const { errorLogPath, errorLogCount } = await import('../dist/error-log.js');
 
   const config = resolveConfig();
 
@@ -4357,7 +4357,7 @@ ${bold('Commands:')}
 
 async function runDoctor() {
   const { resolveConfig } = await import('@context-vault/core/config');
-  const { errorLogPath, errorLogCount } = await import('../src/error-log.js');
+  const { errorLogPath, errorLogCount } = await import('../dist/error-log.js');
 
   console.log();
   console.log(`  ${bold('◇ context-vault doctor')} ${dim(`v${VERSION}`)}`);
@@ -4966,7 +4966,7 @@ async function runConsolidate() {
 
   const { resolveConfig } = await import('@context-vault/core/config');
   const { initDatabase } = await import('@context-vault/core/db');
-  const { findHotTags, findColdEntries } = await import('../src/consolidation.js');
+  const { findHotTags, findColdEntries } = await import('../dist/consolidation.js');
 
   const config = resolveConfig();
 
@@ -5070,7 +5070,7 @@ async function runConsolidate() {
 
 async function runDebug() {
   const { resolveConfig } = await import('@context-vault/core/config');
-  const { errorLogPath, errorLogCount } = await import('../src/error-log.js');
+  const { errorLogPath, errorLogCount } = await import('../dist/error-log.js');
 
   let config;
   try {
@@ -5146,7 +5146,7 @@ async function runDebug() {
 }
 
 async function runServe() {
-  await import('../src/server.js');
+  await import('../dist/server.js');
 }
 
 async function main() {

@@ -74,7 +74,9 @@ export async function handler(
   let total;
   let rows: any[];
   try {
-    total = (ctx.db.prepare(`SELECT COUNT(*) as c FROM vault ${where}`).get(...countParams) as any)?.c ?? 0;
+    total =
+      (ctx.db.prepare(`SELECT COUNT(*) as c FROM vault ${where}`).get(...countParams) as any)?.c ??
+      0;
 
     params.push(fetchLimit, effectiveOffset);
     rows = ctx.db

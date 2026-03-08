@@ -8,7 +8,7 @@
     "packages/local"
   ],
   "scripts": {
-    "build": "cd packages/core && npx tsc",
+    "build": "npm run build --workspace packages/core && npm run build --workspace packages/local",
     "cli": "node packages/local/bin/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
