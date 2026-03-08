@@ -6,10 +6,10 @@ Persistent memory layer for AI agents via MCP. Markdown + SQLite FTS + semantic 
 | ----------------------- | -------------------------------------------------- |
 | Repo                    | https://github.com/fellanH/context-vault           |
 | App                     | https://app.context-vault.com                      |
-| Marketing               | https://context-vault.com                           |
+| Marketing               | https://context-vault.com                          |
 | API                     | https://api.context-vault.com                      |
 | context-vault-app       | https://github.com/fellanH/context-vault-app       |
-| context-vault-marketing | https://github.com/fellanH/context-vault-marketing |
+| context-vault-website   | https://github.com/fellanH/context-vault-website   |
 | context-vault-extension | https://github.com/fellanH/context-vault-extension |
 
 ## Packages
