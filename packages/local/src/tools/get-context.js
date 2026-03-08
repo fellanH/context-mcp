@@ -50,7 +50,7 @@ export function skeletonBody(body) {
  * rows already fetched from the DB.
  *
  * @param {Array} entries - Result rows (as returned by hybridSearch / filter-only mode)
- * @param {import('../types.js').BaseCtx} _ctx - Unused for now; reserved for future DB look-ups
+ * @param {import('@context-vault/core/types').BaseCtx} _ctx
  * @returns {Array<{entry_a_id: string, entry_b_id: string, reason: string, recommendation: string}>}
  */
 export function detectConflicts(entries, _ctx) {
@@ -148,15 +148,11 @@ export function detectConsolidationHints(entries, db, opts = {}) {
   for (const tag of candidateTags) {
     let vaultCount = 0;
     try {
-      // When userId is defined (hosted mode), scope to that user.
-      // When userId is undefined (local mode), no user scoping — column may not exist.
-      const userClause = '';
-      const countParams = false ? [`%"${tag}"%`] : [`%"${tag}"%`];
       const countRow = db
         .prepare(
-          `SELECT COUNT(*) as c FROM vault WHERE kind != 'brief' AND tags LIKE ?${userClause} AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL`
+          `SELECT COUNT(*) as c FROM vault WHERE kind != 'brief' AND tags LIKE ? AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL`
         )
-        .get(...countParams);
+        .get(`%"${tag}"%`);
       vaultCount = countRow?.c ?? 0;
     } catch {
       continue;
@@ -166,13 +162,11 @@ export function detectConsolidationHints(entries, db, opts = {}) {
 
     let lastSnapshotAgeDays = null;
     try {
-      const userClause = '';
-      const params = false ? [`%"${tag}"%`] : [`%"${tag}"%`];
       const recentBrief = db
         .prepare(
-          `SELECT created_at FROM vault WHERE kind = 'brief' AND tags LIKE ?${userClause} ORDER BY created_at DESC LIMIT 1`
+          `SELECT created_at FROM vault WHERE kind = 'brief' AND tags LIKE ? ORDER BY created_at DESC LIMIT 1`
         )
-        .get(...params);
+        .get(`%"${tag}"%`);
 
       if (recentBrief) {
         lastSnapshotAgeDays = Math.round(
@@ -327,8 +321,8 @@ export const inputSchema = {
 
 /**
  * @param {object} args
- * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
- * @param {import('../types.js').ToolShared} shared
+ * @param {import('@context-vault/core/types').BaseCtx} ctx
+ * @param {object} shared
  */
 export async function handler(
   {
@@ -536,18 +530,6 @@ export async function handler(
     return ok(
       hasQuery ? 'No results found for: ' + query : 'No entries found matching the given filters.'
     );
-  }
-
-  // Decrypt encrypted entries if ctx.decrypt is available
-  if (ctx.decrypt) {
-    for (const r of filtered) {
-      if (r.body_encrypted) {
-        const decrypted = await ctx.decrypt(r);
-        r.body = decrypted.body;
-        if (decrypted.title) r.title = decrypted.title;
-        if (decrypted.meta) r.meta = JSON.stringify(decrypted.meta);
-      }
-    }
   }
 
   // Token-budgeted packing

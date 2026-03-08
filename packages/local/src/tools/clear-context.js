@@ -17,7 +17,7 @@ export const inputSchema = {
 
 /**
  * @param {object} args
- * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} _ctx
+ * @param {import('@context-vault/core/types').BaseCtx} _ctx
  */
 export function handler({ scope } = {}) {
   const lines = [

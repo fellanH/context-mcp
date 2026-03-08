@@ -13,8 +13,8 @@ export const inputSchema = {
 
 /**
  * @param {object} args
- * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
- * @param {import('../types.js').ToolShared} shared
+ * @param {import('@context-vault/core/types').BaseCtx} ctx
+ * @param {object} shared
  */
 export async function handler({ id }, ctx, { ensureIndexed }) {
   if (!id?.trim()) return err('Required: id (non-empty string)', 'INVALID_INPUT');

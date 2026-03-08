@@ -21,8 +21,8 @@ export const inputSchema = {
 
 /**
  * @param {object} args
- * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
- * @param {import('../types.js').ToolShared} shared
+ * @param {import('@context-vault/core/types').BaseCtx} ctx
+ * @param {object} shared
  */
 export async function handler(
   { kind, category, tags, since, until, limit, offset },

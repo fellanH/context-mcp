@@ -112,8 +112,8 @@ function buildProjectBody({
 
 /**
  * @param {object} args
- * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
- * @param {import('../types.js').ToolShared} shared
+ * @param {import('@context-vault/core/types').BaseCtx} ctx
+ * @param {object} shared
  */
 export async function handler({ path: projectPath, tags, pillar }, ctx, { ensureIndexed }) {
   const { config } = ctx;

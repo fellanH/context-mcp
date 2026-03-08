@@ -17,14 +17,11 @@ export const inputSchema = {
 
 /**
  * @param {object} args
- * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
- * @param {import('../types.js').ToolShared} shared
+ * @param {import('@context-vault/core/types').BaseCtx} ctx
+ * @param {object} shared
  */
 export async function handler({ include_counts = true }, ctx, { ensureIndexed, reindexFailed }) {
   await ensureIndexed();
-
-  const userClause = '';
-  const userParams = [];
 
   const buckets = ctx.db
     .prepare(
@@ -33,10 +30,9 @@ export async function handler({ include_counts = true }, ctx, { ensureIndexed, r
        WHERE kind = 'bucket'
          AND (expires_at IS NULL OR expires_at > datetime('now'))
          AND superseded_by IS NULL
-         ${userClause}
        ORDER BY title ASC`
     )
-    .all(...userParams);
+    .all();
 
   if (!buckets.length) {
     return ok(

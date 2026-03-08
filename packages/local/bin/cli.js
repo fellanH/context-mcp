@@ -4966,7 +4966,7 @@ async function runConsolidate() {
 
   const { resolveConfig } = await import('@context-vault/core/config');
   const { initDatabase } = await import('@context-vault/core/db');
-  const { findHotTags, findColdEntries } = await import('@context-vault/core/consolidation/index');
+  const { findHotTags, findColdEntries } = await import('../src/consolidation.js');
 
   const config = resolveConfig();
 

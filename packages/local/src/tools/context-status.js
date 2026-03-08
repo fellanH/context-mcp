@@ -22,7 +22,7 @@ export const inputSchema = {};
 
 /**
  * @param {object} _args
- * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
+ * @param {import('@context-vault/core/types').BaseCtx} ctx
  */
 export function handler(_args, ctx) {
   try {

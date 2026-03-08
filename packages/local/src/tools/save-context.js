@@ -305,8 +305,8 @@ export const inputSchema = {
 
 /**
  * @param {object} args
- * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
- * @param {import('../types.js').ToolShared} shared
+ * @param {import('@context-vault/core/types').BaseCtx} ctx
+ * @param {object} shared
  */
 export async function handler(
   {
@@ -370,14 +370,6 @@ export async function handler(
         `Cannot change identity_key (current: "${existing.identity_key}"). Delete and re-create instead.`,
         'INVALID_UPDATE'
       );
-    }
-
-    // Decrypt existing entry before merge if encrypted
-    if (ctx.decrypt && existing.body_encrypted) {
-      const decrypted = await ctx.decrypt(existing);
-      existing.body = decrypted.body;
-      if (decrypted.title) existing.title = decrypted.title;
-      if (decrypted.meta) existing.meta = JSON.stringify(decrypted.meta);
     }
 
     let entry;
