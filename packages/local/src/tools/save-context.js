@@ -1,17 +1,11 @@
-import { z } from "zod";
-import { captureAndIndex, updateEntryFile } from "@context-vault/core/capture";
-import { indexEntry } from "@context-vault/core/index";
-import { categoryFor, defaultTierFor } from "@context-vault/core/categories";
-import { normalizeKind } from "@context-vault/core/files";
-import {
-  ok,
-  err,
-  errWithHint,
-  ensureVaultExists,
-  ensureValidKind,
-} from "../helpers.js";
-import { maybeShowFeedbackPrompt } from "../telemetry.js";
-import { validateRelatedTo } from "../linking.js";
+import { z } from 'zod';
+import { captureAndIndex, updateEntryFile } from '@context-vault/core/capture';
+import { indexEntry } from '@context-vault/core/index';
+import { categoryFor, defaultTierFor } from '@context-vault/core/categories';
+import { normalizeKind } from '@context-vault/core/files';
+import { ok, err, errWithHint, ensureVaultExists, ensureValidKind } from '../helpers.js';
+import { maybeShowFeedbackPrompt } from '../telemetry.js';
+import { validateRelatedTo } from '../linking.js';
 import {
   MAX_BODY_LENGTH,
   MAX_TITLE_LENGTH,
@@ -21,7 +15,7 @@ import {
   MAX_META_LENGTH,
   MAX_SOURCE_LENGTH,
   MAX_IDENTITY_KEY_LENGTH,
-} from "@context-vault/core/constants";
+} from '@context-vault/core/constants';
 
 const DEFAULT_SIMILARITY_THRESHOLD = 0.85;
 const SKIP_THRESHOLD = 0.95;
@@ -32,33 +26,31 @@ async function findSimilar(
   embedding,
   threshold,
 
-  { hydrate = false } = {},
+  { hydrate = false } = {}
 ) {
   try {
-    const vecCount = ctx.db
-      .prepare("SELECT COUNT(*) as c FROM vault_vec")
-      .get().c;
+    const vecCount = ctx.db.prepare('SELECT COUNT(*) as c FROM vault_vec').get().c;
     if (vecCount === 0) return [];
 
     const vecRows = ctx.db
       .prepare(
-        `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ?`,
+        `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ?`
       )
       .all(embedding, 10);
 
     if (!vecRows.length) return [];
 
     const rowids = vecRows.map((vr) => vr.rowid);
-    const placeholders = rowids.map(() => "?").join(",");
+    const placeholders = rowids.map(() => '?').join(',');
     // Local mode has no user_id column — omit it from the SELECT list.
-    const isLocal = ctx.stmts._mode === "local";
+    const isLocal = ctx.stmts._mode === 'local';
     const columns = isLocal
       ? hydrate
-        ? "rowid, id, title, body, kind, tags, category, updated_at"
-        : "rowid, id, title, category"
+        ? 'rowid, id, title, body, kind, tags, category, updated_at'
+        : 'rowid, id, title, category'
       : hydrate
-        ? "rowid, id, title, body, kind, tags, category, updated_at"
-        : "rowid, id, title, category";
+        ? 'rowid, id, title, body, kind, tags, category, updated_at'
+        : 'rowid, id, title, category';
     const hydratedRows = ctx.db
       .prepare(`SELECT ${columns} FROM vault WHERE rowid IN (${placeholders})`)
       .all(...rowids);
@@ -72,7 +64,7 @@ async function findSimilar(
       if (similarity < threshold) continue;
       const row = byRowid.get(vr.rowid);
       if (!row) continue;
-      if (row.category === "entity") continue;
+      if (row.category === 'entity') continue;
       const entry = { id: row.id, title: row.title, score: similarity };
       if (hydrate) {
         entry.body = row.body;
@@ -89,16 +81,14 @@ async function findSimilar(
 }
 
 function formatSimilarWarning(similar) {
-  const lines = ["", "⚠ Similar entries already exist:"];
+  const lines = ['', '⚠ Similar entries already exist:'];
   for (const e of similar) {
     const score = e.score.toFixed(2);
-    const title = e.title ? `"${e.title}"` : "(no title)";
+    const title = e.title ? `"${e.title}"` : '(no title)';
     lines.push(`  - ${title} (${score}) — id: ${e.id}`);
   }
-  lines.push(
-    "  Consider using `id: <existing>` in save_context to update instead.",
-  );
-  return lines.join("\n");
+  lines.push('  Consider using `id: <existing>` in save_context to update instead.');
+  return lines.join('\n');
 }
 
 export function buildConflictCandidates(similarEntries) {
@@ -107,31 +97,30 @@ export function buildConflictCandidates(similarEntries) {
     let reasoning_context;
 
     if (entry.score >= SKIP_THRESHOLD) {
-      suggested_action = "SKIP";
+      suggested_action = 'SKIP';
       reasoning_context =
         `Near-duplicate detected (${(entry.score * 100).toFixed(0)}% similarity)` +
-        `${entry.title ? ` with "${entry.title}"` : ""}. ` +
+        `${entry.title ? ` with "${entry.title}"` : ''}. ` +
         `Content is nearly identical — saving would create a redundant entry. ` +
         `Use save_context with id: "${entry.id}" to update instead, or skip saving entirely.`;
     } else if (entry.score >= UPDATE_THRESHOLD) {
-      suggested_action = "UPDATE";
+      suggested_action = 'UPDATE';
       reasoning_context =
         `High content similarity (${(entry.score * 100).toFixed(0)}%)` +
-        `${entry.title ? ` with "${entry.title}"` : ""}. ` +
+        `${entry.title ? ` with "${entry.title}"` : ''}. ` +
         `Likely the same knowledge — consider updating this entry via save_context with id: "${entry.id}".`;
     } else {
-      suggested_action = "ADD";
+      suggested_action = 'ADD';
       reasoning_context =
         `Moderate similarity (${(entry.score * 100).toFixed(0)}%)` +
-        `${entry.title ? ` with "${entry.title}"` : ""}. ` +
+        `${entry.title ? ` with "${entry.title}"` : ''}. ` +
         `Content is related but distinct enough to coexist.`;
     }
 
     let parsedTags = [];
     if (entry.tags) {
       try {
-        parsedTags =
-          typeof entry.tags === "string" ? JSON.parse(entry.tags) : entry.tags;
+        parsedTags = typeof entry.tags === 'string' ? JSON.parse(entry.tags) : entry.tags;
       } catch {
         parsedTags = [];
       }
@@ -152,184 +141,145 @@ export function buildConflictCandidates(similarEntries) {
 }
 
 function formatConflictSuggestions(candidates) {
-  const lines = ["", "── Conflict Resolution Suggestions ──"];
+  const lines = ['', '── Conflict Resolution Suggestions ──'];
   for (const c of candidates) {
-    const titleDisplay = c.title ? `"${c.title}"` : "(no title)";
+    const titleDisplay = c.title ? `"${c.title}"` : '(no title)';
     lines.push(
-      `  [${c.suggested_action}] ${titleDisplay} (${(c.score * 100).toFixed(0)}%) — id: ${c.id}`,
+      `  [${c.suggested_action}] ${titleDisplay} (${(c.score * 100).toFixed(0)}%) — id: ${c.id}`
     );
     lines.push(`    ${c.reasoning_context}`);
   }
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 /**
  * Validate input fields for save_context. Returns an error response or null.
  */
-function validateSaveInput({
-  kind,
-  title,
-  body,
-  tags,
-  meta,
-  source,
-  identity_key,
-  expires_at,
-}) {
+function validateSaveInput({ kind, title, body, tags, meta, source, identity_key, expires_at }) {
   if (kind !== undefined && kind !== null) {
-    if (typeof kind !== "string" || kind.length > MAX_KIND_LENGTH) {
-      return err(
-        `kind must be a string, max ${MAX_KIND_LENGTH} chars`,
-        "INVALID_INPUT",
-      );
+    if (typeof kind !== 'string' || kind.length > MAX_KIND_LENGTH) {
+      return err(`kind must be a string, max ${MAX_KIND_LENGTH} chars`, 'INVALID_INPUT');
     }
   }
   if (body !== undefined && body !== null) {
-    if (typeof body !== "string" || body.length > MAX_BODY_LENGTH) {
-      return err(
-        `body must be a string, max ${MAX_BODY_LENGTH / 1024}KB`,
-        "INVALID_INPUT",
-      );
+    if (typeof body !== 'string' || body.length > MAX_BODY_LENGTH) {
+      return err(`body must be a string, max ${MAX_BODY_LENGTH / 1024}KB`, 'INVALID_INPUT');
     }
   }
   if (title !== undefined && title !== null) {
-    if (typeof title !== "string" || title.length > MAX_TITLE_LENGTH) {
-      return err(
-        `title must be a string, max ${MAX_TITLE_LENGTH} chars`,
-        "INVALID_INPUT",
-      );
+    if (typeof title !== 'string' || title.length > MAX_TITLE_LENGTH) {
+      return err(`title must be a string, max ${MAX_TITLE_LENGTH} chars`, 'INVALID_INPUT');
     }
   }
   if (tags !== undefined && tags !== null) {
-    if (!Array.isArray(tags))
-      return err("tags must be an array of strings", "INVALID_INPUT");
+    if (!Array.isArray(tags)) return err('tags must be an array of strings', 'INVALID_INPUT');
     if (tags.length > MAX_TAGS_COUNT)
-      return err(`tags: max ${MAX_TAGS_COUNT} tags allowed`, "INVALID_INPUT");
+      return err(`tags: max ${MAX_TAGS_COUNT} tags allowed`, 'INVALID_INPUT');
     for (const tag of tags) {
-      if (typeof tag !== "string" || tag.length > MAX_TAG_LENGTH) {
-        return err(
-          `each tag must be a string, max ${MAX_TAG_LENGTH} chars`,
-          "INVALID_INPUT",
-        );
+      if (typeof tag !== 'string' || tag.length > MAX_TAG_LENGTH) {
+        return err(`each tag must be a string, max ${MAX_TAG_LENGTH} chars`, 'INVALID_INPUT');
       }
     }
   }
   if (meta !== undefined && meta !== null) {
     const metaStr = JSON.stringify(meta);
     if (metaStr.length > MAX_META_LENGTH) {
-      return err(
-        `meta must be under ${MAX_META_LENGTH / 1024}KB when serialized`,
-        "INVALID_INPUT",
-      );
+      return err(`meta must be under ${MAX_META_LENGTH / 1024}KB when serialized`, 'INVALID_INPUT');
     }
   }
   if (source !== undefined && source !== null) {
-    if (typeof source !== "string" || source.length > MAX_SOURCE_LENGTH) {
-      return err(
-        `source must be a string, max ${MAX_SOURCE_LENGTH} chars`,
-        "INVALID_INPUT",
-      );
+    if (typeof source !== 'string' || source.length > MAX_SOURCE_LENGTH) {
+      return err(`source must be a string, max ${MAX_SOURCE_LENGTH} chars`, 'INVALID_INPUT');
     }
   }
   if (identity_key !== undefined && identity_key !== null) {
-    if (
-      typeof identity_key !== "string" ||
-      identity_key.length > MAX_IDENTITY_KEY_LENGTH
-    ) {
+    if (typeof identity_key !== 'string' || identity_key.length > MAX_IDENTITY_KEY_LENGTH) {
       return err(
         `identity_key must be a string, max ${MAX_IDENTITY_KEY_LENGTH} chars`,
-        "INVALID_INPUT",
+        'INVALID_INPUT'
       );
     }
   }
   if (expires_at !== undefined && expires_at !== null) {
-    if (
-      typeof expires_at !== "string" ||
-      isNaN(new Date(expires_at).getTime())
-    ) {
-      return err("expires_at must be a valid ISO date string", "INVALID_INPUT");
+    if (typeof expires_at !== 'string' || isNaN(new Date(expires_at).getTime())) {
+      return err('expires_at must be a valid ISO date string', 'INVALID_INPUT');
     }
   }
   return null;
 }
 
-export const name = "save_context";
+export const name = 'save_context';
 
 export const description =
-  "Save knowledge to your vault. Creates a .md file and indexes it for search. Use for any kind of context: insights, decisions, patterns, references, or any custom kind. To update an existing entry, pass its `id` — omitted fields are preserved.";
+  'Save knowledge to your vault. Creates a .md file and indexes it for search. Use for any kind of context: insights, decisions, patterns, references, or any custom kind. To update an existing entry, pass its `id` — omitted fields are preserved.';
 
 export const inputSchema = {
   id: z
     .string()
     .optional()
     .describe(
-      "Entry ULID to update. When provided, updates the existing entry instead of creating new. Omitted fields are preserved.",
+      'Entry ULID to update. When provided, updates the existing entry instead of creating new. Omitted fields are preserved.'
     ),
   kind: z
     .string()
     .optional()
     .describe(
-      "Entry kind — determines folder (e.g. 'insight', 'decision', 'pattern', 'reference', or any custom kind). Required for new entries.",
+      "Entry kind — determines folder (e.g. 'insight', 'decision', 'pattern', 'reference', or any custom kind). Required for new entries."
     ),
-  title: z.string().optional().describe("Entry title (optional for insights)"),
-  body: z
-    .string()
-    .optional()
-    .describe("Main content. Required for new entries."),
+  title: z.string().optional().describe('Entry title (optional for insights)'),
+  body: z.string().optional().describe('Main content. Required for new entries.'),
   tags: z
     .array(z.string())
     .optional()
     .describe(
-      "Tags for categorization and search. Use 'bucket:' prefix for project/domain scoping (e.g., 'bucket:autohub') to enable project-scoped retrieval.",
+      "Tags for categorization and search. Use 'bucket:' prefix for project/domain scoping (e.g., 'bucket:autohub') to enable project-scoped retrieval."
     ),
   meta: z
     .any()
     .optional()
     .describe(
-      "Additional structured metadata (JSON object, e.g. { language: 'js', status: 'accepted' })",
+      "Additional structured metadata (JSON object, e.g. { language: 'js', status: 'accepted' })"
     ),
   folder: z
     .string()
     .optional()
     .describe("Subfolder within the kind directory (e.g. 'react/hooks')"),
-  source: z.string().optional().describe("Where this knowledge came from"),
+  source: z.string().optional().describe('Where this knowledge came from'),
   identity_key: z
     .string()
     .optional()
     .describe(
-      "Required for entity kinds (contact, project, tool, source). The unique identifier for this entity.",
+      'Required for entity kinds (contact, project, tool, source). The unique identifier for this entity.'
     ),
-  expires_at: z.string().optional().describe("ISO date for TTL expiry"),
+  expires_at: z.string().optional().describe('ISO date for TTL expiry'),
   supersedes: z
     .array(z.string())
     .optional()
     .describe(
-      "Array of entry IDs that this entry supersedes/replaces. Those entries will be marked with superseded_by pointing to this new entry and excluded from future search results by default.",
+      'Array of entry IDs that this entry supersedes/replaces. Those entries will be marked with superseded_by pointing to this new entry and excluded from future search results by default.'
     ),
   related_to: z
     .array(z.string())
     .optional()
     .describe(
-      "Array of entry IDs this entry is related to. Enables bidirectional graph traversal — use get_context with follow_links:true to retrieve linked entries.",
+      'Array of entry IDs this entry is related to. Enables bidirectional graph traversal — use get_context with follow_links:true to retrieve linked entries.'
     ),
   source_files: z
     .array(
       z.object({
-        path: z.string().describe("File path (absolute or relative to cwd)"),
-        hash: z
-          .string()
-          .describe("SHA-256 hash of the file contents at observation time"),
-      }),
+        path: z.string().describe('File path (absolute or relative to cwd)'),
+        hash: z.string().describe('SHA-256 hash of the file contents at observation time'),
+      })
     )
     .optional()
     .describe(
-      "Source code files this entry is derived from. When these files change (hash mismatch), the entry will be flagged as stale in get_context results.",
+      'Source code files this entry is derived from. When these files change (hash mismatch), the entry will be flagged as stale in get_context results.'
     ),
   dry_run: z
     .boolean()
     .optional()
     .describe(
-      "If true, check for similar entries without saving. Returns similarity results without creating a new entry. Only applies to knowledge and event categories.",
+      'If true, check for similar entries without saving. Returns similarity results without creating a new entry. Only applies to knowledge and event categories.'
     ),
   similarity_threshold: z
     .number()
@@ -337,19 +287,19 @@ export const inputSchema = {
     .max(1)
     .optional()
     .describe(
-      "Cosine similarity threshold for duplicate detection (0–1, default 0.85). Entries above this score are flagged as similar. Only applies to knowledge and event categories.",
+      'Cosine similarity threshold for duplicate detection (0–1, default 0.85). Entries above this score are flagged as similar. Only applies to knowledge and event categories.'
     ),
   tier: z
-    .enum(["ephemeral", "working", "durable"])
+    .enum(['ephemeral', 'working', 'durable'])
     .optional()
     .describe(
-      "Memory tier for lifecycle management. 'ephemeral': short-lived session data. 'working': active context (default). 'durable': long-term reference material. Defaults based on kind when not specified.",
+      "Memory tier for lifecycle management. 'ephemeral': short-lived session data. 'working': active context (default). 'durable': long-term reference material. Defaults based on kind when not specified."
     ),
   conflict_resolution: z
-    .enum(["suggest", "off"])
+    .enum(['suggest', 'off'])
     .optional()
     .describe(
-      'Conflict resolution mode. "suggest" (default): when similar entries are found, return structured conflict_candidates with suggested_action (ADD/UPDATE/SKIP) and reasoning_context for the calling agent to decide. Thresholds: score > 0.95 → SKIP (near-duplicate), score > 0.85 → UPDATE (very similar), score < 0.85 → ADD (distinct enough). "off": flag similar entries only (legacy behavior).',
+      'Conflict resolution mode. "suggest" (default): when similar entries are found, return structured conflict_candidates with suggested_action (ADD/UPDATE/SKIP) and reasoning_context for the calling agent to decide. Thresholds: score > 0.95 → SKIP (near-duplicate), score > 0.85 → UPDATE (very similar), score < 0.85 → ADD (distinct enough). "off": flag similar entries only (legacy behavior).'
     ),
 };
 
@@ -379,16 +329,16 @@ export async function handler(
     conflict_resolution,
   },
   ctx,
-  { ensureIndexed },
+  { ensureIndexed }
 ) {
   const { config } = ctx;
-  const suggestMode = conflict_resolution !== "off";
+  const suggestMode = conflict_resolution !== 'off';
 
   const vaultErr = ensureVaultExists(config);
   if (vaultErr) return vaultErr;
 
   const relatedToErr = validateRelatedTo(related_to);
-  if (relatedToErr) return err(relatedToErr, "INVALID_INPUT");
+  if (relatedToErr) return err(relatedToErr, 'INVALID_INPUT');
 
   const inputErr = validateSaveInput({
     kind,
@@ -404,21 +354,21 @@ export async function handler(
 
   // ── Update mode ──
   if (id) {
-    await ensureIndexed();
+    await ensureIndexed({ blocking: false });
 
     const existing = ctx.stmts.getEntryById.get(id);
-    if (!existing) return err(`Entry not found: ${id}`, "NOT_FOUND");
+    if (!existing) return err(`Entry not found: ${id}`, 'NOT_FOUND');
 
     if (kind && normalizeKind(kind) !== existing.kind) {
       return err(
         `Cannot change kind (current: "${existing.kind}"). Delete and re-create instead.`,
-        "INVALID_UPDATE",
+        'INVALID_UPDATE'
       );
     }
     if (identity_key && identity_key !== existing.identity_key) {
       return err(
         `Cannot change identity_key (current: "${existing.identity_key}"). Delete and re-create instead.`,
-        "INVALID_UPDATE",
+        'INVALID_UPDATE'
       );
     }
 
@@ -447,8 +397,8 @@ export async function handler(
     } catch (e) {
       return errWithHint(
         e.message,
-        "UPDATE_FAILED",
-        "context-vault save_context update is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.",
+        'UPDATE_FAILED',
+        'context-vault save_context update is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
       );
     }
     if (entry.related_to?.length && ctx.stmts.updateRelatedTo) {
@@ -457,43 +407,41 @@ export async function handler(
       ctx.stmts.updateRelatedTo.run(null, entry.id);
     }
     const relPath = entry.filePath
-      ? entry.filePath.replace(config.vaultDir + "/", "")
+      ? entry.filePath.replace(config.vaultDir + '/', '')
       : entry.filePath;
     const parts = [`✓ Updated ${entry.kind} → ${relPath}`, `  id: ${entry.id}`];
     if (entry.title) parts.push(`  title: ${entry.title}`);
     const entryTags = entry.tags || [];
-    if (entryTags.length) parts.push(`  tags: ${entryTags.join(", ")}`);
-    parts.push("", "_Search with get_context to verify changes._");
-    return ok(parts.join("\n"));
+    if (entryTags.length) parts.push(`  tags: ${entryTags.join(', ')}`);
+    parts.push('', '_Search with get_context to verify changes._');
+    return ok(parts.join('\n'));
   }
 
   // ── Create mode ──
-  if (!kind) return err("Required: kind (for new entries)", "INVALID_INPUT");
+  if (!kind) return err('Required: kind (for new entries)', 'INVALID_INPUT');
   const kindErr = ensureValidKind(kind);
   if (kindErr) return kindErr;
-  if (!body?.trim())
-    return err("Required: body (for new entries)", "INVALID_INPUT");
+  if (!body?.trim()) return err('Required: body (for new entries)', 'INVALID_INPUT');
 
   // Normalize kind to canonical singular form (e.g. "insights" → "insight")
   const normalizedKind = normalizeKind(kind);
 
-  if (categoryFor(normalizedKind) === "entity" && !identity_key) {
-    return err(
-      `Entity kind "${normalizedKind}" requires identity_key`,
-      "MISSING_IDENTITY_KEY",
-    );
+  if (categoryFor(normalizedKind) === 'entity' && !identity_key) {
+    return err(`Entity kind "${normalizedKind}" requires identity_key`, 'MISSING_IDENTITY_KEY');
   }
 
-  await ensureIndexed();
+  // Start reindex in background but don't wait — similarity check
+  // may miss unindexed entries, but the save won't time out
+  await ensureIndexed({ blocking: false });
 
   // ── Similarity check (knowledge + event only) ────────────────────────────
   const category = categoryFor(normalizedKind);
   let similarEntries = [];
   let queryEmbedding = null;
 
-  if (category === "knowledge" || category === "event") {
+  if (category === 'knowledge' || category === 'event') {
     const threshold = similarity_threshold ?? DEFAULT_SIMILARITY_THRESHOLD;
-    const embeddingText = [title, body].filter(Boolean).join(" ");
+    const embeddingText = [title, body].filter(Boolean).join(' ');
     try {
       queryEmbedding = await ctx.embed(embeddingText);
     } catch {
@@ -505,43 +453,43 @@ export async function handler(
         queryEmbedding,
         threshold,
 
-        { hydrate: suggestMode },
+        { hydrate: suggestMode }
       );
     }
   }
 
   if (dry_run) {
-    const parts = ["(dry run — nothing saved)"];
+    const parts = ['(dry run — nothing saved)'];
     if (similarEntries.length) {
       if (suggestMode) {
         const candidates = buildConflictCandidates(similarEntries);
-        parts.push("", "⚠ Similar entries already exist:");
+        parts.push('', '⚠ Similar entries already exist:');
         for (const e of similarEntries) {
           const score = e.score.toFixed(2);
-          const titleDisplay = e.title ? `"${e.title}"` : "(no title)";
+          const titleDisplay = e.title ? `"${e.title}"` : '(no title)';
           parts.push(`  - ${titleDisplay} (${score}) — id: ${e.id}`);
         }
         parts.push(formatConflictSuggestions(candidates));
         parts.push(
-          "",
-          "Use save_context with `id: <existing>` to update one, or omit `dry_run` to save as new.",
+          '',
+          'Use save_context with `id: <existing>` to update one, or omit `dry_run` to save as new.'
         );
       } else {
-        parts.push("", "⚠ Similar entries already exist:");
+        parts.push('', '⚠ Similar entries already exist:');
         for (const e of similarEntries) {
           const score = e.score.toFixed(2);
-          const titleDisplay = e.title ? `"${e.title}"` : "(no title)";
+          const titleDisplay = e.title ? `"${e.title}"` : '(no title)';
           parts.push(`  - ${titleDisplay} (${score}) — id: ${e.id}`);
         }
         parts.push(
-          "",
-          "Use save_context with `id: <existing>` to update one, or omit `dry_run` to save as new.",
+          '',
+          'Use save_context with `id: <existing>` to update one, or omit `dry_run` to save as new.'
         );
       }
     } else {
-      parts.push("", "No similar entries found. Safe to save.");
+      parts.push('', 'No similar entries found. Safe to save.');
     }
-    return ok(parts.join("\n"));
+    return ok(parts.join('\n'));
   }
 
   const mergedMeta = { ...(meta || {}) };
@@ -550,7 +498,7 @@ export async function handler(
 
   const effectiveTier = tier ?? defaultTierFor(normalizedKind);
 
-  const embeddingToReuse = category === "knowledge" ? queryEmbedding : null;
+  const embeddingToReuse = category === 'knowledge' ? queryEmbedding : null;
 
   let entry;
   try {
@@ -572,13 +520,13 @@ export async function handler(
 
         tier: effectiveTier,
       },
-      embeddingToReuse,
+      embeddingToReuse
     );
   } catch (e) {
     return errWithHint(
       e.message,
-      "SAVE_FAILED",
-      "context-vault save_context is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.",
+      'SAVE_FAILED',
+      'context-vault save_context is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
     );
   }
 
@@ -587,37 +535,33 @@ export async function handler(
   }
 
   const relPath = entry.filePath
-    ? entry.filePath.replace(config.vaultDir + "/", "")
+    ? entry.filePath.replace(config.vaultDir + '/', '')
     : entry.filePath;
   const parts = [`✓ Saved ${normalizedKind} → ${relPath}`, `  id: ${entry.id}`];
   if (title) parts.push(`  title: ${title}`);
-  if (tags?.length) parts.push(`  tags: ${tags.join(", ")}`);
+  if (tags?.length) parts.push(`  tags: ${tags.join(', ')}`);
   parts.push(`  tier: ${effectiveTier}`);
-  parts.push("", "_Use this id to update or delete later._");
-  const hasBucketTag = (tags || []).some(
-    (t) => typeof t === "string" && t.startsWith("bucket:"),
-  );
+  parts.push('', '_Use this id to update or delete later._');
+  const hasBucketTag = (tags || []).some((t) => typeof t === 'string' && t.startsWith('bucket:'));
   if (tags && tags.length > 0 && !hasBucketTag) {
     parts.push(
-      "",
-      "_Tip: Consider adding a `bucket:` tag (e.g., `bucket:myproject`) for project-scoped retrieval._",
+      '',
+      '_Tip: Consider adding a `bucket:` tag (e.g., `bucket:myproject`) for project-scoped retrieval._'
     );
   }
-  const bucketTags = (tags || []).filter(
-    (t) => typeof t === "string" && t.startsWith("bucket:"),
-  );
+  const bucketTags = (tags || []).filter((t) => typeof t === 'string' && t.startsWith('bucket:'));
   for (const bt of bucketTags) {
-    const bucketUserClause = "";
+    const bucketUserClause = '';
     const bucketParams = false ? [bt] : [bt];
     const exists = ctx.db
       .prepare(
-        `SELECT 1 FROM vault WHERE kind = 'bucket' AND identity_key = ? ${bucketUserClause} LIMIT 1`,
+        `SELECT 1 FROM vault WHERE kind = 'bucket' AND identity_key = ? ${bucketUserClause} LIMIT 1`
       )
       .get(...bucketParams);
     if (!exists) {
       parts.push(
         ``,
-        `_Note: bucket '${bt}' is not registered. Use save_context(kind: "bucket", identity_key: "${bt}") to register it._`,
+        `_Note: bucket '${bt}' is not registered. Use save_context(kind: "bucket", identity_key: "${bt}") to register it._`
       );
     }
   }
@@ -634,15 +578,15 @@ export async function handler(
   const criticalLimit = config.thresholds?.totalEntries?.critical;
   if (criticalLimit != null) {
     try {
-      const countRow = ctx.db.prepare("SELECT COUNT(*) as c FROM vault").get();
+      const countRow = ctx.db.prepare('SELECT COUNT(*) as c FROM vault').get();
       if (countRow.c >= criticalLimit) {
         parts.push(
           ``,
-          `ℹ Vault has ${countRow.c.toLocaleString()} entries. Consider running \`context-vault reindex\` or reviewing old entries.`,
+          `ℹ Vault has ${countRow.c.toLocaleString()} entries. Consider running \`context-vault reindex\` or reviewing old entries.`
         );
       }
     } catch {}
   }
 
-  return ok(parts.join("\n"));
+  return ok(parts.join('\n'));
 }

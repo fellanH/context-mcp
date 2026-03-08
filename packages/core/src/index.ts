@@ -1,13 +1,13 @@
-import { readFileSync, readdirSync, existsSync, unlinkSync } from "node:fs";
-import { join, basename } from "node:path";
-import { dirToKind, walkDir, ulid } from "./files.js";
-import { categoryFor, defaultTierFor, CATEGORY_DIRS } from "./categories.js";
-import { parseFrontmatter, parseEntryFromMarkdown } from "./frontmatter.js";
-import { embedBatch } from "./embed.js";
-import type { BaseCtx, IndexEntryInput, ReindexStats } from "./types.js";
+import { readFileSync, readdirSync, existsSync, unlinkSync } from 'node:fs';
+import { join, basename } from 'node:path';
+import { dirToKind, walkDir, ulid } from './files.js';
+import { categoryFor, defaultTierFor, CATEGORY_DIRS } from './categories.js';
+import { parseFrontmatter, parseEntryFromMarkdown } from './frontmatter.js';
+import { embedBatch } from './embed.js';
+import type { BaseCtx, IndexEntryInput, ReindexStats } from './types.js';
 
-const EXCLUDED_DIRS = new Set(["projects", "_archive"]);
-const EXCLUDED_FILES = new Set(["context.md", "memory.md", "README.md"]);
+const EXCLUDED_DIRS = new Set(['projects', '_archive']);
+const EXCLUDED_FILES = new Set(['context.md', 'memory.md', 'README.md']);
 const EMBED_BATCH_SIZE = 32;
 
 export async function indexEntry(
@@ -16,7 +16,7 @@ export async function indexEntry(
     supersedes?: string[] | null;
     related_to?: string[] | null;
   },
-  precomputedEmbedding?: Float32Array | null,
+  precomputedEmbedding?: Float32Array | null
 ): Promise<void> {
   const {
     id,
@@ -45,7 +45,7 @@ export async function indexEntry(
 
   let wasUpdate = false;
 
-  if (cat === "entity" && identity_key) {
+  if (cat === 'entity' && identity_key) {
     const existing = ctx.stmts.getByIdentityKey.get(kind, identity_key) as
       | Record<string, unknown>
       | undefined;
@@ -55,13 +55,13 @@ export async function indexEntry(
         body,
         metaJson,
         tagsJson,
-        source || "claude-code",
+        source || 'claude-code',
         cat,
         filePath,
         expires_at || null,
         sourceFilesJson,
         kind,
-        identity_key,
+        identity_key
       );
       wasUpdate = true;
     }
@@ -77,38 +77,35 @@ export async function indexEntry(
         body,
         metaJson,
         tagsJson,
-        source || "claude-code",
+        source || 'claude-code',
         filePath,
         identity_key || null,
         expires_at || null,
         createdAt,
         createdAt,
         sourceFilesJson,
-        effectiveTier,
+        effectiveTier
       );
     } catch (e) {
-      if ((e as Error).message.includes("UNIQUE constraint")) {
+      if ((e as Error).message.includes('UNIQUE constraint')) {
         ctx.stmts.updateEntry.run(
           title || null,
           body,
           metaJson,
           tagsJson,
-          source || "claude-code",
+          source || 'claude-code',
           cat,
           identity_key || null,
           expires_at || null,
-          filePath,
+          filePath
         );
         if (sourceFilesJson !== null && ctx.stmts.updateSourceFiles) {
-          const entryRow = ctx.stmts.getRowidByPath.get(filePath) as
-            | { rowid: number }
-            | undefined;
+          const entryRow = ctx.stmts.getRowidByPath.get(filePath) as { rowid: number } | undefined;
           if (entryRow) {
             const idRow = ctx.db
-              .prepare("SELECT id FROM vault WHERE file_path = ?")
+              .prepare('SELECT id FROM vault WHERE file_path = ?')
               .get(filePath) as { id: string } | undefined;
-            if (idRow)
-              ctx.stmts.updateSourceFiles.run(sourceFilesJson, idRow.id);
+            if (idRow) ctx.stmts.updateSourceFiles.run(sourceFilesJson, idRow.id);
           }
         }
         wasUpdate = true;
@@ -124,27 +121,27 @@ export async function indexEntry(
 
   if (!rowidResult || rowidResult.rowid == null) {
     throw new Error(
-      `Could not find rowid for entry: ${wasUpdate ? `file_path=${filePath}` : `id=${id}`}`,
+      `Could not find rowid for entry: ${wasUpdate ? `file_path=${filePath}` : `id=${id}`}`
     );
   }
 
   const rowid = Number(rowidResult.rowid);
   if (!Number.isFinite(rowid) || rowid < 1) {
     throw new Error(
-      `Invalid rowid retrieved: ${rowidResult.rowid} (type: ${typeof rowidResult.rowid})`,
+      `Invalid rowid retrieved: ${rowidResult.rowid} (type: ${typeof rowidResult.rowid})`
     );
   }
 
-  if (cat !== "event") {
+  if (cat !== 'event') {
     let embedding: Float32Array | null = null;
     if (precomputedEmbedding !== undefined) {
       embedding = precomputedEmbedding;
     } else {
       try {
-        embedding = await ctx.embed([title, body].filter(Boolean).join(" "));
+        embedding = await ctx.embed([title, body].filter(Boolean).join(' '));
       } catch (embedErr) {
         console.warn(
-          `[context-vault] embed() failed for entry ${id} — skipping vec insert: ${(embedErr as Error).message}`,
+          `[context-vault] embed() failed for entry ${id} — skipping vec insert: ${(embedErr as Error).message}`
         );
       }
     }
@@ -163,7 +160,7 @@ export async function indexEntry(
 export async function pruneExpired(ctx: BaseCtx): Promise<number> {
   const expired = ctx.db
     .prepare(
-      "SELECT id, file_path FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')",
+      "SELECT id, file_path FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')"
     )
     .all() as { id: string; file_path: string | null }[];
 
@@ -173,9 +170,7 @@ export async function pruneExpired(ctx: BaseCtx): Promise<number> {
         unlinkSync(row.file_path);
       } catch {}
     }
-    const vRowid = (
-      ctx.stmts.getRowid.get(row.id) as { rowid: number } | undefined
-    )?.rowid;
+    const vRowid = (ctx.stmts.getRowid.get(row.id) as { rowid: number } | undefined)?.rowid;
     if (vRowid) {
       try {
         ctx.deleteVec(Number(vRowid));
@@ -189,7 +184,7 @@ export async function pruneExpired(ctx: BaseCtx): Promise<number> {
 
 export async function reindex(
   ctx: BaseCtx,
-  opts: { fullSync?: boolean } = {},
+  opts: { fullSync?: boolean } = {}
 ): Promise<ReindexStats> {
   const { fullSync = true } = opts;
   const stats: ReindexStats = {
@@ -202,22 +197,19 @@ export async function reindex(
   if (!existsSync(ctx.config.vaultDir)) return stats;
 
   const upsertEntry = ctx.db.prepare(
-    `INSERT OR IGNORE INTO vault (id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR IGNORE INTO vault (id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   const kindEntries: { kind: string; dir: string }[] = [];
   const topDirs = readdirSync(ctx.config.vaultDir, {
     withFileTypes: true,
-  }).filter(
-    (d) =>
-      d.isDirectory() && !EXCLUDED_DIRS.has(d.name) && !d.name.startsWith("_"),
-  );
+  }).filter((d) => d.isDirectory() && !EXCLUDED_DIRS.has(d.name) && !d.name.startsWith('_'));
 
   for (const d of topDirs) {
     if (CATEGORY_DIRS.has(d.name)) {
       const catDir = join(ctx.config.vaultDir, d.name);
       const subDirs = readdirSync(catDir, { withFileTypes: true }).filter(
-        (sd) => sd.isDirectory() && !sd.name.startsWith("_"),
+        (sd) => sd.isDirectory() && !sd.name.startsWith('_')
       );
       for (const sd of subDirs) {
         kindEntries.push({
@@ -235,17 +227,15 @@ export async function reindex(
 
   const pendingEmbeds: { rowid: number; text: string }[] = [];
 
-  ctx.db.exec("BEGIN");
+  ctx.db.exec('BEGIN');
   try {
     for (const { kind, dir } of kindEntries) {
       const category = categoryFor(kind);
-      const mdFiles = walkDir(dir).filter(
-        (f) => !EXCLUDED_FILES.has(basename(f.filePath)),
-      );
+      const mdFiles = walkDir(dir).filter((f) => !EXCLUDED_FILES.has(basename(f.filePath)));
 
       const dbRows = ctx.db
         .prepare(
-          "SELECT id, file_path, body, title, tags, meta, related_to FROM vault WHERE kind = ?",
+          'SELECT id, file_path, body, title, tags, meta, related_to FROM vault WHERE kind = ?'
         )
         .all(kind) as Record<string, unknown>[];
       const dbByPath = new Map(dbRows.map((r) => [r.file_path as string, r]));
@@ -259,8 +249,8 @@ export async function reindex(
           continue;
         }
 
-        const raw = readFileSync(filePath, "utf-8");
-        if (!raw.startsWith("---\n")) {
+        const raw = readFileSync(filePath, 'utf-8');
+        if (!raw.startsWith('---\n')) {
           console.error(`[reindex] skipping (no frontmatter): ${filePath}`);
           continue;
         }
@@ -272,9 +262,7 @@ export async function reindex(
         const related_to = Array.isArray(fmMeta.related_to)
           ? (fmMeta.related_to as string[])
           : null;
-        const relatedToJson = related_to?.length
-          ? JSON.stringify(related_to)
-          : null;
+        const relatedToJson = related_to?.length ? JSON.stringify(related_to) : null;
 
         const meta: Record<string, unknown> = { ...(parsed.meta || {}) };
         if (relDir) meta.folder = relDir;
@@ -284,8 +272,7 @@ export async function reindex(
         if (!existing) {
           const id = (fmMeta.id as string) || ulid();
           const tagsJson = fmMeta.tags ? JSON.stringify(fmMeta.tags) : null;
-          const created =
-            (fmMeta.created as string) || new Date().toISOString();
+          const created = (fmMeta.created as string) || new Date().toISOString();
 
           const result = upsertEntry.run(
             id,
@@ -295,25 +282,21 @@ export async function reindex(
             parsed.body,
             metaJson,
             tagsJson,
-            (fmMeta.source as string) || "file",
+            (fmMeta.source as string) || 'file',
             filePath,
             identity_key,
             expires_at,
             created,
-            (fmMeta.updated as string) || created,
+            (fmMeta.updated as string) || created
           );
           if ((result as { changes: number }).changes > 0) {
             if (relatedToJson && ctx.stmts.updateRelatedTo) {
               ctx.stmts.updateRelatedTo.run(relatedToJson, id);
             }
-            if (category !== "event") {
-              const rowidResult = ctx.stmts.getRowid.get(id) as
-                | { rowid: number }
-                | undefined;
+            if (category !== 'event') {
+              const rowidResult = ctx.stmts.getRowid.get(id) as { rowid: number } | undefined;
               if (rowidResult?.rowid) {
-                const embeddingText = [parsed.title, parsed.body]
-                  .filter(Boolean)
-                  .join(" ");
+                const embeddingText = [parsed.title, parsed.body].filter(Boolean).join(' ');
                 pendingEmbeds.push({
                   rowid: rowidResult.rowid,
                   text: embeddingText,
@@ -326,49 +309,34 @@ export async function reindex(
           }
         } else if (fullSync) {
           const tagsJson = fmMeta.tags ? JSON.stringify(fmMeta.tags) : null;
-          const titleChanged =
-            (parsed.title || null) !== ((existing.title as string) || null);
+          const titleChanged = (parsed.title || null) !== ((existing.title as string) || null);
           const bodyChanged = (existing.body as string) !== parsed.body;
           const tagsChanged = tagsJson !== ((existing.tags as string) || null);
           const metaChanged = metaJson !== ((existing.meta as string) || null);
-          const relatedToChanged =
-            relatedToJson !== ((existing.related_to as string) || null);
+          const relatedToChanged = relatedToJson !== ((existing.related_to as string) || null);
 
-          if (
-            bodyChanged ||
-            titleChanged ||
-            tagsChanged ||
-            metaChanged ||
-            relatedToChanged
-          ) {
+          if (bodyChanged || titleChanged || tagsChanged || metaChanged || relatedToChanged) {
             ctx.stmts.updateEntry.run(
               parsed.title || null,
               parsed.body,
               metaJson,
               tagsJson,
-              (fmMeta.source as string) || "file",
+              (fmMeta.source as string) || 'file',
               category,
               identity_key,
               expires_at,
-              filePath,
+              filePath
             );
             if (relatedToChanged && ctx.stmts.updateRelatedTo) {
-              ctx.stmts.updateRelatedTo.run(
-                relatedToJson,
-                existing.id as string,
-              );
+              ctx.stmts.updateRelatedTo.run(relatedToJson, existing.id as string);
             }
 
-            if ((bodyChanged || titleChanged) && category !== "event") {
+            if ((bodyChanged || titleChanged) && category !== 'event') {
               const rowid = (
-                ctx.stmts.getRowid.get(existing.id as string) as
-                  | { rowid: number }
-                  | undefined
+                ctx.stmts.getRowid.get(existing.id as string) as { rowid: number } | undefined
               )?.rowid;
               if (rowid) {
-                const embeddingText = [parsed.title, parsed.body]
-                  .filter(Boolean)
-                  .join(" ");
+                const embeddingText = [parsed.title, parsed.body].filter(Boolean).join(' ');
                 pendingEmbeds.push({ rowid, text: embeddingText });
               }
             }
@@ -385,9 +353,7 @@ export async function reindex(
         for (const [dbPath, row] of dbByPath) {
           if (!diskPaths.has(dbPath)) {
             const vRowid = (
-              ctx.stmts.getRowid.get(row.id as string) as
-                | { rowid: number }
-                | undefined
+              ctx.stmts.getRowid.get(row.id as string) as { rowid: number } | undefined
             )?.rowid;
             if (vRowid) {
               try {
@@ -403,13 +369,13 @@ export async function reindex(
 
     if (fullSync) {
       const indexedKinds = new Set(kindEntries.map((ke) => ke.kind));
-      const allDbKinds = ctx.db
-        .prepare("SELECT DISTINCT kind FROM vault")
-        .all() as { kind: string }[];
+      const allDbKinds = ctx.db.prepare('SELECT DISTINCT kind FROM vault').all() as {
+        kind: string;
+      }[];
       for (const { kind } of allDbKinds) {
         if (!indexedKinds.has(kind)) {
           const orphaned = ctx.db
-            .prepare("SELECT id, rowid FROM vault WHERE kind = ?")
+            .prepare('SELECT id, rowid FROM vault WHERE kind = ?')
             .all(kind) as { id: string; rowid: number }[];
           for (const row of orphaned) {
             try {
@@ -424,7 +390,7 @@ export async function reindex(
 
     const expired = ctx.db
       .prepare(
-        "SELECT id, file_path FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')",
+        "SELECT id, file_path FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')"
       )
       .all() as { id: string; file_path: string | null }[];
 
@@ -434,9 +400,7 @@ export async function reindex(
           unlinkSync(row.file_path);
         } catch {}
       }
-      const vRowid = (
-        ctx.stmts.getRowid.get(row.id) as { rowid: number } | undefined
-      )?.rowid;
+      const vRowid = (ctx.stmts.getRowid.get(row.id) as { rowid: number } | undefined)?.rowid;
       if (vRowid) {
         try {
           ctx.deleteVec(Number(vRowid));
@@ -446,9 +410,9 @@ export async function reindex(
       stats.removed++;
     }
 
-    ctx.db.exec("COMMIT");
+    ctx.db.exec('COMMIT');
   } catch (e) {
-    ctx.db.exec("ROLLBACK");
+    ctx.db.exec('ROLLBACK');
     throw e;
   }
 
@@ -462,6 +426,36 @@ export async function reindex(
         } catch {}
         ctx.insertVec(batch[j].rowid, embeddings[j]!);
       }
+    }
+  }
+
+  // Detect entries with missing embeddings and regenerate them
+  if (fullSync) {
+    const missingVec = ctx.db
+      .prepare(
+        `SELECT v.rowid, v.title, v.body FROM vault v
+         WHERE v.category != 'event'
+           AND v.rowid NOT IN (SELECT rowid FROM vault_vec)`
+      )
+      .all() as { rowid: number; title: string | null; body: string }[];
+
+    if (missingVec.length > 0) {
+      const missingEmbeds = missingVec.map((r) => ({
+        rowid: r.rowid,
+        text: [r.title, r.body].filter(Boolean).join(' '),
+      }));
+
+      for (let i = 0; i < missingEmbeds.length; i += EMBED_BATCH_SIZE) {
+        const batch = missingEmbeds.slice(i, i + EMBED_BATCH_SIZE);
+        const embeddings = await embedBatch(batch.map((e) => e.text));
+        for (let j = 0; j < batch.length; j++) {
+          if (embeddings[j]) {
+            ctx.insertVec(batch[j].rowid, embeddings[j]!);
+          }
+        }
+      }
+
+      console.error(`[context-vault] Regenerated ${missingVec.length} missing embeddings`);
     }
   }
 
