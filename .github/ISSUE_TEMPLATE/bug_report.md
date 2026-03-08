@@ -1,9 +1,9 @@
 ---
 name: Bug Report
 about: Something isn't working as expected
-title: ""
+title: ''
 labels: bug
-assignees: ""
+assignees: ''
 ---
 
 **What happened?**

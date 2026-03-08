@@ -1,8 +1,7 @@
-export const APP_URL = "https://app.context-vault.com";
-export const API_URL = "https://api.context-vault.com";
-export const MARKETING_URL = "https://contextvault.dev";
-export const GITHUB_ISSUES_URL =
-  "https://github.com/fellanH/context-vault/issues";
+export const APP_URL = 'https://app.context-vault.com';
+export const API_URL = 'https://api.context-vault.com';
+export const MARKETING_URL = 'https://contextvault.dev';
+export const GITHUB_ISSUES_URL = 'https://github.com/fellanH/context-vault/issues';
 
 export const MAX_BODY_LENGTH = 100 * 1024;
 export const MAX_TITLE_LENGTH = 500;
@@ -20,8 +19,7 @@ export const DEFAULT_GROWTH_THRESHOLDS = {
   eventsWithoutTtl: { warn: 200 },
 };
 
-export const DEFAULT_LIFECYCLE: Record<string, { archiveAfterDays?: number }> =
-  {
-    event: { archiveAfterDays: 90 },
-    ephemeral: { archiveAfterDays: 30 },
-  };
+export const DEFAULT_LIFECYCLE: Record<string, { archiveAfterDays?: number }> = {
+  event: { archiveAfterDays: 90 },
+  ephemeral: { archiveAfterDays: 30 },
+};

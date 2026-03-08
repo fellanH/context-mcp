@@ -4,8 +4,8 @@ on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
     paths:
-      - "packages/**"
-      - "test/**"
+      - 'packages/**'
+      - 'test/**'
 
 jobs:
   claude-review:

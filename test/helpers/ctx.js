@@ -2,21 +2,16 @@
  * Test context helper — creates isolated temp vaults with real DB + embeddings.
  */
 
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import {
-  initDatabase,
-  prepareStatements,
-  insertVec,
-  deleteVec,
-} from "@context-vault/core/db";
-import { embed } from "@context-vault/core/embed";
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { initDatabase, prepareStatements, insertVec, deleteVec } from '@context-vault/core/db';
+import { embed } from '@context-vault/core/embed';
 
 export async function createTestCtx() {
-  const tmp = mkdtempSync(join(tmpdir(), "context-vault-test-"));
-  const vaultDir = join(tmp, "vault");
-  const dbPath = join(tmp, "vault.db");
+  const tmp = mkdtempSync(join(tmpdir(), 'context-vault-test-'));
+  const vaultDir = join(tmp, 'vault');
+  const dbPath = join(tmp, 'vault.db');
   mkdirSync(vaultDir, { recursive: true });
 
   const db = await initDatabase(dbPath);
@@ -28,8 +23,8 @@ export async function createTestCtx() {
     dbPath,
     devDir: tmp,
     vaultDirExists: true,
-    configPath: join(tmp, "config.json"),
-    resolvedFrom: "test",
+    configPath: join(tmp, 'config.json'),
+    resolvedFrom: 'test',
   };
 
   const ctx = {

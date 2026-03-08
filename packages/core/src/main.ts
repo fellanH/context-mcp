@@ -13,7 +13,7 @@ export type {
   ReindexStats,
   BaseCtx,
   SearchOptions,
-} from "./types.js";
+} from './types.js';
 
 // Constants
 export {
@@ -31,7 +31,7 @@ export {
   MAX_IDENTITY_KEY_LENGTH,
   DEFAULT_GROWTH_THRESHOLDS,
   DEFAULT_LIFECYCLE,
-} from "./constants.js";
+} from './constants.js';
 
 // Categories
 export {
@@ -40,10 +40,10 @@ export {
   defaultTierFor,
   CATEGORY_DIRS,
   KIND_STALENESS_DAYS,
-} from "./categories.js";
+} from './categories.js';
 
 // Config
-export { parseArgs, resolveConfig } from "./config.js";
+export { parseArgs, resolveConfig } from './config.js';
 
 // Files
 export {
@@ -55,7 +55,7 @@ export {
   kindToPath,
   safeJoin,
   walkDir,
-} from "./files.js";
+} from './files.js';
 
 // Frontmatter
 export {
@@ -63,10 +63,10 @@ export {
   parseFrontmatter,
   extractCustomMeta,
   parseEntryFromMarkdown,
-} from "./frontmatter.js";
+} from './frontmatter.js';
 
 // Formatters
-export { formatBody } from "./formatters.js";
+export { formatBody } from './formatters.js';
 
 // Database
 export {
@@ -77,18 +77,13 @@ export {
   insertVec,
   deleteVec,
   testConnection,
-} from "./db.js";
+} from './db.js';
 
 // Embeddings
-export {
-  embed,
-  embedBatch,
-  resetEmbedPipeline,
-  isEmbedAvailable,
-} from "./embed.js";
+export { embed, embedBatch, resetEmbedPipeline, isEmbedAvailable } from './embed.js';
 
 // Index (reindex + indexEntry)
-export { indexEntry, reindex, pruneExpired } from "./index.js";
+export { indexEntry, reindex, pruneExpired } from './index.js';
 
 // Search (retrieve)
 export {
@@ -99,10 +94,10 @@ export {
   recencyDecayScore,
   dotProduct,
   reciprocalRankFusion,
-} from "./search.js";
+} from './search.js';
 
 // Capture
-export { writeEntry, updateEntryFile, captureAndIndex } from "./capture.js";
+export { writeEntry, updateEntryFile, captureAndIndex } from './capture.js';
 
 // Ingest URL
-export { htmlToMarkdown, extractHtmlContent, ingestUrl } from "./ingest-url.js";
+export { htmlToMarkdown, extractHtmlContent, ingestUrl } from './ingest-url.js';

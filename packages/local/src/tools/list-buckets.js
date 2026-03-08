@@ -1,7 +1,7 @@
-import { z } from "zod";
-import { ok } from "../helpers.js";
+import { z } from 'zod';
+import { ok } from '../helpers.js';
 
-export const name = "list_buckets";
+export const name = 'list_buckets';
 
 export const description =
   "List all registered bucket entities in the vault. Buckets are named scopes used to group entries via 'bucket:' prefixed tags. Returns each bucket's name, description, parent, and optional entry count.";
@@ -11,7 +11,7 @@ export const inputSchema = {
     .boolean()
     .optional()
     .describe(
-      "Include count of entries tagged with each bucket (default true). Set false to skip the count queries for faster response.",
+      'Include count of entries tagged with each bucket (default true). Set false to skip the count queries for faster response.'
     ),
 };
 
@@ -20,14 +20,10 @@ export const inputSchema = {
  * @param {import('../types.js').BaseCtx & Partial<import('../types.js').HostedCtxExtensions>} ctx
  * @param {import('../types.js').ToolShared} shared
  */
-export async function handler(
-  { include_counts = true },
-  ctx,
-  { ensureIndexed, reindexFailed },
-) {
+export async function handler({ include_counts = true }, ctx, { ensureIndexed, reindexFailed }) {
   await ensureIndexed();
 
-  const userClause = "";
+  const userClause = '';
   const userParams = [];
 
   const buckets = ctx.db
@@ -38,20 +34,20 @@ export async function handler(
          AND (expires_at IS NULL OR expires_at > datetime('now'))
          AND superseded_by IS NULL
          ${userClause}
-       ORDER BY title ASC`,
+       ORDER BY title ASC`
     )
     .all(...userParams);
 
   if (!buckets.length) {
     return ok(
-      'No buckets registered.\n\nCreate one with `save_context(kind: "bucket", identity_key: "bucket:myproject", title: "My Project", body: "...")` to register a bucket.',
+      'No buckets registered.\n\nCreate one with `save_context(kind: "bucket", identity_key: "bucket:myproject", title: "My Project", body: "...")` to register a bucket.'
     );
   }
 
   const lines = [];
   if (reindexFailed) {
     lines.push(
-      `> **Warning:** Auto-reindex failed. Results may be stale. Run \`context-vault reindex\` to fix.\n`,
+      `> **Warning:** Auto-reindex failed. Results may be stale. Run \`context-vault reindex\` to fix.\n`
     );
   }
   lines.push(`## Registered Buckets (${buckets.length})\n`);
@@ -60,21 +56,19 @@ export async function handler(
     let meta = {};
     if (b.meta) {
       try {
-        meta = typeof b.meta === "string" ? JSON.parse(b.meta) : b.meta;
+        meta = typeof b.meta === 'string' ? JSON.parse(b.meta) : b.meta;
       } catch {
         meta = {};
       }
     }
 
     const bucketTags = b.tags ? JSON.parse(b.tags) : [];
-    const name = b.identity_key
-      ? b.identity_key.replace(/^bucket:/, "")
-      : b.title || b.id;
+    const name = b.identity_key ? b.identity_key.replace(/^bucket:/, '') : b.title || b.id;
     const parent = meta.parent || null;
 
     let entryCount = null;
     if (include_counts && b.identity_key) {
-      const countUserClause = "";
+      const countUserClause = '';
       const countParams = [];
       const row = ctx.db
         .prepare(
@@ -83,7 +77,7 @@ export async function handler(
              AND kind != 'bucket'
              AND (expires_at IS NULL OR expires_at > datetime('now'))
              AND superseded_by IS NULL
-             ${countUserClause}`,
+             ${countUserClause}`
         )
         .get(`%"${b.identity_key}"%`, ...countParams);
       entryCount = row ? row.c : 0;
@@ -94,20 +88,20 @@ export async function handler(
     if (b.identity_key) headerParts.push(`\`${b.identity_key}\``);
     if (parent) headerParts.push(`parent: ${parent}`);
     if (entryCount !== null) headerParts.push(`${entryCount} entries`);
-    lines.push(`- ${headerParts.join(" — ")}`);
+    lines.push(`- ${headerParts.join(' — ')}`);
 
     if (b.body) {
-      const preview = b.body.replace(/\n+/g, " ").trim().slice(0, 120);
-      lines.push(`  ${preview}${b.body.length > 120 ? "…" : ""}`);
+      const preview = b.body.replace(/\n+/g, ' ').trim().slice(0, 120);
+      lines.push(`  ${preview}${b.body.length > 120 ? '…' : ''}`);
     }
     if (bucketTags.length) {
-      lines.push(`  tags: ${bucketTags.join(", ")}`);
+      lines.push(`  tags: ${bucketTags.join(', ')}`);
     }
   }
 
   lines.push(
-    '\n_Register a new bucket with `save_context(kind: "bucket", identity_key: "bucket:<name>", title: "...", body: "...")`_',
+    '\n_Register a new bucket with `save_context(kind: "bucket", identity_key: "bucket:<name>", title: "...", body: "...")`_'
   );
 
-  return ok(lines.join("\n"));
+  return ok(lines.join('\n'));
 }

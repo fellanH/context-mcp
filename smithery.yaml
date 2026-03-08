@@ -5,6 +5,6 @@ startCommand:
     properties:
       vaultDir:
         type: string
-        description: "Path to the vault directory containing your knowledge files. Defaults to ~/vault/"
+        description: 'Path to the vault directory containing your knowledge files. Defaults to ~/vault/'
   commandFunction: |-
     (config) => ({ command: 'npx', args: ['-y', 'context-vault', 'serve', ...(config.vaultDir ? ['--vault-dir', config.vaultDir] : [])] })

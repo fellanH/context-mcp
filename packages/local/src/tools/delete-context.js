@@ -1,14 +1,14 @@
-import { z } from "zod";
-import { unlinkSync } from "node:fs";
-import { ok, err } from "../helpers.js";
+import { z } from 'zod';
+import { unlinkSync } from 'node:fs';
+import { ok, err } from '../helpers.js';
 
-export const name = "delete_context";
+export const name = 'delete_context';
 
 export const description =
-  "Delete an entry from your vault by its ULID id. Removes the file from disk and cleans up the search index.";
+  'Delete an entry from your vault by its ULID id. Removes the file from disk and cleans up the search index.';
 
 export const inputSchema = {
-  id: z.string().describe("The entry ULID to delete"),
+  id: z.string().describe('The entry ULID to delete'),
 };
 
 /**
@@ -17,12 +17,11 @@ export const inputSchema = {
  * @param {import('../types.js').ToolShared} shared
  */
 export async function handler({ id }, ctx, { ensureIndexed }) {
-  if (!id?.trim())
-    return err("Required: id (non-empty string)", "INVALID_INPUT");
+  if (!id?.trim()) return err('Required: id (non-empty string)', 'INVALID_INPUT');
   await ensureIndexed();
 
   const entry = ctx.stmts.getEntryById.get(id);
-  if (!entry) return err(`Entry not found: ${id}`, "NOT_FOUND");
+  if (!entry) return err(`Entry not found: ${id}`, 'NOT_FOUND');
 
   try {
     // Delete DB record first — if this fails, the file stays and no orphan is created
@@ -40,15 +39,15 @@ export async function handler({ id }, ctx, { ensureIndexed }) {
       try {
         unlinkSync(entry.file_path);
       } catch (e) {
-        if (e.code !== "ENOENT") {
+        if (e.code !== 'ENOENT') {
           fileWarning = `file could not be removed from disk (${e.code}): ${entry.file_path}`;
         }
       }
     }
 
-    const msg = `Deleted ${entry.kind}: ${entry.title || "(untitled)"} [${id}]`;
+    const msg = `Deleted ${entry.kind}: ${entry.title || '(untitled)'} [${id}]`;
     return ok(fileWarning ? `${msg}\nWarning: ${fileWarning}` : msg);
   } catch (e) {
-    return err(e.message, "DELETE_FAILED");
+    return err(e.message, 'DELETE_FAILED');
   }
 }

@@ -1,4 +1,4 @@
-import type { DatabaseSync, StatementSync } from "node:sqlite";
+import type { DatabaseSync, StatementSync } from 'node:sqlite';
 
 export interface VaultConfig {
   vaultDir: string;

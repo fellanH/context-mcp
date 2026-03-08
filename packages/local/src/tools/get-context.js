@@ -1,14 +1,14 @@
-import { z } from "zod";
-import { createHash } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { hybridSearch } from "@context-vault/core/search";
-import { categoryFor } from "@context-vault/core/categories";
-import { normalizeKind } from "@context-vault/core/files";
-import { resolveTemporalParams } from "../temporal.js";
-import { collectLinkedEntries } from "../linking.js";
-import { ok, err, errWithHint } from "../helpers.js";
-import { isEmbedAvailable } from "@context-vault/core/embed";
+import { z } from 'zod';
+import { createHash } from 'node:crypto';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { hybridSearch } from '@context-vault/core/search';
+import { categoryFor } from '@context-vault/core/categories';
+import { normalizeKind } from '@context-vault/core/files';
+import { resolveTemporalParams } from '../temporal.js';
+import { collectLinkedEntries } from '../linking.js';
+import { ok, err, errWithHint } from '../helpers.js';
+import { isEmbedAvailable } from '@context-vault/core/embed';
 
 const STALE_DUPLICATE_DAYS = 7;
 const DEFAULT_PIVOT_COUNT = 2;
@@ -22,21 +22,18 @@ const BRIEF_SCORE_BOOST = 0.05;
  * word boundary. Returns the truncated string with "..." appended.
  */
 export function skeletonBody(body) {
-  if (!body) return "";
+  if (!body) return '';
   if (body.length <= SKELETON_BODY_CHARS) return body;
   const slice = body.slice(0, SKELETON_BODY_CHARS);
-  const sentenceEnd = Math.max(
-    slice.lastIndexOf(". "),
-    slice.lastIndexOf(".\n"),
-  );
+  const sentenceEnd = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('.\n'));
   if (sentenceEnd > SKELETON_BODY_CHARS * 0.4) {
-    return slice.slice(0, sentenceEnd + 1) + "...";
+    return slice.slice(0, sentenceEnd + 1) + '...';
   }
-  const wordEnd = slice.lastIndexOf(" ");
+  const wordEnd = slice.lastIndexOf(' ');
   if (wordEnd > SKELETON_BODY_CHARS * 0.4) {
-    return slice.slice(0, wordEnd) + "...";
+    return slice.slice(0, wordEnd) + '...';
   }
-  return slice + "...";
+  return slice + '...';
 }
 
 /**
@@ -65,15 +62,13 @@ export function detectConflicts(entries, _ctx) {
       conflicts.push({
         entry_a_id: entry.id,
         entry_b_id: entry.superseded_by,
-        reason: "superseded",
+        reason: 'superseded',
         recommendation: `Discard \`${entry.id}\` — it has been explicitly superseded by \`${entry.superseded_by}\`.`,
       });
     }
   }
 
-  const supersededConflictPairs = new Set(
-    conflicts.map((c) => `${c.entry_a_id}|${c.entry_b_id}`),
-  );
+  const supersededConflictPairs = new Set(conflicts.map((c) => `${c.entry_a_id}|${c.entry_b_id}`));
 
   for (let i = 0; i < entries.length; i++) {
     for (let j = i + 1; j < entries.length; j++) {
@@ -109,7 +104,7 @@ export function detectConflicts(entries, _ctx) {
       conflicts.push({
         entry_a_id: older.id,
         entry_b_id: newer.id,
-        reason: "stale_duplicate",
+        reason: 'stale_duplicate',
         recommendation: `Verify \`${older.id}\` is still accurate — it shares kind "${older.kind}" and tags with \`${newer.id}\` but was last updated ${Math.round(diffDays)} days earlier.`,
       });
     }
@@ -140,7 +135,7 @@ export function detectConsolidationHints(entries, db, opts = {}) {
 
   const candidateTags = new Set();
   for (const entry of entries) {
-    if (entry.kind === "brief") continue;
+    if (entry.kind === 'brief') continue;
     const entryTags = entry.tags ? JSON.parse(entry.tags) : [];
     for (const tag of entryTags) candidateTags.add(tag);
   }
@@ -155,11 +150,11 @@ export function detectConsolidationHints(entries, db, opts = {}) {
     try {
       // When userId is defined (hosted mode), scope to that user.
       // When userId is undefined (local mode), no user scoping — column may not exist.
-      const userClause = "";
+      const userClause = '';
       const countParams = false ? [`%"${tag}"%`] : [`%"${tag}"%`];
       const countRow = db
         .prepare(
-          `SELECT COUNT(*) as c FROM vault WHERE kind != 'brief' AND tags LIKE ?${userClause} AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL`,
+          `SELECT COUNT(*) as c FROM vault WHERE kind != 'brief' AND tags LIKE ?${userClause} AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL`
         )
         .get(...countParams);
       vaultCount = countRow?.c ?? 0;
@@ -171,17 +166,17 @@ export function detectConsolidationHints(entries, db, opts = {}) {
 
     let lastSnapshotAgeDays = null;
     try {
-      const userClause = "";
+      const userClause = '';
       const params = false ? [`%"${tag}"%`] : [`%"${tag}"%`];
       const recentBrief = db
         .prepare(
-          `SELECT created_at FROM vault WHERE kind = 'brief' AND tags LIKE ?${userClause} ORDER BY created_at DESC LIMIT 1`,
+          `SELECT created_at FROM vault WHERE kind = 'brief' AND tags LIKE ?${userClause} ORDER BY created_at DESC LIMIT 1`
         )
         .get(...params);
 
       if (recentBrief) {
         lastSnapshotAgeDays = Math.round(
-          (Date.now() - new Date(recentBrief.created_at).getTime()) / 86400000,
+          (Date.now() - new Date(recentBrief.created_at).getTime()) / 86400000
         );
         if (recentBrief.created_at >= cutoff) continue;
       }
@@ -219,18 +214,16 @@ function checkStaleness(entry) {
 
   for (const sf of sourceFiles) {
     try {
-      const absPath = sf.path.startsWith("/")
-        ? sf.path
-        : resolve(process.cwd(), sf.path);
+      const absPath = sf.path.startsWith('/') ? sf.path : resolve(process.cwd(), sf.path);
       if (!existsSync(absPath)) {
-        return { stale: true, stale_reason: "source file not found" };
+        return { stale: true, stale_reason: 'source file not found' };
       }
       const contents = readFileSync(absPath);
-      const currentHash = createHash("sha256").update(contents).digest("hex");
+      const currentHash = createHash('sha256').update(contents).digest('hex');
       if (currentHash !== sf.hash) {
         return {
           stale: true,
-          stale_reason: "source file modified since observation",
+          stale_reason: 'source file modified since observation',
         };
       }
     } catch {
@@ -240,107 +233,95 @@ function checkStaleness(entry) {
   return null;
 }
 
-export const name = "get_context";
+export const name = 'get_context';
 
 export const description =
-  "Search your knowledge vault. Returns entries ranked by relevance using hybrid full-text + semantic search. Use this to find insights, decisions, patterns, or any saved context. Each result includes an `id` you can use with save_context or delete_context.";
+  'Search your knowledge vault. Returns entries ranked by relevance using hybrid full-text + semantic search. Use this to find insights, decisions, patterns, or any saved context. Each result includes an `id` you can use with save_context or delete_context.';
 
 export const inputSchema = {
   query: z
     .string()
     .optional()
     .describe(
-      "Search query (natural language or keywords). Optional if filters (tags, kind, category) are provided.",
+      'Search query (natural language or keywords). Optional if filters (tags, kind, category) are provided.'
     ),
-  kind: z
-    .string()
-    .optional()
-    .describe("Filter by kind (e.g. 'insight', 'decision', 'pattern')"),
-  category: z
-    .enum(["knowledge", "entity", "event"])
-    .optional()
-    .describe("Filter by category"),
+  kind: z.string().optional().describe("Filter by kind (e.g. 'insight', 'decision', 'pattern')"),
+  category: z.enum(['knowledge', 'entity', 'event']).optional().describe('Filter by category'),
   identity_key: z
     .string()
     .optional()
-    .describe("For entity lookup: exact match on identity key. Requires kind."),
+    .describe('For entity lookup: exact match on identity key. Requires kind.'),
   tags: z
     .array(z.string())
     .optional()
     .describe(
-      "Filter by tags (entries must match at least one). Use 'bucket:' prefixed tags for project-scoped retrieval (e.g., ['bucket:autohub']).",
+      "Filter by tags (entries must match at least one). Use 'bucket:' prefixed tags for project-scoped retrieval (e.g., ['bucket:autohub'])."
     ),
   buckets: z
     .array(z.string())
     .optional()
     .describe(
-      "Filter by project-scoped buckets. Each name expands to a 'bucket:<name>' tag. Composes with 'tags' via OR (entries matching any tag or any bucket are included).",
+      "Filter by project-scoped buckets. Each name expands to a 'bucket:<name>' tag. Composes with 'tags' via OR (entries matching any tag or any bucket are included)."
     ),
   since: z
     .string()
     .optional()
     .describe(
-      "Return entries created after this date. Accepts ISO date strings (e.g. '2025-01-01') or natural shortcuts: 'today', 'yesterday', 'this_week', 'this_month', 'last_3_days', 'last_2_weeks', 'last_1_month'. Spaces and underscores are interchangeable.",
+      "Return entries created after this date. Accepts ISO date strings (e.g. '2025-01-01') or natural shortcuts: 'today', 'yesterday', 'this_week', 'this_month', 'last_3_days', 'last_2_weeks', 'last_1_month'. Spaces and underscores are interchangeable."
     ),
   until: z
     .string()
     .optional()
     .describe(
-      "Return entries created before this date. Accepts ISO date strings or the same natural shortcuts as `since`. When `since` is 'yesterday' and `until` is omitted, `until` is automatically set to the end of yesterday.",
+      "Return entries created before this date. Accepts ISO date strings or the same natural shortcuts as `since`. When `since` is 'yesterday' and `until` is omitted, `until` is automatically set to the end of yesterday."
     ),
-  limit: z
-    .number()
-    .max(500)
-    .optional()
-    .describe("Max results to return (default 10)"),
+  limit: z.number().max(500).optional().describe('Max results to return (default 10)'),
   include_superseded: z
     .boolean()
     .optional()
-    .describe(
-      "If true, include entries that have been superseded by newer ones. Default: false.",
-    ),
+    .describe('If true, include entries that have been superseded by newer ones. Default: false.'),
   detect_conflicts: z
     .boolean()
     .optional()
     .describe(
-      "If true, compare results for contradicting entries and append a conflicts array. Flags superseded entries still in results and stale duplicates (same kind+tags, updated_at >7 days apart). No LLM calls — pure DB logic.",
+      'If true, compare results for contradicting entries and append a conflicts array. Flags superseded entries still in results and stale duplicates (same kind+tags, updated_at >7 days apart). No LLM calls — pure DB logic.'
     ),
   max_tokens: z
     .number()
     .max(100000)
     .optional()
     .describe(
-      "Limit output to entries that fit within this token budget (rough estimate: 1 token ≈ 4 chars). Entries are packed greedily by relevance rank. At least 1 result is always returned. Response metadata includes tokens_used and tokens_budget.",
+      'Limit output to entries that fit within this token budget (rough estimate: 1 token ≈ 4 chars). Entries are packed greedily by relevance rank. At least 1 result is always returned. Response metadata includes tokens_used and tokens_budget.'
     ),
   pivot_count: z
     .number()
     .optional()
     .describe(
-      "Skeleton mode: top pivot_count entries by relevance are returned with full body. Remaining entries are returned as skeletons (title + tags + first ~100 chars of body). Default: 2. Set to 0 to skeleton all results, or a high number to disable.",
+      'Skeleton mode: top pivot_count entries by relevance are returned with full body. Remaining entries are returned as skeletons (title + tags + first ~100 chars of body). Default: 2. Set to 0 to skeleton all results, or a high number to disable.'
     ),
   include_ephemeral: z
     .boolean()
     .optional()
     .describe(
-      "If true, include ephemeral tier entries in results. Default: false — only working and durable tiers are returned.",
+      'If true, include ephemeral tier entries in results. Default: false — only working and durable tiers are returned.'
     ),
   include_events: z
     .boolean()
     .optional()
     .describe(
-      "If true, include event category entries in semantic search results. Default: false — events are excluded from query-based search but remain accessible via category/tag filters. Deprecated: prefer scope parameter.",
+      'If true, include event category entries in semantic search results. Default: false — events are excluded from query-based search but remain accessible via category/tag filters. Deprecated: prefer scope parameter.'
     ),
   scope: z
-    .enum(["hot", "events", "all"])
+    .enum(['hot', 'events', 'all'])
     .optional()
     .describe(
-      "Index scope: 'hot' (default) — knowledge + entity entries only; 'events' — event entries only (cold index); 'all' — entire vault including events. Overrides include_events when set.",
+      "Index scope: 'hot' (default) — knowledge + entity entries only; 'events' — event entries only (cold index); 'all' — entire vault including events. Overrides include_events when set."
     ),
   follow_links: z
     .boolean()
     .optional()
     .describe(
-      "If true, follow related_to links from result entries and include linked entries (forward links) and backlinks (entries that reference the results). Enables bidirectional graph traversal.",
+      'If true, follow related_to links from result entries and include linked entries (forward links) and backlinks (entries that reference the results). Enables bidirectional graph traversal.'
     ),
 };
 
@@ -370,7 +351,7 @@ export async function handler(
     follow_links,
   },
   ctx,
-  { ensureIndexed, reindexFailed },
+  { ensureIndexed, reindexFailed }
 ) {
   const { config } = ctx;
 
@@ -387,28 +368,21 @@ export async function handler(
   // scope "all": no category restriction — full vault
   let effectiveScope = scope;
   if (!effectiveScope) {
-    effectiveScope = include_events ? "all" : "hot";
+    effectiveScope = include_events ? 'all' : 'hot';
   }
 
   // Scope "events" forces category to "event" unless caller already set a narrower category
-  const scopedCategory =
-    !category && effectiveScope === "events" ? "event" : category;
-  const shouldExcludeEvents =
-    hasQuery && effectiveScope === "hot" && !scopedCategory;
+  const scopedCategory = !category && effectiveScope === 'events' ? 'event' : category;
+  const shouldExcludeEvents = hasQuery && effectiveScope === 'hot' && !scopedCategory;
   // Expand buckets to bucket: prefixed tags and merge with explicit tags
   const bucketTags = buckets?.length ? buckets.map((b) => `bucket:${b}`) : [];
   const effectiveTags = [...(tags ?? []), ...bucketTags];
   const hasFilters =
-    kind ||
-    scopedCategory ||
-    effectiveTags.length ||
-    since ||
-    until ||
-    identity_key;
+    kind || scopedCategory || effectiveTags.length || since || until || identity_key;
   if (!hasQuery && !hasFilters)
     return err(
-      "Required: query or at least one filter (kind, category, tags, since, until, identity_key)",
-      "INVALID_INPUT",
+      'Required: query or at least one filter (kind, category, tags, since, until, identity_key)',
+      'INVALID_INPUT'
     );
   await ensureIndexed();
 
@@ -416,34 +390,32 @@ export async function handler(
 
   // Gap 1: Entity exact-match by identity_key
   if (identity_key) {
-    if (!kindFilter)
-      return err("identity_key requires kind to be specified", "INVALID_INPUT");
+    if (!kindFilter) return err('identity_key requires kind to be specified', 'INVALID_INPUT');
     const match = ctx.stmts.getByIdentityKey.get(kindFilter, identity_key);
     if (match) {
       const entryTags = match.tags ? JSON.parse(match.tags) : [];
-      const tagStr = entryTags.length ? entryTags.join(", ") : "none";
+      const tagStr = entryTags.length ? entryTags.join(', ') : 'none';
       const relPath =
         match.file_path && config.vaultDir
-          ? match.file_path.replace(config.vaultDir + "/", "")
-          : match.file_path || "n/a";
+          ? match.file_path.replace(config.vaultDir + '/', '')
+          : match.file_path || 'n/a';
       const lines = [
         `## Entity Match (exact)\n`,
-        `### ${match.title || "(untitled)"} [${match.kind}/${match.category}]`,
+        `### ${match.title || '(untitled)'} [${match.kind}/${match.category}]`,
         `1.000 · ${tagStr} · ${relPath} · id: \`${match.id}\``,
-        match.body?.slice(0, 300) + (match.body?.length > 300 ? "..." : ""),
+        match.body?.slice(0, 300) + (match.body?.length > 300 ? '...' : ''),
       ];
-      return ok(lines.join("\n"));
+      return ok(lines.join('\n'));
     }
     // Fall through to semantic search as fallback
   }
 
   // Gap 2: Event default time-window
-  const effectiveCategory =
-    scopedCategory || (kindFilter ? categoryFor(kindFilter) : null);
+  const effectiveCategory = scopedCategory || (kindFilter ? categoryFor(kindFilter) : null);
   let effectiveSince = since || null;
   let effectiveUntil = until || null;
   let autoWindowed = false;
-  if (effectiveCategory === "event" && !since && !until) {
+  if (effectiveCategory === 'event' && !since && !until) {
     const decayMs = (config.eventDecayDays || 30) * 86400000;
     effectiveSince = new Date(Date.now() - decayMs).toISOString();
     autoWindowed = true;
@@ -487,39 +459,37 @@ export async function handler(
     if (false) {
     }
     if (kindFilter) {
-      clauses.push("kind = ?");
+      clauses.push('kind = ?');
       params.push(kindFilter);
     }
     if (scopedCategory) {
-      clauses.push("category = ?");
+      clauses.push('category = ?');
       params.push(scopedCategory);
     }
     if (effectiveSince) {
-      clauses.push("created_at >= ?");
+      clauses.push('created_at >= ?');
       params.push(effectiveSince);
     }
     if (effectiveUntil) {
-      clauses.push("created_at <= ?");
+      clauses.push('created_at <= ?');
       params.push(effectiveUntil);
     }
     clauses.push("(expires_at IS NULL OR expires_at > datetime('now'))");
     if (!include_superseded) {
-      clauses.push("superseded_by IS NULL");
+      clauses.push('superseded_by IS NULL');
     }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     params.push(fetchLimit);
     let rows;
     try {
       rows = ctx.db
-        .prepare(
-          `SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT ?`,
-        )
+        .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT ?`)
         .all(...params);
     } catch (e) {
       return errWithHint(
         e.message,
-        "DB_ERROR",
-        "context-vault get_context DB_ERROR. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.",
+        'DB_ERROR',
+        'context-vault get_context DB_ERROR. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
       );
     }
 
@@ -540,18 +510,18 @@ export async function handler(
   // Brief score boost: briefs rank slightly higher so consolidated snapshots
   // surface above the individual entries they summarize.
   for (const r of filtered) {
-    if (r.kind === "brief") r.score = (r.score || 0) + BRIEF_SCORE_BOOST;
+    if (r.kind === 'brief') r.score = (r.score || 0) + BRIEF_SCORE_BOOST;
   }
   filtered.sort((a, b) => b.score - a.score);
 
   // Tier filter: exclude ephemeral entries by default (NULL tier treated as working)
   if (!include_ephemeral) {
-    filtered = filtered.filter((r) => r.tier !== "ephemeral");
+    filtered = filtered.filter((r) => r.tier !== 'ephemeral');
   }
 
   // Event category filter: exclude events from semantic search by default
   if (shouldExcludeEvents) {
-    filtered = filtered.filter((r) => r.category !== "event");
+    filtered = filtered.filter((r) => r.category !== 'event');
   }
 
   if (!filtered.length) {
@@ -560,13 +530,11 @@ export async function handler(
       return ok(
         hasQuery
           ? `No results found for "${query}" in events (last ${days} days).\nTry with \`since: "YYYY-MM-DD"\` to search older events.`
-          : `No entries found matching the given filters in events (last ${days} days).\nTry with \`since: "YYYY-MM-DD"\` to search older events.`,
+          : `No entries found matching the given filters in events (last ${days} days).\nTry with \`since: "YYYY-MM-DD"\` to search older events.`
       );
     }
     return ok(
-      hasQuery
-        ? "No results found for: " + query
-        : "No entries found matching the given filters.",
+      hasQuery ? 'No results found for: ' + query : 'No entries found matching the given filters.'
     );
   }
 
@@ -602,8 +570,7 @@ export async function handler(
   }
 
   // Skeleton mode: determine pivot threshold
-  const effectivePivot =
-    pivot_count != null ? pivot_count : DEFAULT_PIVOT_COUNT;
+  const effectivePivot = pivot_count != null ? pivot_count : DEFAULT_PIVOT_COUNT;
 
   // Conflict detection
   const conflicts = detect_conflicts ? detectConflicts(filtered, ctx) : [];
@@ -611,45 +578,43 @@ export async function handler(
   const lines = [];
   if (reindexFailed)
     lines.push(
-      `> **Warning:** Auto-reindex failed. Results may be stale. Run \`context-vault reindex\` to fix.\n`,
+      `> **Warning:** Auto-reindex failed. Results may be stale. Run \`context-vault reindex\` to fix.\n`
     );
   if (hasQuery && isEmbedAvailable() === false)
     lines.push(
-      `> **Note:** Semantic search unavailable — results ranked by keyword match only. Run \`context-vault setup\` to download the embedding model.\n`,
+      `> **Note:** Semantic search unavailable — results ranked by keyword match only. Run \`context-vault setup\` to download the embedding model.\n`
     );
-  const heading = hasQuery ? `Results for "${query}"` : "Filtered entries";
+  const heading = hasQuery ? `Results for "${query}"` : 'Filtered entries';
   lines.push(`## ${heading} (${filtered.length} matches)\n`);
   if (tokensBudget != null) {
-    lines.push(
-      `> Token budget: ${tokensUsed} / ${tokensBudget} tokens used.\n`,
-    );
+    lines.push(`> Token budget: ${tokensUsed} / ${tokensBudget} tokens used.\n`);
   }
   if (autoWindowed) {
     const days = config.eventDecayDays || 30;
     lines.push(
-      `> ℹ Event search limited to last ${days} days. Use \`since\` parameter for older results.\n`,
+      `> ℹ Event search limited to last ${days} days. Use \`since\` parameter for older results.\n`
     );
   }
   for (let i = 0; i < filtered.length; i++) {
     const r = filtered[i];
     const isSkeleton = i >= effectivePivot;
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
-    const tagStr = entryTags.length ? entryTags.join(", ") : "none";
+    const tagStr = entryTags.length ? entryTags.join(', ') : 'none';
     const relPath =
       r.file_path && config.vaultDir
-        ? r.file_path.replace(config.vaultDir + "/", "")
-        : r.file_path || "n/a";
-    const skeletonLabel = isSkeleton ? " ⊘ skeleton" : "";
+        ? r.file_path.replace(config.vaultDir + '/', '')
+        : r.file_path || 'n/a';
+    const skeletonLabel = isSkeleton ? ' ⊘ skeleton' : '';
     lines.push(
-      `### [${i + 1}/${filtered.length}] ${r.title || "(untitled)"} [${r.kind}/${r.category}]${skeletonLabel}`,
+      `### [${i + 1}/${filtered.length}] ${r.title || '(untitled)'} [${r.kind}/${r.category}]${skeletonLabel}`
     );
     const dateStr =
       r.updated_at && r.updated_at !== r.created_at
         ? `${r.created_at} (updated ${r.updated_at})`
-        : r.created_at || "";
-    const tierStr = r.tier ? ` · tier: ${r.tier}` : "";
+        : r.created_at || '';
+    const tierStr = r.tier ? ` · tier: ${r.tier}` : '';
     lines.push(
-      `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · ${dateStr} · skeleton: ${isSkeleton}${tierStr} · id: \`${r.id}\``,
+      `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · ${dateStr} · skeleton: ${isSkeleton}${tierStr} · id: \`${r.id}\``
     );
     const stalenessResult = checkStaleness(r);
     if (stalenessResult) {
@@ -660,25 +625,21 @@ export async function handler(
     if (isSkeleton) {
       lines.push(skeletonBody(r.body));
     } else {
-      lines.push(r.body?.slice(0, 300) + (r.body?.length > 300 ? "..." : ""));
+      lines.push(r.body?.slice(0, 300) + (r.body?.length > 300 ? '...' : ''));
     }
-    lines.push("");
+    lines.push('');
   }
 
   if (detect_conflicts) {
     if (conflicts.length === 0) {
-      lines.push(
-        `## Conflict Detection\n\nNo conflicts detected among results.\n`,
-      );
+      lines.push(`## Conflict Detection\n\nNo conflicts detected among results.\n`);
     } else {
       lines.push(`## Conflict Detection (${conflicts.length} flagged)\n`);
       for (const c of conflicts) {
-        lines.push(
-          `- **${c.reason}**: \`${c.entry_a_id}\` vs \`${c.entry_b_id}\``,
-        );
+        lines.push(`- **${c.reason}**: \`${c.entry_a_id}\` vs \`${c.entry_b_id}\``);
         lines.push(`  Recommendation: ${c.recommendation}`);
       }
-      lines.push("");
+      lines.push('');
     }
   }
 
@@ -696,21 +657,17 @@ export async function handler(
     if (uniqueLinked.length > 0) {
       lines.push(`## Linked Entries (${uniqueLinked.length} via related_to)\n`);
       for (const r of uniqueLinked) {
-        const direction = forward.some((f) => f.id === r.id)
-          ? "→ forward"
-          : "← backlink";
+        const direction = forward.some((f) => f.id === r.id) ? '→ forward' : '← backlink';
         const entryTags = r.tags ? JSON.parse(r.tags) : [];
-        const tagStr = entryTags.length ? entryTags.join(", ") : "none";
+        const tagStr = entryTags.length ? entryTags.join(', ') : 'none';
         const relPath =
           r.file_path && config.vaultDir
-            ? r.file_path.replace(config.vaultDir + "/", "")
-            : r.file_path || "n/a";
-        lines.push(
-          `### ${r.title || "(untitled)"} [${r.kind}/${r.category}] ${direction}`,
-        );
+            ? r.file_path.replace(config.vaultDir + '/', '')
+            : r.file_path || 'n/a';
+        lines.push(`### ${r.title || '(untitled)'} [${r.kind}/${r.category}] ${direction}`);
         lines.push(`${tagStr} · ${relPath} · id: \`${r.id}\``);
-        lines.push(r.body?.slice(0, 200) + (r.body?.length > 200 ? "..." : ""));
-        lines.push("");
+        lines.push(r.body?.slice(0, 200) + (r.body?.length > 200 ? '...' : ''));
+        lines.push('');
       }
     } else {
       lines.push(`## Linked Entries\n\nNo related entries found.\n`);
@@ -719,24 +676,19 @@ export async function handler(
 
   // Consolidation suggestion detection — lazy, opportunistic, vault-wide
   const consolidationOpts = {
-    tagThreshold:
-      config.consolidation?.tagThreshold ?? CONSOLIDATION_TAG_THRESHOLD,
-    maxAgeDays:
-      config.consolidation?.maxAgeDays ?? CONSOLIDATION_SNAPSHOT_MAX_AGE_DAYS,
+    tagThreshold: config.consolidation?.tagThreshold ?? CONSOLIDATION_TAG_THRESHOLD,
+    maxAgeDays: config.consolidation?.maxAgeDays ?? CONSOLIDATION_SNAPSHOT_MAX_AGE_DAYS,
   };
   const consolidationSuggestions = detectConsolidationHints(
     filtered,
     ctx.db,
 
-    consolidationOpts,
+    consolidationOpts
   );
 
   // Auto-consolidate: fire-and-forget create_snapshot for eligible tags
-  if (
-    config.consolidation?.autoConsolidate &&
-    consolidationSuggestions.length > 0
-  ) {
-    const { handler: snapshotHandler } = await import("./create-snapshot.js");
+  if (config.consolidation?.autoConsolidate && consolidationSuggestions.length > 0) {
+    const { handler: snapshotHandler } = await import('./create-snapshot.js');
     for (const suggestion of consolidationSuggestions) {
       snapshotHandler({ topic: suggestion.tag, tags: [suggestion.tag] }, ctx, {
         ensureIndexed: async () => {},
@@ -744,7 +696,7 @@ export async function handler(
     }
   }
 
-  const result = ok(lines.join("\n"));
+  const result = ok(lines.join('\n'));
   const meta = {};
   meta.scope = effectiveScope;
   if (tokensBudget != null) {

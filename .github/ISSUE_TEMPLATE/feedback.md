@@ -1,9 +1,9 @@
 ---
 name: Feedback
 about: Share your experience — what's working, what's not, what's confusing
-title: ""
+title: ''
 labels: feedback
-assignees: ""
+assignees: ''
 ---
 
 **How are you using context-vault?**

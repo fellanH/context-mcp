@@ -9,15 +9,15 @@
  * 2. Ensures data directory exists.
  */
 
-import { execSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { homedir } from "node:os";
+import { execSync } from 'node:child_process';
+import { existsSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PKG_ROOT = join(__dirname, "..");
-const NODE_MODULES = join(PKG_ROOT, "node_modules");
+const PKG_ROOT = join(__dirname, '..');
+const NODE_MODULES = join(PKG_ROOT, 'node_modules');
 
 async function main() {
   // ── 1. Install @huggingface/transformers (optional) ───────────────────
@@ -26,33 +26,26 @@ async function main() {
   // context-vault only uses text embeddings, not image processing.
   // Check the package's own node_modules (not general import resolution,
   // which may find it in the workspace during `npm install -g ./tarball`).
-  const transformersDir = join(NODE_MODULES, "@huggingface", "transformers");
+  const transformersDir = join(NODE_MODULES, '@huggingface', 'transformers');
   if (!existsSync(transformersDir)) {
-    console.log(
-      "[context-vault] Installing embedding support (@huggingface/transformers)...",
-    );
+    console.log('[context-vault] Installing embedding support (@huggingface/transformers)...');
     try {
-      execSync(
-        "npm install --no-save --ignore-scripts @huggingface/transformers@^3.0.0",
-        {
-          stdio: "inherit",
-          timeout: 120000,
-          cwd: PKG_ROOT,
-        },
-      );
-      console.log("[context-vault] Embedding support installed.");
+      execSync('npm install --no-save --ignore-scripts @huggingface/transformers@^3.0.0', {
+        stdio: 'inherit',
+        timeout: 120000,
+        cwd: PKG_ROOT,
+      });
+      console.log('[context-vault] Embedding support installed.');
     } catch {
+      console.error('[context-vault] Warning: could not install @huggingface/transformers.');
       console.error(
-        "[context-vault] Warning: could not install @huggingface/transformers.",
-      );
-      console.error(
-        "[context-vault] Semantic search will be unavailable; full-text search still works.",
+        '[context-vault] Semantic search will be unavailable; full-text search still works.'
       );
     }
   }
 
   // ── 2. Ensure data dir exists ────────────────────────────────────────
-  const DATA_DIR = join(homedir(), ".context-mcp");
+  const DATA_DIR = join(homedir(), '.context-mcp');
   mkdirSync(DATA_DIR, { recursive: true });
 }
 

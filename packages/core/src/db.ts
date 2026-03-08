@@ -1,45 +1,45 @@
-import { unlinkSync, copyFileSync, existsSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
-import type { PreparedStatements } from "./types.js";
+import { unlinkSync, copyFileSync, existsSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import type { PreparedStatements } from './types.js';
 
 export class NativeModuleError extends Error {
   originalError: Error;
   constructor(originalError: Error) {
     const diagnostic = formatNativeModuleError(originalError);
     super(diagnostic);
-    this.name = "NativeModuleError";
+    this.name = 'NativeModuleError';
     this.originalError = originalError;
   }
 }
 
 function formatNativeModuleError(err: Error): string {
-  const msg = err.message || "";
+  const msg = err.message || '';
   return [
     `sqlite-vec extension failed to load: ${msg}`,
-    "",
+    '',
     `  Running Node.js: ${process.version} (${process.execPath})`,
-    "",
-    "  Fix: Reinstall context-vault:",
-    "    npx -y context-vault@latest setup",
-  ].join("\n");
+    '',
+    '  Fix: Reinstall context-vault:',
+    '    npx -y context-vault@latest setup',
+  ].join('\n');
 }
 
 let _sqliteVec: { load: (db: DatabaseSync) => void } | null = null;
 
 async function loadSqliteVec() {
   if (_sqliteVec) return _sqliteVec;
-  const vecMod = await import("sqlite-vec");
+  const vecMod = await import('sqlite-vec');
   _sqliteVec = vecMod;
   return _sqliteVec;
 }
 
 function runTransaction(db: DatabaseSync, fn: () => void): void {
-  db.exec("BEGIN");
+  db.exec('BEGIN');
   try {
     fn();
-    db.exec("COMMIT");
+    db.exec('COMMIT');
   } catch (e) {
-    db.exec("ROLLBACK");
+    db.exec('ROLLBACK');
     throw e;
   }
 }
@@ -105,9 +105,9 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
 
   function createDb(path: string): DatabaseSync {
     const db = new DatabaseSync(path, { allowExtension: true });
-    db.exec("PRAGMA journal_mode = WAL");
-    db.exec("PRAGMA foreign_keys = ON");
-    db.exec("PRAGMA busy_timeout = 3000");
+    db.exec('PRAGMA journal_mode = WAL');
+    db.exec('PRAGMA foreign_keys = ON');
+    db.exec('PRAGMA busy_timeout = 3000');
     try {
       sqliteVec.load(db);
     } catch (e) {
@@ -117,14 +117,11 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
   }
 
   const db = createDb(dbPath);
-  const version = (
-    db.prepare("PRAGMA user_version").get() as { user_version: number }
-  ).user_version;
+  const version = (db.prepare('PRAGMA user_version').get() as { user_version: number })
+    .user_version;
 
   if (version > 0 && version < 15) {
-    console.error(
-      `[context-vault] Schema v${version} is outdated. Rebuilding database...`,
-    );
+    console.error(`[context-vault] Schema v${version} is outdated. Rebuilding database...`);
 
     const backupPath = `${dbPath}.v${version}.backup`;
     let backupSucceeded = false;
@@ -132,32 +129,30 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
       db.close();
       if (existsSync(dbPath)) {
         copyFileSync(dbPath, backupPath);
-        console.error(
-          `[context-vault] Backed up old database to: ${backupPath}`,
-        );
+        console.error(`[context-vault] Backed up old database to: ${backupPath}`);
         backupSucceeded = true;
       } else {
         backupSucceeded = true;
       }
     } catch (backupErr) {
       console.error(
-        `[context-vault] Warning: could not backup old database: ${(backupErr as Error).message}`,
+        `[context-vault] Warning: could not backup old database: ${(backupErr as Error).message}`
       );
     }
 
     if (!backupSucceeded) {
       throw new Error(
         `[context-vault] Aborting schema migration: backup failed for ${dbPath}. ` +
-          `Fix the backup issue or manually back up the file before upgrading.`,
+          `Fix the backup issue or manually back up the file before upgrading.`
       );
     }
 
     unlinkSync(dbPath);
     try {
-      unlinkSync(dbPath + "-wal");
+      unlinkSync(dbPath + '-wal');
     } catch {}
     try {
-      unlinkSync(dbPath + "-shm");
+      unlinkSync(dbPath + '-shm');
     } catch {}
 
     const freshDb = createDb(dbPath);
@@ -178,52 +173,38 @@ export function prepareStatements(db: DatabaseSync): PreparedStatements {
   try {
     return {
       insertEntry: db.prepare(
-        `INSERT INTO vault (id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, source_files, tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO vault (id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, source_files, tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ),
       updateEntry: db.prepare(
-        `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, identity_key = ?, expires_at = ?, updated_at = datetime('now') WHERE file_path = ?`,
+        `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, identity_key = ?, expires_at = ?, updated_at = datetime('now') WHERE file_path = ?`
       ),
       deleteEntry: db.prepare(`DELETE FROM vault WHERE id = ?`),
       getRowid: db.prepare(`SELECT rowid FROM vault WHERE id = ?`),
       getRowidByPath: db.prepare(`SELECT rowid FROM vault WHERE file_path = ?`),
       getEntryById: db.prepare(`SELECT * FROM vault WHERE id = ?`),
-      getByIdentityKey: db.prepare(
-        `SELECT * FROM vault WHERE kind = ? AND identity_key = ?`,
-      ),
+      getByIdentityKey: db.prepare(`SELECT * FROM vault WHERE kind = ? AND identity_key = ?`),
       upsertByIdentityKey: db.prepare(
-        `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, file_path = ?, expires_at = ?, source_files = ?, updated_at = datetime('now') WHERE kind = ? AND identity_key = ?`,
+        `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, file_path = ?, expires_at = ?, source_files = ?, updated_at = datetime('now') WHERE kind = ? AND identity_key = ?`
       ),
-      updateSourceFiles: db.prepare(
-        `UPDATE vault SET source_files = ? WHERE id = ?`,
-      ),
-      updateRelatedTo: db.prepare(
-        `UPDATE vault SET related_to = ? WHERE id = ?`,
-      ),
-      insertVecStmt: db.prepare(
-        `INSERT INTO vault_vec (rowid, embedding) VALUES (?, ?)`,
-      ),
+      updateSourceFiles: db.prepare(`UPDATE vault SET source_files = ? WHERE id = ?`),
+      updateRelatedTo: db.prepare(`UPDATE vault SET related_to = ? WHERE id = ?`),
+      insertVecStmt: db.prepare(`INSERT INTO vault_vec (rowid, embedding) VALUES (?, ?)`),
       deleteVecStmt: db.prepare(`DELETE FROM vault_vec WHERE rowid = ?`),
-      updateSupersededBy: db.prepare(
-        `UPDATE vault SET superseded_by = ? WHERE id = ?`,
-      ),
+      updateSupersededBy: db.prepare(`UPDATE vault SET superseded_by = ? WHERE id = ?`),
       clearSupersededByRef: db.prepare(
-        `UPDATE vault SET superseded_by = NULL WHERE superseded_by = ?`,
+        `UPDATE vault SET superseded_by = NULL WHERE superseded_by = ?`
       ),
     };
   } catch (e) {
     throw new Error(
       `Failed to prepare database statements. The database may be corrupted.\n` +
         `Try deleting and rebuilding: context-vault reindex\n` +
-        `Original error: ${(e as Error).message}`,
+        `Original error: ${(e as Error).message}`
     );
   }
 }
 
-export function insertVec(
-  stmts: PreparedStatements,
-  rowid: number,
-  embedding: Float32Array,
-): void {
+export function insertVec(stmts: PreparedStatements, rowid: number, embedding: Float32Array): void {
   const safeRowid = BigInt(rowid);
   if (safeRowid < 1n) throw new Error(`Invalid rowid: ${rowid}`);
   stmts.insertVecStmt.run(safeRowid, embedding);
@@ -237,7 +218,7 @@ export function deleteVec(stmts: PreparedStatements, rowid: number): void {
 
 export function testConnection(db: DatabaseSync): boolean {
   try {
-    db.prepare("SELECT 1").get();
+    db.prepare('SELECT 1').get();
     return true;
   } catch {
     return false;

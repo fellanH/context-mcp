@@ -1,17 +1,17 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { homedir } from "node:os";
-import { DEFAULT_GROWTH_THRESHOLDS, DEFAULT_LIFECYCLE } from "./constants.js";
-import type { VaultConfig } from "./types.js";
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { DEFAULT_GROWTH_THRESHOLDS, DEFAULT_LIFECYCLE } from './constants.js';
+import type { VaultConfig } from './types.js';
 
 export function parseArgs(argv: string[]): Record<string, string | number> {
   const args: Record<string, string | number> = {};
   for (let i = 2; i < argv.length; i++) {
-    if (argv[i] === "--vault-dir" && argv[i + 1]) args.vaultDir = argv[++i];
-    else if (argv[i] === "--data-dir" && argv[i + 1]) args.dataDir = argv[++i];
-    else if (argv[i] === "--db-path" && argv[i + 1]) args.dbPath = argv[++i];
-    else if (argv[i] === "--dev-dir" && argv[i + 1]) args.devDir = argv[++i];
-    else if (argv[i] === "--event-decay-days" && argv[i + 1])
+    if (argv[i] === '--vault-dir' && argv[i + 1]) args.vaultDir = argv[++i];
+    else if (argv[i] === '--data-dir' && argv[i + 1]) args.dataDir = argv[++i];
+    else if (argv[i] === '--db-path' && argv[i + 1]) args.dbPath = argv[++i];
+    else if (argv[i] === '--dev-dir' && argv[i + 1]) args.devDir = argv[++i];
+    else if (argv[i] === '--event-decay-days' && argv[i + 1])
       args.eventDecayDays = Number(argv[++i]);
   }
   return args;
@@ -25,23 +25,23 @@ export function resolveConfig(): VaultConfig {
     (cliArgs.dataDir as string) ||
       process.env.CONTEXT_VAULT_DATA_DIR ||
       process.env.CONTEXT_MCP_DATA_DIR ||
-      join(HOME, ".context-mcp"),
+      join(HOME, '.context-mcp')
   );
   const config: VaultConfig = {
-    vaultDir: join(HOME, ".vault"),
+    vaultDir: join(HOME, '.vault'),
     dataDir,
-    dbPath: join(dataDir, "vault.db"),
-    devDir: join(HOME, "dev"),
+    dbPath: join(dataDir, 'vault.db'),
+    devDir: join(HOME, 'dev'),
     eventDecayDays: 30,
     thresholds: { ...DEFAULT_GROWTH_THRESHOLDS },
     telemetry: false,
-    resolvedFrom: "defaults",
+    resolvedFrom: 'defaults',
     recall: {
       maxResults: 5,
       maxOutputBytes: 2000,
       minRelevanceScore: 0.3,
       excludeKinds: [],
-      excludeCategories: ["event"],
+      excludeCategories: ['event'],
       bodyTruncateChars: 400,
     },
     consolidation: {
@@ -52,14 +52,14 @@ export function resolveConfig(): VaultConfig {
     lifecycle: structuredClone(DEFAULT_LIFECYCLE),
   };
 
-  const configPath = join(dataDir, "config.json");
+  const configPath = join(dataDir, 'config.json');
   if (existsSync(configPath)) {
     try {
-      const fc = JSON.parse(readFileSync(configPath, "utf-8"));
+      const fc = JSON.parse(readFileSync(configPath, 'utf-8'));
       if (fc.vaultDir) config.vaultDir = fc.vaultDir;
       if (fc.dataDir) {
         config.dataDir = fc.dataDir;
-        config.dbPath = join(resolve(fc.dataDir), "vault.db");
+        config.dbPath = join(resolve(fc.dataDir), 'vault.db');
       }
       if (fc.dbPath) config.dbPath = fc.dbPath;
       if (fc.devDir) config.devDir = fc.devDir;
@@ -94,100 +94,85 @@ export function resolveConfig(): VaultConfig {
           };
       }
       if (fc.telemetry != null) config.telemetry = fc.telemetry === true;
-      if (fc.recall && typeof fc.recall === "object") {
+      if (fc.recall && typeof fc.recall === 'object') {
         const r = fc.recall;
-        if (r.maxResults != null)
-          config.recall.maxResults = Number(r.maxResults);
-        if (r.maxOutputBytes != null)
-          config.recall.maxOutputBytes = Number(r.maxOutputBytes);
+        if (r.maxResults != null) config.recall.maxResults = Number(r.maxResults);
+        if (r.maxOutputBytes != null) config.recall.maxOutputBytes = Number(r.maxOutputBytes);
         if (r.minRelevanceScore != null)
           config.recall.minRelevanceScore = Number(r.minRelevanceScore);
-        if (Array.isArray(r.excludeKinds))
-          config.recall.excludeKinds = r.excludeKinds;
+        if (Array.isArray(r.excludeKinds)) config.recall.excludeKinds = r.excludeKinds;
         if (Array.isArray(r.excludeCategories))
           config.recall.excludeCategories = r.excludeCategories;
         if (r.bodyTruncateChars != null)
           config.recall.bodyTruncateChars = Number(r.bodyTruncateChars);
       }
-      if (fc.consolidation && typeof fc.consolidation === "object") {
+      if (fc.consolidation && typeof fc.consolidation === 'object') {
         const c = fc.consolidation;
-        if (c.tagThreshold != null)
-          config.consolidation.tagThreshold = Number(c.tagThreshold);
-        if (c.maxAgeDays != null)
-          config.consolidation.maxAgeDays = Number(c.maxAgeDays);
+        if (c.tagThreshold != null) config.consolidation.tagThreshold = Number(c.tagThreshold);
+        if (c.maxAgeDays != null) config.consolidation.maxAgeDays = Number(c.maxAgeDays);
         if (c.autoConsolidate != null)
           config.consolidation.autoConsolidate = c.autoConsolidate === true;
       }
-      if (fc.lifecycle && typeof fc.lifecycle === "object") {
+      if (fc.lifecycle && typeof fc.lifecycle === 'object') {
         for (const [tier, rules] of Object.entries(fc.lifecycle)) {
-          if (rules && typeof rules === "object") {
+          if (rules && typeof rules === 'object') {
             if (!config.lifecycle[tier]) config.lifecycle[tier] = {};
             if ((rules as Record<string, unknown>).archiveAfterDays != null)
               config.lifecycle[tier].archiveAfterDays = Number(
-                (rules as Record<string, unknown>).archiveAfterDays,
+                (rules as Record<string, unknown>).archiveAfterDays
               );
           }
         }
       }
-      config.resolvedFrom = "config file";
+      config.resolvedFrom = 'config file';
     } catch (e) {
-      throw new Error(
-        `[context-vault] Invalid config at ${configPath}: ${(e as Error).message}`,
-      );
+      throw new Error(`[context-vault] Invalid config at ${configPath}: ${(e as Error).message}`);
     }
   }
   config.configPath = configPath;
 
-  if (
-    process.env.CONTEXT_VAULT_VAULT_DIR ||
-    process.env.CONTEXT_MCP_VAULT_DIR
-  ) {
-    config.vaultDir =
-      process.env.CONTEXT_VAULT_VAULT_DIR || process.env.CONTEXT_MCP_VAULT_DIR!;
-    config.resolvedFrom = "env";
+  if (process.env.CONTEXT_VAULT_VAULT_DIR || process.env.CONTEXT_MCP_VAULT_DIR) {
+    config.vaultDir = process.env.CONTEXT_VAULT_VAULT_DIR || process.env.CONTEXT_MCP_VAULT_DIR!;
+    config.resolvedFrom = 'env';
   }
   if (process.env.CONTEXT_VAULT_DB_PATH || process.env.CONTEXT_MCP_DB_PATH) {
-    config.dbPath =
-      process.env.CONTEXT_VAULT_DB_PATH || process.env.CONTEXT_MCP_DB_PATH!;
-    config.resolvedFrom = "env";
+    config.dbPath = process.env.CONTEXT_VAULT_DB_PATH || process.env.CONTEXT_MCP_DB_PATH!;
+    config.resolvedFrom = 'env';
   }
   if (process.env.CONTEXT_VAULT_DEV_DIR || process.env.CONTEXT_MCP_DEV_DIR) {
-    config.devDir =
-      process.env.CONTEXT_VAULT_DEV_DIR || process.env.CONTEXT_MCP_DEV_DIR!;
-    config.resolvedFrom = "env";
+    config.devDir = process.env.CONTEXT_VAULT_DEV_DIR || process.env.CONTEXT_MCP_DEV_DIR!;
+    config.resolvedFrom = 'env';
   }
   if (
     process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS != null ||
     process.env.CONTEXT_MCP_EVENT_DECAY_DAYS != null
   ) {
     config.eventDecayDays = Number(
-      process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS ??
-        process.env.CONTEXT_MCP_EVENT_DECAY_DAYS,
+      process.env.CONTEXT_VAULT_EVENT_DECAY_DAYS ?? process.env.CONTEXT_MCP_EVENT_DECAY_DAYS
     );
-    config.resolvedFrom = "env";
+    config.resolvedFrom = 'env';
   }
 
   if (process.env.CONTEXT_VAULT_TELEMETRY !== undefined) {
     config.telemetry =
-      process.env.CONTEXT_VAULT_TELEMETRY === "1" ||
-      process.env.CONTEXT_VAULT_TELEMETRY === "true";
+      process.env.CONTEXT_VAULT_TELEMETRY === '1' || process.env.CONTEXT_VAULT_TELEMETRY === 'true';
   }
 
   if (cliArgs.vaultDir) {
     config.vaultDir = cliArgs.vaultDir as string;
-    config.resolvedFrom = "CLI args";
+    config.resolvedFrom = 'CLI args';
   }
   if (cliArgs.dbPath) {
     config.dbPath = cliArgs.dbPath as string;
-    config.resolvedFrom = "CLI args";
+    config.resolvedFrom = 'CLI args';
   }
   if (cliArgs.devDir) {
     config.devDir = cliArgs.devDir as string;
-    config.resolvedFrom = "CLI args";
+    config.resolvedFrom = 'CLI args';
   }
   if (cliArgs.eventDecayDays != null) {
     config.eventDecayDays = cliArgs.eventDecayDays as number;
-    config.resolvedFrom = "CLI args";
+    config.resolvedFrom = 'CLI args';
   }
 
   config.vaultDir = resolve(config.vaultDir);

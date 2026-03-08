@@ -1,18 +1,18 @@
-import { readdirSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
-import { categoryDirFor } from "./categories.js";
+import { readdirSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
+import { categoryDirFor } from './categories.js';
 
-const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
 export function ulid(): string {
   const now = Date.now();
-  let ts = "";
+  let ts = '';
   let t = now;
   for (let i = 0; i < 10; i++) {
     ts = CROCKFORD[t & 31] + ts;
     t = Math.floor(t / 32);
   }
-  let rand = "";
+  let rand = '';
   for (let i = 0; i < 16; i++) {
     rand += CROCKFORD[Math.floor(Math.random() * 32)];
   }
@@ -22,11 +22,10 @@ export function ulid(): string {
 export function slugify(text: string, maxLen = 60): string {
   let slug = text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
   if (slug.length > maxLen) {
-    slug =
-      slug.slice(0, maxLen).replace(/-[^-]*$/, "") || slug.slice(0, maxLen);
+    slug = slug.slice(0, maxLen).replace(/-[^-]*$/, '') || slug.slice(0, maxLen);
   }
   return slug;
 }
@@ -51,9 +50,7 @@ export function safeJoin(base: string, ...parts: string[]): string {
   const resolvedBase = resolve(base);
   const result = resolve(join(base, ...parts));
   if (!result.startsWith(resolvedBase + sep) && result !== resolvedBase) {
-    throw new Error(
-      `Path traversal blocked: resolved path escapes base directory`,
-    );
+    throw new Error(`Path traversal blocked: resolved path escapes base directory`);
   }
   return result;
 }
@@ -68,13 +65,13 @@ export function walkDir(dir: string): WalkResult[] {
   function walk(currentDir: string, relDir: string) {
     for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
       const fullPath = join(currentDir, entry.name);
-      if (entry.isDirectory() && !entry.name.startsWith("_")) {
+      if (entry.isDirectory() && !entry.name.startsWith('_')) {
         walk(fullPath, relDir ? join(relDir, entry.name) : entry.name);
-      } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
         results.push({ filePath: fullPath, relDir });
       }
     }
   }
-  walk(dir, "");
+  walk(dir, '');
   return results;
 }

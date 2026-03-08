@@ -1,11 +1,11 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { walkDir } from "@context-vault/core/files";
-import { isEmbedAvailable } from "@context-vault/core/embed";
-import { KIND_STALENESS_DAYS } from "@context-vault/core/categories";
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { walkDir } from '@context-vault/core/files';
+import { isEmbedAvailable } from '@context-vault/core/embed';
+import { KIND_STALENESS_DAYS } from '@context-vault/core/categories';
 
 function countArchivedEntries(vaultDir) {
-  const archRoot = join(vaultDir, "_archive");
+  const archRoot = join(vaultDir, '_archive');
   if (!existsSync(archRoot)) return 0;
   try {
     return walkDir(archRoot).length;
@@ -37,9 +37,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
 
   let kindCounts = [];
   try {
-    kindCounts = db
-      .prepare(`SELECT kind, COUNT(*) as c FROM vault GROUP BY kind`)
-      .all();
+    kindCounts = db.prepare(`SELECT kind, COUNT(*) as c FROM vault GROUP BY kind`).all();
   } catch (e) {
     errors.push(`Kind count query failed: ${e.message}`);
   }
@@ -53,7 +51,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
     errors.push(`Category count query failed: ${e.message}`);
   }
 
-  let dbSize = "n/a";
+  let dbSize = 'n/a';
   let dbSizeBytes = 0;
   try {
     if (existsSync(config.dbPath)) {
@@ -71,9 +69,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
   let staleCount = 0;
   try {
     const result = db
-      .prepare(
-        `SELECT COUNT(*) as c FROM vault WHERE file_path NOT LIKE ? || '%'`,
-      )
+      .prepare(`SELECT COUNT(*) as c FROM vault WHERE file_path NOT LIKE ? || '%'`)
       .get(config.vaultDir);
     staleCount = result.c;
     stalePaths = staleCount > 0;
@@ -85,7 +81,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
   try {
     expiredCount = db
       .prepare(
-        `SELECT COUNT(*) as c FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`,
+        `SELECT COUNT(*) as c FROM vault WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`
       )
       .get().c;
   } catch (e) {
@@ -94,9 +90,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
 
   let eventCount = 0;
   try {
-    eventCount = db
-      .prepare(`SELECT COUNT(*) as c FROM vault WHERE category = 'event'`)
-      .get().c;
+    eventCount = db.prepare(`SELECT COUNT(*) as c FROM vault WHERE category = 'event'`).get().c;
   } catch (e) {
     errors.push(`Event count failed: ${e.message}`);
   }
@@ -104,9 +98,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
   let eventsWithoutTtlCount = 0;
   try {
     eventsWithoutTtlCount = db
-      .prepare(
-        `SELECT COUNT(*) as c FROM vault WHERE category = 'event' AND expires_at IS NULL`,
-      )
+      .prepare(`SELECT COUNT(*) as c FROM vault WHERE category = 'event' AND expires_at IS NULL`)
       .get().c;
   } catch (e) {
     errors.push(`Events without TTL count failed: ${e.message}`);
@@ -116,9 +108,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
   try {
     const total = db.prepare(`SELECT COUNT(*) as c FROM vault`).get().c;
     const indexed = db
-      .prepare(
-        `SELECT COUNT(*) as c FROM vault WHERE rowid IN (SELECT rowid FROM vault_vec)`,
-      )
+      .prepare(`SELECT COUNT(*) as c FROM vault WHERE rowid IN (SELECT rowid FROM vault_vec)`)
       .get().c;
     embeddingStatus = { indexed, total, missing: total - indexed };
   } catch (e) {
@@ -131,7 +121,7 @@ export function gatherVaultStatus(ctx, opts = {}) {
   try {
     autoCapturedFeedbackCount = db
       .prepare(
-        `SELECT COUNT(*) as c FROM vault WHERE kind = 'feedback' AND tags LIKE '%"auto-captured"%'`,
+        `SELECT COUNT(*) as c FROM vault WHERE kind = 'feedback' AND tags LIKE '%"auto-captured"%'`
       )
       .get().c;
   } catch (e) {
@@ -152,12 +142,12 @@ export function gatherVaultStatus(ctx, opts = {}) {
       const kindClauses = stalenessKinds
         .map(
           ([kind, days]) =>
-            `(kind = '${kind}' AND COALESCE(updated_at, created_at) <= datetime('now', '-${days} days'))`,
+            `(kind = '${kind}' AND COALESCE(updated_at, created_at) <= datetime('now', '-${days} days'))`
         )
-        .join(" OR ");
+        .join(' OR ');
       staleKnowledge = db
         .prepare(
-          `SELECT kind, title, COALESCE(updated_at, created_at) as last_updated FROM vault WHERE category = 'knowledge' AND (${kindClauses}) AND (expires_at IS NULL OR expires_at > datetime('now')) ORDER BY last_updated ASC LIMIT 10`,
+          `SELECT kind, title, COALESCE(updated_at, created_at) as last_updated FROM vault WHERE category = 'knowledge' AND (${kindClauses}) AND (expires_at IS NULL OR expires_at > datetime('now')) ORDER BY last_updated ASC LIMIT 10`
         )
         .all();
     }
@@ -202,84 +192,62 @@ export function computeGrowthWarnings(status, thresholds) {
   const actions = [];
 
   const total = status.embeddingStatus?.total ?? 0;
-  const {
-    eventCount = 0,
-    eventsWithoutTtlCount = 0,
-    expiredCount = 0,
-    dbSizeBytes = 0,
-  } = status;
+  const { eventCount = 0, eventsWithoutTtlCount = 0, expiredCount = 0, dbSizeBytes = 0 } = status;
 
   let totalExceeded = false;
 
   if (t.totalEntries?.critical != null && total >= t.totalEntries.critical) {
     totalExceeded = true;
     warnings.push({
-      level: "critical",
+      level: 'critical',
       message: `Total entries: ${total.toLocaleString()} (exceeds critical limit of ${t.totalEntries.critical.toLocaleString()})`,
     });
   } else if (t.totalEntries?.warn != null && total >= t.totalEntries.warn) {
     totalExceeded = true;
     warnings.push({
-      level: "warn",
+      level: 'warn',
       message: `Total entries: ${total.toLocaleString()} (exceeds recommended ${t.totalEntries.warn.toLocaleString()})`,
     });
   }
 
-  if (
-    t.eventEntries?.critical != null &&
-    eventCount >= t.eventEntries.critical
-  ) {
+  if (t.eventEntries?.critical != null && eventCount >= t.eventEntries.critical) {
     warnings.push({
-      level: "critical",
+      level: 'critical',
       message: `Event entries: ${eventCount.toLocaleString()} (exceeds critical limit of ${t.eventEntries.critical.toLocaleString()})`,
     });
-  } else if (
-    t.eventEntries?.warn != null &&
-    eventCount >= t.eventEntries.warn
-  ) {
+  } else if (t.eventEntries?.warn != null && eventCount >= t.eventEntries.warn) {
     const ttlNote =
-      eventsWithoutTtlCount > 0
-        ? ` (${eventsWithoutTtlCount.toLocaleString()} without TTL)`
-        : "";
+      eventsWithoutTtlCount > 0 ? ` (${eventsWithoutTtlCount.toLocaleString()} without TTL)` : '';
     warnings.push({
-      level: "warn",
+      level: 'warn',
       message: `Event entries: ${eventCount.toLocaleString()}${ttlNote} (exceeds recommended ${t.eventEntries.warn.toLocaleString()})`,
     });
   }
 
-  if (
-    t.vaultSizeBytes?.critical != null &&
-    dbSizeBytes >= t.vaultSizeBytes.critical
-  ) {
+  if (t.vaultSizeBytes?.critical != null && dbSizeBytes >= t.vaultSizeBytes.critical) {
     warnings.push({
-      level: "critical",
+      level: 'critical',
       message: `Database size: ${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB (exceeds critical limit of ${(t.vaultSizeBytes.critical / 1024 / 1024).toFixed(0)}MB)`,
     });
-  } else if (
-    t.vaultSizeBytes?.warn != null &&
-    dbSizeBytes >= t.vaultSizeBytes.warn
-  ) {
+  } else if (t.vaultSizeBytes?.warn != null && dbSizeBytes >= t.vaultSizeBytes.warn) {
     warnings.push({
-      level: "warn",
+      level: 'warn',
       message: `Database size: ${(dbSizeBytes / 1024 / 1024).toFixed(1)}MB (exceeds recommended ${(t.vaultSizeBytes.warn / 1024 / 1024).toFixed(0)}MB)`,
     });
   }
 
-  if (
-    t.eventsWithoutTtl?.warn != null &&
-    eventsWithoutTtlCount >= t.eventsWithoutTtl.warn
-  ) {
+  if (t.eventsWithoutTtl?.warn != null && eventsWithoutTtlCount >= t.eventsWithoutTtl.warn) {
     warnings.push({
-      level: "warn",
+      level: 'warn',
       message: `Event entries without expires_at: ${eventsWithoutTtlCount.toLocaleString()} (exceeds recommended ${t.eventsWithoutTtl.warn.toLocaleString()})`,
     });
   }
 
-  const hasCritical = warnings.some((w) => w.level === "critical");
+  const hasCritical = warnings.some((w) => w.level === 'critical');
 
   if (expiredCount > 0) {
     actions.push(
-      `Run \`context-vault prune\` to remove ${expiredCount} expired event entr${expiredCount === 1 ? "y" : "ies"}`,
+      `Run \`context-vault prune\` to remove ${expiredCount} expired event entr${expiredCount === 1 ? 'y' : 'ies'}`
     );
   }
   if (
@@ -287,14 +255,10 @@ export function computeGrowthWarnings(status, thresholds) {
     (eventCount >= (t.eventEntries?.warn ?? Infinity) ||
       eventsWithoutTtlCount >= (t.eventsWithoutTtl?.warn ?? Infinity))
   ) {
-    actions.push(
-      "Add `expires_at` to event/session entries to enable automatic cleanup",
-    );
+    actions.push('Add `expires_at` to event/session entries to enable automatic cleanup');
   }
   if (total >= (t.totalEntries?.warn ?? Infinity)) {
-    actions.push(
-      "Run `context-vault archive` to move old ephemeral/event entries to _archive/",
-    );
+    actions.push('Run `context-vault archive` to move old ephemeral/event entries to _archive/');
   }
 
   const kindBreakdown =

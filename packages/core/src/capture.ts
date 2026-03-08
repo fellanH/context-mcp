@@ -1,33 +1,18 @@
-import {
-  existsSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-  mkdirSync,
-} from "node:fs";
-import { resolve, relative } from "node:path";
-import { ulid, slugify, kindToPath } from "./files.js";
-import { categoryFor, defaultTierFor } from "./categories.js";
-import { parseFrontmatter, formatFrontmatter } from "./frontmatter.js";
-import { formatBody } from "./formatters.js";
-import type {
-  BaseCtx,
-  CaptureInput,
-  CaptureResult,
-  IndexEntryInput,
-} from "./types.js";
-import { indexEntry } from "./index.js";
+import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs';
+import { resolve, relative } from 'node:path';
+import { ulid, slugify, kindToPath } from './files.js';
+import { categoryFor, defaultTierFor } from './categories.js';
+import { parseFrontmatter, formatFrontmatter } from './frontmatter.js';
+import { formatBody } from './formatters.js';
+import type { BaseCtx, CaptureInput, CaptureResult, IndexEntryInput } from './types.js';
+import { indexEntry } from './index.js';
 
-function safeFolderPath(
-  vaultDir: string,
-  kind: string,
-  folder?: string | null,
-): string {
+function safeFolderPath(vaultDir: string, kind: string, folder?: string | null): string {
   const base = resolve(vaultDir, kindToPath(kind));
   if (!folder) return base;
   const resolved = resolve(base, folder);
   const rel = relative(base, resolved);
-  if (rel.startsWith("..") || resolve(base, rel) !== resolved) {
+  if (rel.startsWith('..') || resolve(base, rel) !== resolved) {
     throw new Error(`Folder path escapes vault: "${folder}"`);
   }
   return resolved;
@@ -51,17 +36,15 @@ function writeEntryFile(
     expires_at?: string | null;
     supersedes?: string[] | null;
     related_to?: string[] | null;
-  },
+  }
 ): string {
-  const resolvedFolder = params.folder || (params.meta?.folder as string) || "";
+  const resolvedFolder = params.folder || (params.meta?.folder as string) || '';
   const dir = safeFolderPath(vaultDir, kind, resolvedFolder);
 
   try {
     mkdirSync(dir, { recursive: true });
   } catch (e) {
-    throw new Error(
-      `Failed to create directory "${dir}": ${(e as Error).message}`,
-    );
+    throw new Error(`Failed to create directory "${dir}": ${(e as Error).message}`);
   }
 
   const created = params.createdAt || new Date().toISOString();
@@ -69,7 +52,7 @@ function writeEntryFile(
 
   if (params.meta) {
     for (const [k, v] of Object.entries(params.meta)) {
-      if (k === "folder") continue;
+      if (k === 'folder') continue;
       if (v !== null && v !== undefined) fmFields[k] = v;
     }
   }
@@ -79,10 +62,9 @@ function writeEntryFile(
   if (params.supersedes?.length) fmFields.supersedes = params.supersedes;
   if (params.related_to?.length) fmFields.related_to = params.related_to;
   fmFields.tags = params.tags || [];
-  fmFields.source = params.source || "claude-code";
+  fmFields.source = params.source || 'claude-code';
   fmFields.created = created;
-  if (params.updatedAt && params.updatedAt !== created)
-    fmFields.updated = params.updatedAt;
+  if (params.updatedAt && params.updatedAt !== created) fmFields.updated = params.updatedAt;
 
   const mdBody = formatBody(kind, {
     title: params.title || undefined,
@@ -91,11 +73,9 @@ function writeEntryFile(
   });
 
   let filename: string;
-  if (params.category === "entity" && params.identity_key) {
+  if (params.category === 'entity' && params.identity_key) {
     const identitySlug = slugify(params.identity_key);
-    filename = identitySlug
-      ? `${identitySlug}.md`
-      : `${params.id.slice(-8).toLowerCase()}.md`;
+    filename = identitySlug ? `${identitySlug}.md` : `${params.id.slice(-8).toLowerCase()}.md`;
   } else {
     const slug = slugify((params.title || params.body).slice(0, 40));
     const shortId = params.id.slice(-8).toLowerCase();
@@ -108,26 +88,24 @@ function writeEntryFile(
   try {
     writeFileSync(filePath, md);
   } catch (e) {
-    throw new Error(
-      `Failed to write entry file "${filePath}": ${(e as Error).message}`,
-    );
+    throw new Error(`Failed to write entry file "${filePath}": ${(e as Error).message}`);
   }
 
   return filePath;
 }
 
 export function writeEntry(ctx: BaseCtx, data: CaptureInput): CaptureResult {
-  if (!data.kind || typeof data.kind !== "string") {
-    throw new Error("writeEntry: kind is required (non-empty string)");
+  if (!data.kind || typeof data.kind !== 'string') {
+    throw new Error('writeEntry: kind is required (non-empty string)');
   }
-  if (!data.body || typeof data.body !== "string" || !data.body.trim()) {
-    throw new Error("writeEntry: body is required (non-empty string)");
+  if (!data.body || typeof data.body !== 'string' || !data.body.trim()) {
+    throw new Error('writeEntry: body is required (non-empty string)');
   }
   if (data.tags != null && !Array.isArray(data.tags)) {
-    throw new Error("writeEntry: tags must be an array if provided");
+    throw new Error('writeEntry: tags must be an array if provided');
   }
-  if (data.meta != null && typeof data.meta !== "object") {
-    throw new Error("writeEntry: meta must be an object if provided");
+  if (data.meta != null && typeof data.meta !== 'object') {
+    throw new Error('writeEntry: meta must be an object if provided');
   }
 
   const category = categoryFor(data.kind);
@@ -135,13 +113,13 @@ export function writeEntry(ctx: BaseCtx, data: CaptureInput): CaptureResult {
   let id: string;
   let createdAt: string;
   let updatedAt: string;
-  if (category === "entity" && data.identity_key) {
+  if (category === 'entity' && data.identity_key) {
     const identitySlug = slugify(data.identity_key);
     const dir = resolve(ctx.config.vaultDir, kindToPath(data.kind));
     const existingPath = resolve(dir, `${identitySlug}.md`);
 
     if (existsSync(existingPath)) {
-      const raw = readFileSync(existingPath, "utf-8");
+      const raw = readFileSync(existingPath, 'utf-8');
       const { meta: fmMeta } = parseFrontmatter(raw);
       id = (fmMeta.id as string) || ulid();
       createdAt = (fmMeta.created as string) || new Date().toISOString();
@@ -208,12 +186,12 @@ export function updateEntryFile(
     supersedes?: string[] | null;
     related_to?: string[] | null;
     source_files?: Array<{ path: string; hash: string }> | null;
-  },
+  }
 ): IndexEntryInput & {
   supersedes?: string[] | null;
   related_to?: string[] | null;
 } {
-  const raw = readFileSync(existing.file_path as string, "utf-8");
+  const raw = readFileSync(existing.file_path as string, 'utf-8');
   const { meta: fmMeta } = parseFrontmatter(raw);
 
   const existingMeta = existing.meta ? JSON.parse(existing.meta as string) : {};
@@ -222,29 +200,15 @@ export function updateEntryFile(
     ? JSON.parse(existing.related_to as string)
     : (fmMeta.related_to as string[]) || null;
 
-  const title =
-    updates.title !== undefined
-      ? updates.title
-      : (existing.title as string | null);
-  const body =
-    updates.body !== undefined
-      ? (updates.body as string)
-      : (existing.body as string);
+  const title = updates.title !== undefined ? updates.title : (existing.title as string | null);
+  const body = updates.body !== undefined ? (updates.body as string) : (existing.body as string);
   const tags = updates.tags !== undefined ? updates.tags : existingTags;
-  const source =
-    updates.source !== undefined
-      ? updates.source
-      : (existing.source as string | null);
+  const source = updates.source !== undefined ? updates.source : (existing.source as string | null);
   const expires_at =
-    updates.expires_at !== undefined
-      ? updates.expires_at
-      : (existing.expires_at as string | null);
+    updates.expires_at !== undefined ? updates.expires_at : (existing.expires_at as string | null);
   const supersedes =
-    updates.supersedes !== undefined
-      ? updates.supersedes
-      : (fmMeta.supersedes as string[]) || null;
-  const related_to =
-    updates.related_to !== undefined ? updates.related_to : existingRelatedTo;
+    updates.supersedes !== undefined ? updates.supersedes : (fmMeta.supersedes as string[]) || null;
+  const related_to = updates.related_to !== undefined ? updates.related_to : existingRelatedTo;
   const source_files =
     updates.source_files !== undefined
       ? updates.source_files
@@ -262,7 +226,7 @@ export function updateEntryFile(
   const now = new Date().toISOString();
   const fmFields: Record<string, unknown> = { id: existing.id };
   for (const [k, v] of Object.entries(mergedMeta)) {
-    if (k === "folder") continue;
+    if (k === 'folder') continue;
     if (v !== null && v !== undefined) fmFields[k] = v;
   }
   if (existing.identity_key) fmFields.identity_key = existing.identity_key;
@@ -270,9 +234,8 @@ export function updateEntryFile(
   if (supersedes?.length) fmFields.supersedes = supersedes;
   if (related_to?.length) fmFields.related_to = related_to;
   fmFields.tags = tags;
-  fmFields.source = source || "claude-code";
-  fmFields.created =
-    (fmMeta.created as string) || (existing.created_at as string);
+  fmFields.source = source || 'claude-code';
+  fmFields.created = (fmMeta.created as string) || (existing.created_at as string);
   if (now !== fmFields.created) fmFields.updated = now;
 
   const mdBody = formatBody(existing.kind as string, {
@@ -309,15 +272,15 @@ export function updateEntryFile(
 export async function captureAndIndex(
   ctx: BaseCtx,
   data: CaptureInput,
-  precomputedEmbedding?: Float32Array | null,
+  precomputedEmbedding?: Float32Array | null
 ): Promise<CaptureResult> {
   let previousContent: string | null = null;
-  if (categoryFor(data.kind) === "entity" && data.identity_key) {
+  if (categoryFor(data.kind) === 'entity' && data.identity_key) {
     const identitySlug = slugify(data.identity_key);
     const dir = resolve(ctx.config.vaultDir, kindToPath(data.kind));
     const existingPath = resolve(dir, `${identitySlug}.md`);
     if (existsSync(existingPath)) {
-      previousContent = readFileSync(existingPath, "utf-8");
+      previousContent = readFileSync(existingPath, 'utf-8');
     }
   }
 
@@ -326,7 +289,7 @@ export async function captureAndIndex(
     await indexEntry(ctx, entry, precomputedEmbedding);
     if (entry.supersedes?.length && ctx.stmts.updateSupersededBy) {
       for (const supersededId of entry.supersedes) {
-        if (typeof supersededId === "string" && supersededId.trim()) {
+        if (typeof supersededId === 'string' && supersededId.trim()) {
           ctx.stmts.updateSupersededBy.run(entry.id, supersededId.trim());
         }
       }
@@ -346,7 +309,7 @@ export async function captureAndIndex(
       } catch {}
     }
     throw new Error(
-      `Capture succeeded but indexing failed — file rolled back. ${(err as Error).message}`,
+      `Capture succeeded but indexing failed — file rolled back. ${(err as Error).message}`
     );
   }
 }
