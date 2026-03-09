@@ -26,72 +26,72 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 //
 const SENTINELS = [
   // ── Entry validation limits ─────────────────────────────────────────────
-  // Canonical: packages/core/src/constants.js
+  // Canonical: packages/core/src/constants.ts
   // Previously violated in: packages/core/src/server/tools/{save-context,ingest-url}.js
   //                         packages/hosted/src/validation/entry-validation.js
   {
     name: 'MAX_BODY_LENGTH',
     pattern: /\bconst\s+MAX_BODY_LENGTH\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   {
     name: 'MAX_TITLE_LENGTH',
     pattern: /\bconst\s+MAX_TITLE_LENGTH\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   {
     name: 'MAX_KIND_LENGTH',
     pattern: /\bconst\s+MAX_KIND_LENGTH\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   {
     name: 'MAX_TAG_LENGTH',
     pattern: /\bconst\s+MAX_TAG_LENGTH\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   {
     name: 'MAX_TAGS_COUNT',
     pattern: /\bconst\s+MAX_TAGS_COUNT\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   {
     name: 'MAX_META_LENGTH',
     pattern: /\bconst\s+MAX_META_LENGTH\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   {
     name: 'MAX_SOURCE_LENGTH',
     pattern: /\bconst\s+MAX_SOURCE_LENGTH\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   {
     name: 'MAX_IDENTITY_KEY_LENGTH',
     pattern: /\bconst\s+MAX_IDENTITY_KEY_LENGTH\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   // ── Embedding model identifier ──────────────────────────────────────────
-  // Canonical: packages/core/src/index/embed.js
+  // Canonical: packages/core/src/embed.ts
   {
     name: 'Embedding model name ("Xenova/all-MiniLM-L6-v2")',
     pattern: /["']Xenova\/all-MiniLM-L6-v2["']/,
-    canonical: 'packages/core/src/index/embed.js',
+    canonical: 'packages/core/src/embed.ts',
   },
   // ── Canonical URLs ───────────────────────────────────────────────────────
-  // Canonical: packages/core/src/constants.js
+  // Canonical: packages/core/src/constants.ts
   {
     name: 'APP_URL',
     pattern: /\bconst\s+APP_URL\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   {
     name: 'API_URL',
     pattern: /\bconst\s+API_URL\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
   {
     name: 'MARKETING_URL',
     pattern: /\bconst\s+MARKETING_URL\b/,
-    canonical: 'packages/core/src/constants.js',
+    canonical: 'packages/core/src/constants.ts',
   },
 ];
 
@@ -188,7 +188,7 @@ if (violations === 0) {
     `\n${violations} violation${s} found. Constants must be defined in exactly one canonical file.`
   );
   console.error(
-    'Cross-package duplicates cannot share imports — extract to packages/core/src/constants.js.'
+    'Cross-package duplicates cannot share imports — extract to packages/core/src/constants.ts.'
   );
   process.exit(1);
 }
