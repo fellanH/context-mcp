@@ -163,4 +163,5 @@ export interface SearchOptions {
   offset?: number;
   decayDays?: number;
   includeSuperseeded?: boolean;
+  includeEphemeral?: boolean;
 }
