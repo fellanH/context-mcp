@@ -1,6 +1,9 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { mkdirSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
+
+const MAX_EMBED_THREADS = Math.max(1, Math.min(2, Math.floor(availableParallelism() / 4)));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let extractor: any = null;
@@ -16,11 +19,16 @@ async function ensurePipeline(): Promise<typeof extractor> {
     try {
       const { pipeline, env } = await import('@huggingface/transformers');
 
+      const threads = Number(process.env.CONTEXT_VAULT_EMBED_THREADS) || MAX_EMBED_THREADS;
+      if (env.backends?.onnx?.wasm) {
+        env.backends.onnx.wasm.numThreads = threads;
+      }
+
       const modelCacheDir = join(homedir(), '.context-mcp', 'models');
       mkdirSync(modelCacheDir, { recursive: true });
       env.cacheDir = modelCacheDir;
 
-      console.error('[context-vault] Loading embedding model (first run may download ~22MB)...');
+      console.error(`[context-vault] Loading embedding model (threads=${threads})...`);
       extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
       embedAvailable = true;
       return extractor;

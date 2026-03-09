@@ -2,6 +2,14 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.2.2] — 2026-03-09
+
+### Fixed
+
+- **CPU runaway fix**: Cap ONNX Runtime thread pool to 2 threads (was using all available cores, causing 300%+ CPU during embedding inference). Configurable via `CONTEXT_VAULT_EMBED_THREADS` env var.
+- Cache `resolveConfig()` with 30s TTL — previously re-read config file from disk on every `ctx.config` access
+- Skip embedding for auto-captured error entries to prevent CPU cascade when tools error repeatedly during reindex
+
 ## [3.2.1] — 2026-03-09
 
 ### Fixed

@@ -107,7 +107,7 @@ export function registerTools(server: any, ctx: LocalCtx): void {
               cv_version: pkg.version,
               auto: true,
             },
-          });
+          }, null /* skip embedding to avoid CPU cascade on repeated errors */);
         } catch {}
         return err(e.message, 'INTERNAL_ERROR');
       } finally {

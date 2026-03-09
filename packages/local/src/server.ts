@@ -114,15 +114,22 @@ async function main(): Promise<void> {
       { capabilities: { tools: {} } }
     );
 
+    const CONFIG_CACHE_TTL_MS = 30_000;
+    let cachedConfig = config;
+    let configCachedAt = Date.now();
     let lastVaultDir = config.vaultDir;
     Object.defineProperty(ctx as object, 'config', {
       get() {
+        const now = Date.now();
+        if (now - configCachedAt < CONFIG_CACHE_TTL_MS) return cachedConfig!;
         const fresh = resolveConfig();
         if (fresh.vaultDir !== lastVaultDir) {
           console.error(`[context-vault] Config reloaded: vaultDir changed to ${fresh.vaultDir}`);
           lastVaultDir = fresh.vaultDir;
           fresh.vaultDirExists = existsSync(fresh.vaultDir);
         }
+        cachedConfig = fresh;
+        configCachedAt = now;
         return fresh;
       },
       configurable: true,

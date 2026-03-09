@@ -1,6 +1,54 @@
-import { unlinkSync, copyFileSync, existsSync } from 'node:fs';
+import { unlinkSync, copyFileSync, existsSync, openSync, closeSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { PreparedStatements } from './types.js';
+
+/**
+ * Acquire an exclusive file lock to serialize database initialization.
+ * Multiple MCP clients (Claude, Cursor, Windsurf) may each spawn a server
+ * instance simultaneously — without serialization, migrations and schema
+ * init race against each other.
+ *
+ * Uses O_EXCL (via 'wx' flag) as a cross-platform advisory lock.
+ * Returns a release function that removes the lock file.
+ */
+function acquireInitLock(dbPath: string, timeoutMs = 10_000): () => void {
+  const lockPath = dbPath + '.init-lock';
+  mkdirSync(dirname(lockPath), { recursive: true });
+
+  const start = Date.now();
+  while (true) {
+    try {
+      const fd = openSync(lockPath, 'wx');
+      closeSync(fd);
+      return () => {
+        try { unlinkSync(lockPath); } catch {}
+      };
+    } catch (err: any) {
+      if (err.code !== 'EEXIST') throw err;
+
+      // Stale lock detection — if lock file is older than 30s, it's from a crashed process
+      try {
+        const { mtimeMs } = require('node:fs').statSync(lockPath);
+        if (Date.now() - mtimeMs > 30_000) {
+          try { unlinkSync(lockPath); } catch {}
+          continue;
+        }
+      } catch {}
+
+      if (Date.now() - start > timeoutMs) {
+        // Timeout — break the lock and proceed (better than hanging forever)
+        console.error('[context-vault] Init lock timed out, breaking stale lock');
+        try { unlinkSync(lockPath); } catch {}
+        continue;
+      }
+
+      // Busy-wait with small sleep (synchronous — we're in sync init code)
+      const waitMs = 50 + Math.random() * 100;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+    }
+  }
+}
 
 export class NativeModuleError extends Error {
   originalError: Error;
