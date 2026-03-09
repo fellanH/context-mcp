@@ -1,4 +1,4 @@
-import { unlinkSync, copyFileSync, existsSync, openSync, closeSync, mkdirSync } from 'node:fs';
+import { unlinkSync, copyFileSync, existsSync, openSync, closeSync, mkdirSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { PreparedStatements } from './types.js';
@@ -29,7 +29,7 @@ function acquireInitLock(dbPath: string, timeoutMs = 10_000): () => void {
 
       // Stale lock detection — if lock file is older than 30s, it's from a crashed process
       try {
-        const { mtimeMs } = require('node:fs').statSync(lockPath);
+        const { mtimeMs } = statSync(lockPath);
         if (Date.now() - mtimeMs > 30_000) {
           try { unlinkSync(lockPath); } catch {}
           continue;
@@ -155,7 +155,7 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
     const db = new DatabaseSync(path, { allowExtension: true });
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA foreign_keys = ON');
-    db.exec('PRAGMA busy_timeout = 3000');
+    db.exec('PRAGMA busy_timeout = 5000');
     try {
       sqliteVec.load(db);
     } catch (e) {
@@ -164,57 +164,63 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
     return db;
   }
 
-  const db = createDb(dbPath);
-  const version = (db.prepare('PRAGMA user_version').get() as { user_version: number })
-    .user_version;
+  // Serialize init across concurrent server instances (Claude + Cursor + Windsurf)
+  const releaseLock = acquireInitLock(dbPath);
+  try {
+    const db = createDb(dbPath);
+    const version = (db.prepare('PRAGMA user_version').get() as { user_version: number })
+      .user_version;
 
-  if (version > 0 && version < 15) {
-    console.error(`[context-vault] Schema v${version} is outdated. Rebuilding database...`);
+    if (version > 0 && version < 15) {
+      console.error(`[context-vault] Schema v${version} is outdated. Rebuilding database...`);
 
-    const backupPath = `${dbPath}.v${version}.backup`;
-    let backupSucceeded = false;
-    try {
-      db.close();
-      if (existsSync(dbPath)) {
-        copyFileSync(dbPath, backupPath);
-        console.error(`[context-vault] Backed up old database to: ${backupPath}`);
-        backupSucceeded = true;
-      } else {
-        backupSucceeded = true;
+      const backupPath = `${dbPath}.v${version}.backup`;
+      let backupSucceeded = false;
+      try {
+        db.close();
+        if (existsSync(dbPath)) {
+          copyFileSync(dbPath, backupPath);
+          console.error(`[context-vault] Backed up old database to: ${backupPath}`);
+          backupSucceeded = true;
+        } else {
+          backupSucceeded = true;
+        }
+      } catch (backupErr) {
+        console.error(
+          `[context-vault] Warning: could not backup old database: ${(backupErr as Error).message}`
+        );
       }
-    } catch (backupErr) {
-      console.error(
-        `[context-vault] Warning: could not backup old database: ${(backupErr as Error).message}`
-      );
+
+      if (!backupSucceeded) {
+        throw new Error(
+          `[context-vault] Aborting schema migration: backup failed for ${dbPath}. ` +
+            `Fix the backup issue or manually back up the file before upgrading.`
+        );
+      }
+
+      unlinkSync(dbPath);
+      try {
+        unlinkSync(dbPath + '-wal');
+      } catch {}
+      try {
+        unlinkSync(dbPath + '-shm');
+      } catch {}
+
+      const freshDb = createDb(dbPath);
+      freshDb.exec(SCHEMA_DDL);
+      freshDb.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+      return freshDb;
     }
 
-    if (!backupSucceeded) {
-      throw new Error(
-        `[context-vault] Aborting schema migration: backup failed for ${dbPath}. ` +
-          `Fix the backup issue or manually back up the file before upgrading.`
-      );
+    if (version < 15) {
+      db.exec(SCHEMA_DDL);
+      db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
     }
 
-    unlinkSync(dbPath);
-    try {
-      unlinkSync(dbPath + '-wal');
-    } catch {}
-    try {
-      unlinkSync(dbPath + '-shm');
-    } catch {}
-
-    const freshDb = createDb(dbPath);
-    freshDb.exec(SCHEMA_DDL);
-    freshDb.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
-    return freshDb;
+    return db;
+  } finally {
+    releaseLock();
   }
-
-  if (version < 15) {
-    db.exec(SCHEMA_DDL);
-    db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
-  }
-
-  return db;
 }
 
 export function prepareStatements(db: DatabaseSync): PreparedStatements {
