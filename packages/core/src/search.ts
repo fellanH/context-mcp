@@ -40,12 +40,14 @@ export function buildFilterClauses({
   since,
   until,
   includeSuperseeded = false,
+  includeEphemeral = false,
 }: {
   categoryFilter?: string | null;
   excludeEvents?: boolean;
   since?: string | null;
   until?: string | null;
   includeSuperseeded?: boolean;
+  includeEphemeral?: boolean;
 }): { clauses: string[]; params: (string | number | null)[] } {
   const clauses: string[] = [];
   const params: (string | number | null)[] = [];
@@ -67,6 +69,9 @@ export function buildFilterClauses({
   clauses.push("(e.expires_at IS NULL OR e.expires_at > datetime('now'))");
   if (!includeSuperseeded) {
     clauses.push('e.superseded_by IS NULL');
+  }
+  if (!includeEphemeral) {
+    clauses.push("e.tier != 'ephemeral'");
   }
   return { clauses, params };
 }
@@ -100,6 +105,7 @@ export async function hybridSearch(
     offset = 0,
     decayDays = 30,
     includeSuperseeded = false,
+    includeEphemeral = false,
   } = opts;
 
   const rowMap = new Map<string, VaultEntry>();
@@ -112,6 +118,7 @@ export async function hybridSearch(
     since,
     until,
     includeSuperseeded,
+    includeEphemeral,
   });
 
   const ftsRankedIds: string[] = [];
