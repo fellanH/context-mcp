@@ -359,7 +359,10 @@ export async function handler(
   // ── Auto-resolve identity_key to id for upsert ──
   if (!id && identity_key && kind) {
     const normalizedKindForLookup = normalizeKind(kind);
-    const existingByKey = ctx.stmts.getByIdentityKey.get(normalizedKindForLookup, identity_key) as any;
+    const existingByKey = ctx.stmts.getByIdentityKey.get(
+      normalizedKindForLookup,
+      identity_key
+    ) as any;
     if (existingByKey) {
       id = existingByKey.id;
     }

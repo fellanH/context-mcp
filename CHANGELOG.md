@@ -2,6 +2,18 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.2.0] — 2026-03-09
+
+### Added
+
+- `body_limit` parameter for `get_context` — configurable body truncation per request (default 300, max 10000, 0 = unlimited) (#196)
+- `strict` mode for `identity_key` lookup — returns clear "not found" instead of falling through to semantic search (#197)
+- Upsert by `identity_key` in `save_context` — auto-resolves existing entry, prevents duplicate proliferation (#198)
+
+### Changed
+
+- Linked entry body truncation normalized from 200 → 300 chars (consistent with main results)
+
 ## [3.1.8] — 2026-03-09
 
 ### Changed

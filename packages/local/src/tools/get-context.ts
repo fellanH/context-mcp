@@ -427,7 +427,9 @@ export async function handler(
       ];
       return ok(lines.join('\n'));
     } else if (strict) {
-      return ok(`## Entity Match (exact)\n\nNo entry found for identity_key: \`${identity_key}\` (kind: ${kindFilter}).\n\nUse strict: false (default) to fall through to semantic search.`);
+      return ok(
+        `## Entity Match (exact)\n\nNo entry found for identity_key: \`${identity_key}\` (kind: ${kindFilter}).\n\nUse strict: false (default) to fall through to semantic search.`
+      );
     }
     // Fall through to semantic search as fallback
   }
