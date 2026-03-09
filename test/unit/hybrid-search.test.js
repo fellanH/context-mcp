@@ -154,9 +154,10 @@ describe('recencyDecayScore', () => {
 describe('buildFilterClauses', () => {
   it('always includes expiry clause', () => {
     const { clauses, params } = buildFilterClauses({});
-    expect(clauses).toHaveLength(2);
+    expect(clauses).toHaveLength(3);
     expect(clauses.some((c) => c.includes('expires_at'))).toBe(true);
     expect(clauses.some((c) => c.includes('superseded_by'))).toBe(true);
+    expect(clauses.some((c) => c.includes('ephemeral'))).toBe(true);
     expect(params).toHaveLength(0);
   });
 
@@ -186,8 +187,8 @@ describe('buildFilterClauses', () => {
       since: '2025-01-01',
       until: '2026-01-01',
     });
-    // 3 explicit + 1 expiry + 1 superseded_by
-    expect(clauses).toHaveLength(5);
+    // 3 explicit + 1 expiry + 1 superseded_by + 1 ephemeral
+    expect(clauses).toHaveLength(6);
     expect(params).toHaveLength(3);
   });
 
@@ -392,6 +393,7 @@ describe('hybridSearch', () => {
   it('filters by event category', async () => {
     const results = await hybridSearch(ctx, 'debugging memory leak', {
       categoryFilter: 'event',
+      includeEphemeral: true,
     });
     expect(results.length).toBeGreaterThan(0);
     for (const r of results) {
