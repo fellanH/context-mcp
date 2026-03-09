@@ -58,6 +58,7 @@ export function parseFrontmatter(text: string): {
 
 const RESERVED_FM_KEYS = new Set([
   'id',
+  'title',
   'tags',
   'source',
   'created',
@@ -86,7 +87,10 @@ export function parseEntryFromMarkdown(
   meta: Record<string, unknown> | null;
 } {
   if (kind === 'insight') {
-    return { title: null, body, meta: extractCustomMeta(fmMeta) };
+    const fmTitle = typeof fmMeta.title === 'string' ? fmMeta.title : null;
+    const headingMatch = body.match(/^#+ (.+)/);
+    const title = fmTitle || (headingMatch ? headingMatch[1].trim() : null);
+    return { title, body, meta: extractCustomMeta(fmMeta) };
   }
 
   if (kind === 'decision') {
@@ -105,9 +109,10 @@ export function parseEntryFromMarkdown(
     return { title, body: content, meta: extractCustomMeta(fmMeta) };
   }
 
+  const fmTitle = typeof fmMeta.title === 'string' ? fmMeta.title : null;
   const headingMatch = body.match(/^#+ (.+)/);
   return {
-    title: headingMatch ? headingMatch[1].trim() : null,
+    title: fmTitle || (headingMatch ? headingMatch[1].trim() : null),
     body,
     meta: extractCustomMeta(fmMeta),
   };
