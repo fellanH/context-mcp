@@ -1,6 +1,6 @@
 {
   "name": "@context-vault/core",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "type": "module",
   "description": "Pure local engine: capture, index, search, and utilities for context-vault",
   "main": "dist/main.js",
