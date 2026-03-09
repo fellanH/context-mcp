@@ -2,6 +2,17 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.2.1] — 2026-03-09
+
+### Fixed
+
+- Frontmatter title extraction for insights and generic entry kinds — titles from frontmatter and headings are now preserved instead of discarded
+- CI: canonical paths in `check-constants` pointed to `.js` instead of `.ts`, causing false violations
+- CI: test job missing build step, causing `ERR_MODULE_NOT_FOUND` on `dist/` imports
+- CI: dropped Node 20 from test matrix (project requires Node 22+ for `node:sqlite`)
+- CI: removed stale downstream deploy/smoke jobs for extracted repos
+- Added `engines.node >= 22` to root `package.json`
+
 ## [3.2.0] — 2026-03-09
 
 ### Added
