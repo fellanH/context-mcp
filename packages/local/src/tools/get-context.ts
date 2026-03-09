@@ -22,6 +22,13 @@ const BRIEF_SCORE_BOOST = 0.05;
  * Truncate a body string to ~SKELETON_BODY_CHARS, breaking at sentence or
  * word boundary. Returns the truncated string with "..." appended.
  */
+function truncateBody(body: string | null | undefined, limit: number): string {
+  if (!body) return '';
+  if (limit === 0) return body;
+  if (body.length <= limit) return body;
+  return body.slice(0, limit) + '...';
+}
+
 export function skeletonBody(body: string | null | undefined): string {
   if (!body) return '';
   if (body.length <= SKELETON_BODY_CHARS) return body;
@@ -325,6 +332,20 @@ export const inputSchema = {
     .describe(
       'If true, follow related_to links from result entries and include linked entries (forward links) and backlinks (entries that reference the results). Enables bidirectional graph traversal.'
     ),
+  body_limit: z
+    .number()
+    .min(0)
+    .max(10000)
+    .optional()
+    .describe(
+      'Max characters of body to return per entry (default 300). Set to 0 for no limit. Does not affect skeleton entries.'
+    ),
+  strict: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true with identity_key, return a clear "not found" instead of falling through to semantic search on miss. Default: false.'
+    ),
 };
 
 export async function handler(
@@ -346,6 +367,8 @@ export async function handler(
     include_events,
     scope,
     follow_links,
+    body_limit,
+    strict,
   }: Record<string, any>,
   ctx: LocalCtx,
   { ensureIndexed, reindexFailed }: SharedCtx
@@ -400,9 +423,11 @@ export async function handler(
         `## Entity Match (exact)\n`,
         `### ${match.title || '(untitled)'} [${match.kind}/${match.category}]`,
         `1.000 · ${tagStr} · ${relPath} · id: \`${match.id}\``,
-        match.body?.slice(0, 300) + (match.body?.length > 300 ? '...' : ''),
+        truncateBody(match.body, body_limit ?? 300),
       ];
       return ok(lines.join('\n'));
+    } else if (strict) {
+      return ok(`## Entity Match (exact)\n\nNo entry found for identity_key: \`${identity_key}\` (kind: ${kindFilter}).\n\nUse strict: false (default) to fall through to semantic search.`);
     }
     // Fall through to semantic search as fallback
   }
@@ -436,8 +461,8 @@ export async function handler(
       until: effectiveUntil,
       limit: fetchLimit,
       decayDays: config.eventDecayDays || 30,
-
       includeSuperseeded: include_superseded ?? false,
+      includeEphemeral: include_ephemeral ?? false,
     });
 
     // Post-filter by tags if provided, then apply requested limit
@@ -470,6 +495,9 @@ export async function handler(
     if (effectiveUntil) {
       clauses.push('created_at <= ?');
       params.push(effectiveUntil);
+    }
+    if (!include_ephemeral) {
+      clauses.push("tier != 'ephemeral'");
     }
     clauses.push("(expires_at IS NULL OR expires_at > datetime('now'))");
     if (!include_superseded) {
@@ -510,11 +538,6 @@ export async function handler(
     if (r.kind === 'brief') r.score = (r.score || 0) + BRIEF_SCORE_BOOST;
   }
   filtered.sort((a: any, b: any) => b.score - a.score);
-
-  // Tier filter: exclude ephemeral entries by default (NULL tier treated as working)
-  if (!include_ephemeral) {
-    filtered = filtered.filter((r: any) => r.tier !== 'ephemeral');
-  }
 
   // Event category filter: exclude events from semantic search by default
   if (shouldExcludeEvents) {
@@ -610,7 +633,7 @@ export async function handler(
     if (isSkeleton) {
       lines.push(skeletonBody(r.body));
     } else {
-      lines.push(r.body?.slice(0, 300) + (r.body?.length > 300 ? '...' : ''));
+      lines.push(truncateBody(r.body, body_limit ?? 300));
     }
     lines.push('');
   }
@@ -651,7 +674,7 @@ export async function handler(
             : r.file_path || 'n/a';
         lines.push(`### ${r.title || '(untitled)'} [${r.kind}/${r.category}] ${direction}`);
         lines.push(`${tagStr} · ${relPath} · id: \`${r.id}\``);
-        lines.push(r.body?.slice(0, 200) + (r.body?.length > 200 ? '...' : ''));
+        lines.push(truncateBody(r.body, body_limit ?? 300));
         lines.push('');
       }
     } else {
