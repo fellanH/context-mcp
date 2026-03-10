@@ -15,13 +15,12 @@ Persistent memory for AI agents — save and search knowledge across sessions. Y
 ## Quick Start
 
 ```bash
-npm install -g context-vault
-context-vault setup
+npx context-vault
 ```
 
 Setup detects your AI tools (Claude Code, Cursor, Codex, Windsurf, etc.), configures MCP, downloads the embedding model (~22MB), and seeds a starter entry. Takes about 2 minutes.
 
-> **Quick try without installing?** `npx context-vault` works too, but a global install is recommended for reliable MCP server startup.
+> **For faster MCP startup:** `npm i -g context-vault` installs globally so the MCP server starts instantly without npx overhead.
 
 Then **restart your AI tool** (required to pick up the new MCP server) and try:
 

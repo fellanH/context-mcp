@@ -4,8 +4,12 @@
 const nodeVersion = parseInt(process.versions.node.split('.')[0], 10);
 if (nodeVersion < 22) {
   process.stderr.write(
-    `\ncontext-vault requires Node.js >= 22 (you have ${process.versions.node}).\n` +
-      `Install a newer version: https://nodejs.org/\n\n`
+    `\ncontext-vault requires Node.js >= 22 (you have ${process.versions.node}).\n\n` +
+      `  Upgrade options:\n` +
+      `    nvm install 22        # if using nvm\n` +
+      `    fnm install 22        # if using fnm\n` +
+      `    volta install node@22 # if using volta\n` +
+      `    https://nodejs.org/   # manual download\n\n`
   );
   process.exit(1);
 }
@@ -41,7 +45,8 @@ function isInstalledPackage() {
   if (ROOT.includes('/node_modules/') || ROOT.includes('\\node_modules\\')) return true;
   // Also check if `context-vault` binary on PATH resolves to this package
   try {
-    const which = execSync('which context-vault', { encoding: 'utf-8', stdio: 'pipe' }).trim();
+    const cmd = platform() === 'win32' ? 'where context-vault' : 'which context-vault';
+    const which = execSync(cmd, { encoding: 'utf-8', stdio: 'pipe' }).trim();
     if (which) return true;
   } catch {}
   return false;
@@ -960,23 +965,32 @@ async function runSetup() {
 
   // Verify DB is accessible
   let dbAccessible = false;
+  let dbError = null;
   try {
     const { initDatabase } = await import('@context-vault/core/db');
     const db = await initDatabase(vaultConfig.dbPath);
     db.prepare('SELECT 1').get();
     db.close();
     dbAccessible = true;
-  } catch {}
+  } catch (e) {
+    dbError = e;
+  }
 
   const checks = [
     { label: 'Vault directory exists', pass: existsSync(resolvedVaultDir) },
     { label: 'Config file written', pass: existsSync(configPath) },
-    { label: 'Database accessible', pass: dbAccessible },
+    { label: 'Database accessible', pass: dbAccessible, error: dbError },
     { label: 'At least one tool configured', pass: okResults.length > 0 },
   ];
   const passed = checks.filter((c) => c.pass).length;
   for (const c of checks) {
     console.log(`  ${c.pass ? green('✓') : red('✗')} ${c.label}`);
+    if (!c.pass && c.error) {
+      console.log(`    ${dim(c.error.message)}`);
+      if (c.error.message.includes('EACCES') || c.error.message.includes('permission')) {
+        console.log(`    ${dim('Fix: check file permissions on ' + vaultConfig.dbPath)}`);
+      }
+    }
   }
 
   // Completion box
@@ -995,6 +1009,12 @@ async function runSetup() {
     `  ${bold('CLI Commands:')}`,
     `  ${isNpx() ? 'npx context-vault' : 'context-vault'} status    Show vault health`,
     `  ${isNpx() ? 'npx context-vault' : 'context-vault'} update    Check for updates`,
+    ...(isNpx()
+      ? [
+          ``,
+          `  ${dim('Tip: npm i -g context-vault for faster MCP startup')}`,
+        ]
+      : []),
   ];
   const innerWidth = Math.max(...boxLines.map((l) => l.length)) + 2;
   const pad = (s) => s + ' '.repeat(Math.max(0, innerWidth - s.length));
@@ -3878,11 +3898,12 @@ function installSessionEndHook() {
   );
   if (alreadyInstalled) return false;
 
+  const flushCmd = isInstalledPackage() && !isNpx() ? 'context-vault flush' : 'npx -y context-vault flush';
   settings.hooks.SessionEnd.push({
     hooks: [
       {
         type: 'command',
-        command: 'npx context-vault flush',
+        command: flushCmd,
         timeout: 10,
       },
     ],
@@ -4367,9 +4388,9 @@ async function runDoctor() {
 
   // ── Node.js version ──────────────────────────────────────────────────────
   const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
-  if (nodeMajor < 20) {
-    console.log(`  ${red('✘')} Node.js ${process.versions.node} — requires >= 20`);
-    console.log(`    ${dim('Fix: install a newer Node.js from https://nodejs.org/')}`);
+  if (nodeMajor < 22) {
+    console.log(`  ${red('✘')} Node.js ${process.versions.node} — requires >= 22`);
+    console.log(`    ${dim('Fix: nvm install 22 / fnm install 22 / https://nodejs.org/')}`);
     allOk = false;
   } else {
     console.log(`  ${green('✓')} Node.js ${process.versions.node} ${dim(`(${process.execPath})`)}`);
@@ -4869,28 +4890,40 @@ async function runRestart() {
   console.log(`  ${bold('◇ context-vault restart')}`);
   console.log();
 
+  const isWin = platform() === 'win32';
   let psOutput;
   try {
-    psOutput = execSync('ps aux', { encoding: 'utf-8', timeout: 5000 });
+    const psCmd = isWin
+      ? 'wmic process where "CommandLine like \'%context-vault%\'" get ProcessId,CommandLine /format:list'
+      : 'ps aux';
+    psOutput = execSync(psCmd, { encoding: 'utf-8', timeout: 5000 });
   } catch (e) {
     console.error(red(`  Failed to list processes: ${e.message}`));
     process.exit(1);
   }
 
   const currentPid = process.pid;
-  const lines = psOutput.split('\n');
-
   const serverPids = [];
-  for (const line of lines) {
-    const match = line.match(/^\S+\s+(\d+)\s/);
-    if (!match) continue;
-    const pid = parseInt(match[1], 10);
-    if (pid === currentPid) continue;
-    if (
-      /context-vault.*(serve|stdio|server\/index)/.test(line) ||
-      /server\/index\.js.*context-vault/.test(line)
-    ) {
-      serverPids.push(pid);
+
+  if (isWin) {
+    const pidMatches = psOutput.matchAll(/ProcessId=(\d+)/g);
+    for (const m of pidMatches) {
+      const pid = parseInt(m[1], 10);
+      if (pid !== currentPid) serverPids.push(pid);
+    }
+  } else {
+    const lines = psOutput.split('\n');
+    for (const line of lines) {
+      const match = line.match(/^\S+\s+(\d+)\s/);
+      if (!match) continue;
+      const pid = parseInt(match[1], 10);
+      if (pid === currentPid) continue;
+      if (
+        /context-vault.*(serve|stdio|server\/index)/.test(line) ||
+        /server\/index\.js.*context-vault/.test(line)
+      ) {
+        serverPids.push(pid);
+      }
     }
   }
 
