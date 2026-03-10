@@ -2,6 +2,23 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.2.3] — 2026-03-10
+
+### Fixed
+
+- **Node version guard**: Error message now suggests nvm/fnm/volta upgrade paths instead of just linking to nodejs.org
+- **Doctor version check**: Fixed threshold from >= 20 to >= 22 to match actual Node requirement
+- **Windows support**: `isInstalledPackage()` now uses `where` instead of `which` on Windows
+- **Windows support**: `runRestart()` uses `wmic` instead of `ps aux` on Windows
+- **Session-end hook**: Uses `context-vault` binary when globally installed instead of always using `npx`
+- **Setup DB check**: Now shows error message and permission fix hint when database init fails
+
+### Changed
+
+- Install flow updated to `npx context-vault` as the primary command (replaces `npm i -g context-vault && context-vault setup`)
+- Setup completion via npx now shows a tip to install globally for faster MCP startup
+- README quick start updated to `npx context-vault`
+
 ## [3.2.2] — 2026-03-09
 
 ### Fixed
