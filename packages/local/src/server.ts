@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
+import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -109,10 +114,6 @@ async function main(): Promise<void> {
     }
 
     phase = 'SERVER';
-    const server = new McpServer(
-      { name: 'context-vault', version: pkg.version },
-      { capabilities: { tools: {} } }
-    );
 
     const CONFIG_CACHE_TTL_MS = 30_000;
     let cachedConfig = config;
@@ -135,7 +136,16 @@ async function main(): Promise<void> {
       configurable: true,
     });
 
-    registerTools(server, ctx);
+    function createServer(): McpServer {
+      const s = new McpServer(
+        { name: 'context-vault', version: pkg.version },
+        { capabilities: { tools: {} } }
+      );
+      registerTools(s, ctx);
+      return s;
+    }
+
+    const server = createServer();
 
     function closeDb(): void {
       try {
@@ -180,8 +190,91 @@ async function main(): Promise<void> {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
 
     phase = 'CONNECTED';
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
+
+    const useHttp = process.argv.includes('--http');
+
+    if (useHttp) {
+      const portIdx = process.argv.indexOf('--port');
+      const port = portIdx !== -1 && process.argv[portIdx + 1]
+        ? parseInt(process.argv[portIdx + 1], 10)
+        : 3377;
+
+      const app = createMcpExpressApp();
+      const transports: Record<string, StreamableHTTPServerTransport> = {};
+
+      app.post('/mcp', async (req: IncomingMessage & { body?: unknown }, res: ServerResponse) => {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        try {
+          let transport: StreamableHTTPServerTransport;
+          if (sessionId && transports[sessionId]) {
+            transport = transports[sessionId];
+          } else if (!sessionId && isInitializeRequest((req as any).body)) {
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => randomUUID(),
+              onsessioninitialized: (sid: string) => {
+                transports[sid] = transport;
+              },
+            });
+            transport.onclose = () => {
+              const sid = transport.sessionId;
+              if (sid && transports[sid]) {
+                delete transports[sid];
+              }
+            };
+            const sessionServer = createServer();
+            await sessionServer.connect(transport);
+            await transport.handleRequest(req, res, (req as any).body);
+            return;
+          } else {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              jsonrpc: '2.0',
+              error: { code: -32000, message: 'Bad Request: No valid session ID' },
+              id: null,
+            }));
+            return;
+          }
+          await transport.handleRequest(req, res, (req as any).body);
+        } catch (error) {
+          console.error('[context-vault] HTTP error:', error);
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              jsonrpc: '2.0',
+              error: { code: -32603, message: 'Internal server error' },
+              id: null,
+            }));
+          }
+        }
+      });
+
+      app.get('/mcp', async (req: IncomingMessage, res: ServerResponse) => {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        if (!sessionId || !transports[sessionId]) {
+          res.writeHead(400);
+          res.end('Invalid or missing session ID');
+          return;
+        }
+        await transports[sessionId].handleRequest(req, res);
+      });
+
+      app.delete('/mcp', async (req: IncomingMessage, res: ServerResponse) => {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        if (!sessionId || !transports[sessionId]) {
+          res.writeHead(400);
+          res.end('Invalid or missing session ID');
+          return;
+        }
+        await transports[sessionId].handleRequest(req, res);
+      });
+
+      app.listen(port, () => {
+        console.error(`[context-vault] Serving on http://localhost:${port}/mcp`);
+      });
+    } else {
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+    }
 
     setTimeout(() => {
       import('node:child_process')
