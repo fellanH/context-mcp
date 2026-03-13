@@ -332,6 +332,7 @@ async function main(): Promise<void> {
       console.error('');
       console.error(err.message);
       console.error('');
+      console.error(`  Platform:        ${process.platform}/${process.arch}`);
       console.error(`  Node.js path:    ${process.execPath}`);
       console.error(`  Node.js version: ${process.version}`);
       console.error(`  Error log:       ${join(dataDir, 'error.log')}`);

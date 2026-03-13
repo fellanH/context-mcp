@@ -60,15 +60,46 @@ export class NativeModuleError extends Error {
   }
 }
 
+function platformFixCommands(): string[] {
+  const p = process.platform;
+  if (p === 'darwin') {
+    return [
+      '  Fix options:',
+      '    brew reinstall node && npm rebuild sqlite-vec',
+      '    nvm install 22 && npm rebuild sqlite-vec',
+      '    npx -y context-vault@latest setup',
+    ];
+  }
+  if (p === 'win32') {
+    return [
+      '  Fix options:',
+      '    Verify architecture matches: node -p process.arch  (expect x64)',
+      '    winget install OpenJS.NodeJS.LTS && npm rebuild sqlite-vec',
+      '    npx -y context-vault@latest setup',
+    ];
+  }
+  // linux and others
+  return [
+    '  Fix options:',
+    '    nvm install 22 && npm rebuild sqlite-vec',
+    '    npx -y context-vault@latest setup',
+  ];
+}
+
 function formatNativeModuleError(err: Error): string {
   const msg = err.message || '';
   return [
     `sqlite-vec extension failed to load: ${msg}`,
     '',
-    `  Running Node.js: ${process.version} (${process.execPath})`,
+    `  Platform:    ${process.platform}/${process.arch}`,
+    `  Node.js:     ${process.version} (${process.execPath})`,
     '',
-    '  Fix: Reinstall context-vault:',
-    '    npx -y context-vault@latest setup',
+    '  This means the native binary was compiled for a different',
+    '  Node.js version or CPU architecture than the one running.',
+    '',
+    ...platformFixCommands(),
+    '',
+    '  Known issues: https://github.com/fellanH/context-vault/issues?q=sqlite-vec',
   ].join('\n');
 }
 

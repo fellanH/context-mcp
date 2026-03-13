@@ -3,13 +3,30 @@
 // Node.js version guard — must run before any ESM imports
 const nodeVersion = parseInt(process.versions.node.split('.')[0], 10);
 if (nodeVersion < 22) {
+  const p = process.platform;
+  let upgradeHint;
+  if (p === 'darwin') {
+    upgradeHint =
+      `  Upgrade options:\n` +
+      `    brew install node     # Homebrew (recommended)\n` +
+      `    nvm install 22        # if using nvm\n` +
+      `    fnm install 22        # if using fnm\n`;
+  } else if (p === 'win32') {
+    upgradeHint =
+      `  Upgrade options:\n` +
+      `    winget install OpenJS.NodeJS.LTS   # Windows Package Manager\n` +
+      `    nvm install 22                     # if using nvm-windows\n` +
+      `    https://nodejs.org/                # manual download\n`;
+  } else {
+    upgradeHint =
+      `  Upgrade options:\n` +
+      `    nvm install 22        # recommended\n` +
+      `    fnm install 22        # if using fnm\n` +
+      `    # or via NodeSource:  https://github.com/nodesource/distributions\n`;
+  }
   process.stderr.write(
     `\ncontext-vault requires Node.js >= 22 (you have ${process.versions.node}).\n\n` +
-      `  Upgrade options:\n` +
-      `    nvm install 22        # if using nvm\n` +
-      `    fnm install 22        # if using fnm\n` +
-      `    volta install node@22 # if using volta\n` +
-      `    https://nodejs.org/   # manual download\n\n`
+      upgradeHint + `\n`
   );
   process.exit(1);
 }
@@ -55,6 +72,42 @@ function isInstalledPackage() {
 /** Detect if running via npx (ephemeral cache — paths won't survive cache eviction) */
 function isNpx() {
   return ROOT.includes('/_npx/') || ROOT.includes('\\_npx\\');
+}
+
+/** Detect user experience level based on dev environment signals */
+function detectUserExperience() {
+  if (isNonInteractive) return 'developer';
+  try {
+    let signals = 0;
+    // Check for version manager dirs
+    const vmDirs = ['.nvm', '.fnm', '.volta'].map((d) => join(HOME, d));
+    if (vmDirs.some((d) => existsSync(d))) signals++;
+    // Check for 3+ global npm packages
+    try {
+      const out = execSync('npm ls -g --depth=0 --json 2>/dev/null', {
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      const deps = JSON.parse(out).dependencies || {};
+      if (Object.keys(deps).length >= 3) signals++;
+    } catch {}
+    // Check for git config
+    try {
+      execSync('git config user.email', { encoding: 'utf-8', timeout: 3000, stdio: 'pipe' });
+      signals++;
+    } catch {}
+    return signals >= 2 ? 'developer' : 'beginner';
+  } catch {
+    return 'developer';
+  }
+}
+
+/** Print a verbose hint — only shown to beginners */
+function verbose(userLevel, msg) {
+  if (userLevel === 'beginner') {
+    console.log(dim(`  ${msg}`));
+  }
 }
 
 const MARKER_FILE = '.context-vault';
@@ -348,6 +401,7 @@ ${bold('Commands:')}
 
 async function runSetup() {
   const setupStart = Date.now();
+  const userLevel = detectUserExperience();
 
   // Banner
   console.log();
@@ -518,12 +572,21 @@ async function runSetup() {
 
   // Detect tools
   console.log(dim(`  [1/6]`) + bold(' Detecting tools...\n'));
+  verbose(userLevel, 'Scanning for AI tools on this machine.');
+  if (userLevel === 'beginner') console.log();
   const { detected, results: detectionResults } = await detectAllTools();
   printDetectionResults(detectionResults);
   console.log();
 
   if (detected.length === 0) {
     console.log(yellow('  No supported tools detected.\n'));
+    if (userLevel === 'beginner') {
+      console.log('  Install an AI tool first:');
+      console.log(dim('    Claude Code:  https://docs.anthropic.com/en/docs/claude-code'));
+      console.log(dim('    Cursor:       https://cursor.com'));
+      console.log(dim('    Windsurf:     https://codeium.com/windsurf'));
+      console.log();
+    }
     console.log("  To manually configure, add to your tool's MCP config:\n");
     if (isInstalledPackage() || isNpx()) {
       console.log(`  ${dim('{')}
@@ -581,6 +644,8 @@ async function runSetup() {
 
   // Vault directory (content files)
   console.log(dim(`  [2/6]`) + bold(' Configuring vault...\n'));
+  verbose(userLevel, 'Your vault is a folder of plain markdown files — you own it.');
+  if (userLevel === 'beginner') console.log();
 
   // Scan for existing vaults via marker file
   let defaultVaultDir = getFlag('--vault-dir') || join(HOME, '.vault');
@@ -722,6 +787,7 @@ async function runSetup() {
 
   // Telemetry opt-in
   console.log(`\n  ${dim('[3/6]')}${bold(' Anonymous error reporting\n')}`);
+  verbose(userLevel, 'Entirely optional — works identically either way.\n');
   console.log(dim('  When enabled, unhandled errors send a minimal event (type, tool name,'));
   console.log(dim('  version, platform) to help diagnose issues. No vault content,'));
   console.log(dim('  file paths, or personal data is ever sent. Off by default.'));
@@ -754,6 +820,7 @@ async function runSetup() {
     console.log(dim('  To enable later: context-vault setup (without --skip-embeddings)'));
   } else {
     console.log(`\n  ${dim('[4/6]')}${bold(' Downloading embedding model...')}`);
+    verbose(userLevel, 'Enables meaning-based search. ~22MB download, runs fully offline.');
     console.log(dim('  all-MiniLM-L6-v2 (~22MB, one-time download)'));
     console.log(dim(`  Slow connection? Re-run with --skip-embeddings (enables FTS-only mode)\n`));
     {
@@ -816,6 +883,11 @@ async function runSetup() {
         }
         console.log(dim(`    Retry: ${isNpx() ? 'npx context-vault' : 'context-vault'} setup`));
         console.log(dim(`    Semantic search disabled — full-text search still works.`));
+        if (userLevel === 'beginner') {
+          console.log();
+          console.log(dim(`    Don't worry — your vault works fine without this.`));
+          console.log(dim(`    Keyword search is active. Meaning-based search can be added later.`));
+        }
       }
     }
   }
@@ -831,6 +903,7 @@ async function runSetup() {
 
   // Configure each tool — pass vault dir as arg if non-default
   console.log(`\n  ${dim('[5/6]')}${bold(' Configuring tools...\n')}`);
+  verbose(userLevel, 'Writing config so your AI tool can find your vault.\n');
   const results = [];
   const defaultVDir = join(HOME, 'vault');
   const customVaultDir = resolvedVaultDir !== resolve(defaultVDir) ? resolvedVaultDir : null;
@@ -961,6 +1034,7 @@ async function runSetup() {
 
   // Health check
   console.log(`\n  ${dim('[6/6]')}${bold(' Health check...')}\n`);
+  verbose(userLevel, 'Verifying vault, config, and database are accessible.\n');
   const okResults = results.filter((r) => r.ok);
 
   // Verify DB is accessible
@@ -993,29 +1067,66 @@ async function runSetup() {
     }
   }
 
+  // Smoke test — write and read a test file to verify vault I/O
+  {
+    const testFile = join(resolvedVaultDir, '.smoke-test-' + Date.now() + '.md');
+    try {
+      writeFileSync(testFile, '# Smoke test\n');
+      const content = readFileSync(testFile, 'utf-8');
+      unlinkSync(testFile);
+      if (content.includes('Smoke test')) {
+        console.log(`  ${green('✓')} Smoke test: vault read/write verified`);
+      } else {
+        console.log(`  ${red('✗')} Smoke test: file written but content mismatch`);
+      }
+    } catch (e) {
+      try { unlinkSync(testFile); } catch {}
+      console.log(`  ${red('✗')} Smoke test failed: ${e.message}`);
+      console.log(`    ${dim('Check permissions on ' + resolvedVaultDir)}`);
+    }
+  }
+
   // Completion box
   const elapsed = ((Date.now() - setupStart) / 1000).toFixed(1);
   const toolName = okResults.length ? okResults[0].tool.name : 'your AI tool';
-  const boxLines = [
-    `  ✓ Setup complete — ${passed}/${checks.length} checks passed (${elapsed}s)`,
-    ``,
-    `  ${bold('Next:')} restart ${toolName} to activate the vault`,
-    ``,
-    `  ${bold('AI Tools')} — once active, try:`,
-    `  "Search my vault for getting started"`,
-    `  "Save an insight about [topic]"`,
-    `  "Show my vault status"`,
-    ``,
-    `  ${bold('CLI Commands:')}`,
-    `  ${isNpx() ? 'npx context-vault' : 'context-vault'} status    Show vault health`,
-    `  ${isNpx() ? 'npx context-vault' : 'context-vault'} update    Check for updates`,
-    ...(isNpx()
-      ? [
-          ``,
-          `  ${dim('Tip: npm i -g context-vault for faster MCP startup')}`,
-        ]
-      : []),
-  ];
+  const cli = isNpx() ? 'npx context-vault' : 'context-vault';
+
+  let boxLines;
+  if (userLevel === 'beginner') {
+    boxLines = [
+      `  ✓ Setup complete — ${passed}/${checks.length} checks passed (${elapsed}s)`,
+      ``,
+      `  ${bold('What to do next:')}`,
+      ``,
+      `  1. Restart ${toolName}`,
+      `     ${dim('(required for it to see the vault)')}`,
+      ``,
+      `  2. Ask your AI: ${cyan('"Search my vault for getting started"')}`,
+      `     ${dim('This confirms everything is working.')}`,
+      ``,
+      `  3. Try: ${cyan('"Save an insight about [any topic]"')}`,
+      `     ${dim('Your first vault entry!')}`,
+      ``,
+      `  ${dim(`Your vault: ${resolvedVaultDir}`)}`,
+      `  ${dim('These are plain markdown files — open them in any text editor.')}`,
+    ];
+  } else {
+    boxLines = [
+      `  ✓ Setup complete — ${passed}/${checks.length} checks passed (${elapsed}s)`,
+      ``,
+      `  ${bold('Next:')} restart ${toolName} to activate the vault`,
+      ``,
+      `  ${bold('Try:')}`,
+      `  "Search my vault for getting started"`,
+      `  "Save an insight about [topic]"`,
+      `  "Show my vault status"`,
+      ``,
+      `  ${bold('CLI:')} ${cli} status · ${cli} doctor`,
+      ...(isNpx()
+        ? [``, `  ${dim('Tip: npm i -g context-vault for faster MCP startup')}`]
+        : []),
+    ];
+  }
   const innerWidth = Math.max(...boxLines.map((l) => l.length)) + 2;
   const pad = (s) => s + ' '.repeat(Math.max(0, innerWidth - s.length));
   console.log();

@@ -2,6 +2,27 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.3.0] — 2026-03-13
+
+### Added
+
+- **Experience-level detection**: Setup auto-detects developer vs beginner users (checks for nvm/fnm/volta, global npm packages, git config) and adapts messaging accordingly
+- **Beginner setup explanations**: One-line contextual hints after each of the 6 setup steps for non-technical users
+- **Post-setup smoke test**: Validates vault read/write after health check — catches permission issues early
+- **Tiered completion message**: Beginners get a numbered tutorial; developers get the existing terse output
+- **OS-specific Node.js upgrade guidance**: macOS → brew/nvm, Windows → winget/nvm-windows, Linux → nvm/nodesource
+- **OS-specific sqlite-vec error messages**: Platform/arch diagnostics, plain-English explanation of native binary mismatch, platform-specific fix commands, and link to known issues
+
+### Fixed
+
+- **README**: Node.js requirement corrected from 20+ to 22+
+- **README**: Removed `better-sqlite3` from rebuild command (not used — code uses `node:sqlite`)
+
+### Changed
+
+- Platform prerequisites table added to README for macOS, Windows, and Linux
+- `NativeModuleError` now includes `Platform: <os>/<arch>` in both the error format and server error box
+
 ## [3.2.3] — 2026-03-10
 
 ### Fixed

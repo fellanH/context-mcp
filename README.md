@@ -115,14 +115,22 @@ Config: `~/.context-mcp/config.json`. Env vars: `CONTEXT_VAULT_VAULT_DIR`, `CONT
 
 ## Requirements
 
-Node.js 20+. No daemon — your AI client spawns the server when a session starts.
+Node.js 22+. No daemon — your AI client spawns the server when a session starts.
+
+### Prerequisites by Platform
+
+| Platform | Install Node.js 22+ |
+| -------- | ------------------- |
+| **macOS** | `brew install node` or [nvm](https://github.com/nvm-sh/nvm): `nvm install 22` |
+| **Windows** | `winget install OpenJS.NodeJS.LTS` or [nvm-windows](https://github.com/coreybutler/nvm-windows) |
+| **Linux** | [nvm](https://github.com/nvm-sh/nvm): `nvm install 22` or [NodeSource](https://github.com/nodesource/distributions) |
 
 ## Troubleshooting
 
 **Install fails (native modules):**
 
 ```bash
-npm rebuild better-sqlite3 sqlite-vec
+npm rebuild sqlite-vec
 ```
 
 **Vault not found:**
