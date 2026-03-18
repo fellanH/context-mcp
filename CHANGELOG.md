@@ -2,6 +2,17 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.4.3] — 2026-03-18
+
+### Added
+
+- **Auto-update for daemon mode**: The HTTP daemon checks npm for newer versions on startup and once daily. When an update is found, it installs the new version and gracefully restarts. No manual intervention needed.
+- **Version-aware health endpoint**: `GET /health` now returns `latestVersion` and `updateAvailable` fields so clients can detect staleness.
+
+### Changed
+
+- Version check uses non-blocking `spawn` instead of `execSync` to avoid event loop stalls during embedding model initialization and auto-reindex.
+
 ## [3.4.2] — 2026-03-18
 
 ### Added

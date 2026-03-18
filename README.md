@@ -20,7 +20,7 @@ npx context-vault
 
 Setup detects your AI tools (Claude Code, Cursor, Codex, Windsurf, etc.), configures MCP, downloads the embedding model (~22MB), and seeds a starter entry. Takes about 2 minutes.
 
-> **For faster MCP startup:** `npm i -g context-vault` installs globally so the MCP server starts instantly without npx overhead.
+The server auto-configures as a shared daemon, so all your AI sessions share one process. Updates are applied automatically.
 
 Then **restart your AI tool** (required to pick up the new MCP server) and try:
 
@@ -115,7 +115,7 @@ Config: `~/.context-mcp/config.json`. Env vars: `CONTEXT_VAULT_VAULT_DIR`, `CONT
 
 ## Requirements
 
-Node.js 22+. No daemon — your AI client spawns the server when a session starts.
+Node.js 22+. First run spawns a shared daemon that auto-updates from npm.
 
 ### Prerequisites by Platform
 

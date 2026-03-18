@@ -176,6 +176,92 @@ ${progArgs.map(a => `    <string>${a}</string>`).join('\n')}
   }
 }
 
+/**
+ * Auto-update: check npm for a newer version. In daemon (HTTP) mode,
+ * install the update and gracefully restart. In stdio mode, just log.
+ */
+async function autoUpdate(isDaemon: boolean): Promise<string | null> {
+  const { execSync, spawn: spawnProc } = await import('node:child_process');
+  // Use a non-blocking npm check to avoid event loop stalls during reindex
+  const latest = await new Promise<string>((resolve, reject) => {
+    const child = spawnProc('npm', ['view', 'context-vault', 'version'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 10000,
+    });
+    let out = '';
+    child.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
+    child.on('close', (code: number | null) => {
+      if (code === 0 && out.trim()) resolve(out.trim());
+      else reject(new Error(`npm view failed (code ${code})`));
+    });
+    child.on('error', reject);
+  }).catch(() => null as string | null) as string;
+
+  if (!latest) return null; // offline or registry unreachable
+  if (latest === pkg.version) return latest;
+
+  console.error(`[context-vault] Update available: v${pkg.version} -> v${latest}`);
+
+  if (!isDaemon) {
+    console.error('[context-vault] Run: context-vault update');
+    return latest;
+  }
+
+  // Daemon mode: auto-install and restart
+  console.error(`[context-vault] Auto-updating to v${latest}...`);
+  try {
+    execSync('npm install -g context-vault@latest', {
+      encoding: 'utf-8',
+      timeout: 120000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    console.error(`[context-vault] Installed v${latest}. Restarting daemon...`);
+
+    // Find our own server.js path in the updated install
+    const newBin = execSync('which context-vault', {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+
+    // Resolve the actual package root from the binary
+    const { readlinkSync } = await import('node:fs');
+    const { resolve: resolvePath } = await import('node:path');
+    let binTarget = newBin;
+    try { binTarget = readlinkSync(newBin); } catch {}
+    const newPkgRoot = resolvePath(dirname(binTarget), '..');
+    const newServerJs = join(newPkgRoot, 'dist', 'server.js');
+
+    // Spawn the new version as a replacement daemon
+    const portIdx = process.argv.indexOf('--port');
+    const port = portIdx !== -1 ? process.argv[portIdx + 1] : '3377';
+    const args = [newServerJs, '--http', '--port', port];
+
+    // Pass through vault-dir if specified
+    const vaultIdx = process.argv.indexOf('--vault-dir');
+    if (vaultIdx !== -1 && process.argv[vaultIdx + 1]) {
+      args.push('--vault-dir', process.argv[vaultIdx + 1]);
+    }
+
+    const { spawn } = await import('node:child_process');
+    const child = spawn(process.execPath, args, {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, NODE_OPTIONS: '--no-warnings=ExperimentalWarning', CONTEXT_VAULT_NO_DAEMON: '1' },
+    });
+    child.unref();
+
+    // Give the new process a moment to bind the port, then exit
+    await new Promise(r => setTimeout(r, 2000));
+    console.error(`[context-vault] New daemon spawned (PID ${child.pid}). Old daemon exiting.`);
+    process.exit(0);
+  } catch (e) {
+    console.error(`[context-vault] Auto-update failed: ${(e as Error).message}`);
+    console.error('[context-vault] Run manually: context-vault update');
+  }
+  return latest;
+}
+
 async function main(): Promise<void> {
   let phase = 'CONFIG';
   let db: import('node:sqlite').DatabaseSync | undefined;
@@ -337,6 +423,7 @@ async function main(): Promise<void> {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
 
     phase = 'CONNECTED';
+    let latestKnownVersion: string | null = null;
 
     const useHttp = process.argv.includes('--http');
 
@@ -354,6 +441,8 @@ async function main(): Promise<void> {
         res.end(JSON.stringify({
           ok: true,
           version: pkg.version,
+          latestVersion: latestKnownVersion,
+          updateAvailable: latestKnownVersion ? latestKnownVersion !== pkg.version : null,
           pid: process.pid,
           uptime: process.uptime(),
           sessions: Object.keys(transports).length,
@@ -486,24 +575,18 @@ async function main(): Promise<void> {
       }
     }
 
-    setTimeout(() => {
-      import('node:child_process')
-        .then(({ execSync }) => {
-          try {
-            const latest = execSync('npm view context-vault version', {
-              encoding: 'utf-8',
-              timeout: 5000,
-              stdio: ['pipe', 'pipe', 'pipe'],
-            }).trim();
-            if (latest && latest !== pkg.version) {
-              console.error(
-                `[context-vault] Update available: v${pkg.version} → v${latest}. Run: context-vault update`
-              );
-            }
-          } catch {}
-        })
-        .catch(() => {});
-    }, 3000);
+    // Auto-update check (and apply for daemon mode)
+    const updateCheck = async () => {
+      const result = await autoUpdate(useHttp);
+      if (result) latestKnownVersion = result;
+    };
+    setTimeout(() => updateCheck().catch((e) => {
+      console.error(`[context-vault] Update check failed: ${(e as Error).message}`);
+    }), 5000);
+    // Re-check daily for long-running daemons
+    if (useHttp) {
+      setInterval(() => updateCheck().catch(() => {}), 24 * 60 * 60 * 1000);
+    }
   } catch (rawErr) {
     const err = rawErr as Error;
     const dataDir = config?.dataDir || join(homedir(), '.context-mcp');
