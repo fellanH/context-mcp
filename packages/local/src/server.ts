@@ -164,6 +164,7 @@ async function main(): Promise<void> {
 
     function shutdown(signal: string): void {
       console.error(`[context-vault] Received ${signal}, shutting down...`);
+      try { unlinkSync(join(homedir(), '.context-mcp', 'daemon.pid')); } catch {}
 
       if (ctx.activeOps.count > 0) {
         console.error(
@@ -201,6 +202,17 @@ async function main(): Promise<void> {
 
       const app = createMcpExpressApp();
       const transports: Record<string, StreamableHTTPServerTransport> = {};
+
+      app.get('/health', (_req: IncomingMessage, res: ServerResponse) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          version: pkg.version,
+          pid: process.pid,
+          uptime: process.uptime(),
+          sessions: Object.keys(transports).length,
+        }));
+      });
 
       app.post('/mcp', async (req: IncomingMessage & { body?: unknown }, res: ServerResponse) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
@@ -270,6 +282,9 @@ async function main(): Promise<void> {
 
       app.listen(port, () => {
         console.error(`[context-vault] Serving on http://localhost:${port}/mcp`);
+        const pidDir = join(homedir(), '.context-mcp');
+        mkdirSync(pidDir, { recursive: true });
+        writeFileSync(join(pidDir, 'daemon.pid'), JSON.stringify({ pid: process.pid, port }));
       });
     } else {
       const transport = new StdioServerTransport();

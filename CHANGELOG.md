@@ -2,6 +2,21 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.4.0] — 2026-03-18
+
+### Added
+
+- **Shared HTTP daemon mode**: `context-vault daemon start` runs a single shared MCP server process that all Claude Code sessions connect to over HTTP, replacing per-session stdio processes. Reduces memory from ~6x80MB to 1x80MB on multi-session setups.
+- **Daemon lifecycle commands**: `daemon start`, `daemon stop`, `daemon status`, `daemon install`, `daemon uninstall`
+- **`daemon install`**: Starts the daemon and reconfigures Claude Code to use HTTP transport in one step
+- **`daemon uninstall`**: Stops the daemon and reverts Claude Code to stdio mode
+- **`/health` endpoint**: HTTP daemon exposes `GET /health` returning version, PID, uptime, and active session count
+- **PID file management**: Daemon writes `~/.context-mcp/daemon.pid` for lifecycle tracking, cleaned up on shutdown
+
+### Fixed
+
+- **Redundant reindex in HTTP mode**: Reindex state hoisted to module scope so connecting sessions 2-N skip the reindex entirely instead of each re-running it
+
 ## [3.3.0] — 2026-03-13
 
 ### Added

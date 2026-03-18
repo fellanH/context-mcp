@@ -44,7 +44,7 @@ import {
 } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { homedir, platform } from 'node:os';
-import { execSync, execFile, execFileSync } from 'node:child_process';
+import { execSync, execFile, execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { APP_URL, API_URL, MARKETING_URL } from '@context-vault/core/constants';
 
@@ -357,6 +357,7 @@ ${bold('Commands:')}
   ${cyan('status')}                     Show vault diagnostics
   ${cyan('doctor')}                     Diagnose and repair common issues
   ${cyan('debug')}                      Generate AI-pasteable debug report
+  ${cyan('daemon')} start|stop|status    Run vault as a shared HTTP daemon (one process, all sessions)
   ${cyan('restart')}                    Stop running MCP server processes (client auto-restarts)
   ${cyan('search')}                     Search vault entries from CLI
   ${cyan('save')}                       Save an entry to the vault from CLI
@@ -5289,6 +5290,244 @@ async function runDebug() {
   console.log(lines.join('\n'));
 }
 
+async function runDaemon() {
+  const sub = args[1];
+  const pidPath = join(HOME, '.context-mcp', 'daemon.pid');
+  const defaultPort = 3377;
+
+  function readPid() {
+    try {
+      return JSON.parse(readFileSync(pidPath, 'utf-8'));
+    } catch {
+      return null;
+    }
+  }
+
+  function isAlive(pid) {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function pollHealth(port, timeoutMs = 5000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const res = await fetch(`http://localhost:${port}/health`);
+        if (res.ok) return await res.json();
+      } catch {}
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return null;
+  }
+
+  function configureClaudeDaemon(port) {
+    const env = { ...process.env };
+    delete env.CLAUDECODE;
+
+    for (const oldName of ['context-mcp', 'context-vault']) {
+      try {
+        execFileSync('claude', ['mcp', 'remove', oldName, '-s', 'user'], {
+          stdio: 'pipe',
+          env,
+        });
+      } catch {}
+    }
+
+    try {
+      execFileSync(
+        'claude',
+        [
+          'mcp', 'add', '-s', 'user',
+          '--transport', 'http',
+          'context-vault',
+          `http://localhost:${port}/mcp`,
+        ],
+        { stdio: 'pipe', env }
+      );
+    } catch (e) {
+      const stderr = e.stderr?.toString().trim();
+      throw new Error(stderr || e.message);
+    }
+  }
+
+  if (!sub || sub === '--help') {
+    console.log(`
+  ${bold('◇ context-vault daemon')} ${dim('— shared HTTP daemon')}
+
+${bold('Subcommands:')}
+  ${cyan('start')} [--port PORT]    Start the daemon (default port: ${defaultPort})
+  ${cyan('stop')}                   Stop the running daemon
+  ${cyan('status')}                 Show daemon status
+  ${cyan('install')}                Start daemon + configure Claude Code to use it
+  ${cyan('uninstall')}              Stop daemon + revert Claude Code to stdio mode
+`);
+    return;
+  }
+
+  if (sub === 'start') {
+    const port = parseInt(getFlag('--port') || String(defaultPort), 10);
+    const existing = readPid();
+
+    if (existing && isAlive(existing.pid)) {
+      console.log(`  ${green('✓')} Daemon already running (PID ${existing.pid} on port ${existing.port})`);
+      return;
+    }
+
+    if (existing) {
+      try { unlinkSync(pidPath); } catch {}
+    }
+
+    console.log(`  Starting daemon on port ${port}...`);
+
+    const vaultDir = getFlag('--vault-dir');
+    const serverArgs = [SERVER_PATH, '--http', '--port', String(port)];
+    if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
+
+    const child = spawn(process.execPath, serverArgs, {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, NODE_OPTIONS: '--no-warnings=ExperimentalWarning' },
+    });
+    child.unref();
+
+    const health = await pollHealth(port);
+    if (health) {
+      console.log(`  ${green('✓')} Daemon started on http://localhost:${port}/mcp (PID ${health.pid})`);
+    } else {
+      console.error(red(`  Failed to start daemon. Check error log: ~/.context-mcp/error.log`));
+      process.exit(1);
+    }
+
+  } else if (sub === 'stop') {
+    const existing = readPid();
+    if (!existing) {
+      console.log(dim('  No daemon running.'));
+      return;
+    }
+
+    if (!isAlive(existing.pid)) {
+      console.log(dim('  Stale PID file (process not running). Cleaning up.'));
+      try { unlinkSync(pidPath); } catch {}
+      return;
+    }
+
+    console.log(`  Stopping daemon (PID ${existing.pid})...`);
+    process.kill(existing.pid, 'SIGTERM');
+
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && isAlive(existing.pid)) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    if (isAlive(existing.pid)) {
+      console.log(`  ${yellow('!')} Still alive, sending SIGKILL...`);
+      try { process.kill(existing.pid, 'SIGKILL'); } catch {}
+    }
+
+    try { unlinkSync(pidPath); } catch {}
+    console.log(`  ${green('✓')} Daemon stopped.`);
+
+  } else if (sub === 'status') {
+    const existing = readPid();
+    if (!existing) {
+      console.log(dim('  Not running.'));
+      return;
+    }
+
+    if (!isAlive(existing.pid)) {
+      console.log(`  ${yellow('!')} Stale PID file (PID ${existing.pid} not found).`);
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:${existing.port}/health`);
+      const health = await res.json();
+      const uptimeMin = Math.floor(health.uptime / 60);
+      console.log(
+        `  ${green('●')} Running (PID ${health.pid}, port ${existing.port}, v${health.version}, ` +
+        `${health.sessions} session${health.sessions === 1 ? '' : 's'}, uptime ${uptimeMin}m)`
+      );
+    } catch (e) {
+      console.log(`  ${yellow('!')} Process alive (PID ${existing.pid}) but health check failed: ${e.message}`);
+    }
+
+  } else if (sub === 'install') {
+    const port = parseInt(getFlag('--port') || String(defaultPort), 10);
+    const existing = readPid();
+
+    if (!existing || !isAlive(existing.pid)) {
+      if (existing) try { unlinkSync(pidPath); } catch {}
+
+      console.log(`  Starting daemon on port ${port}...`);
+      const vaultDir = getFlag('--vault-dir');
+      const serverArgs = [SERVER_PATH, '--http', '--port', String(port)];
+      if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
+
+      const child = spawn(process.execPath, serverArgs, {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, NODE_OPTIONS: '--no-warnings=ExperimentalWarning' },
+      });
+      child.unref();
+
+      const health = await pollHealth(port);
+      if (!health) {
+        console.error(red(`  Failed to start daemon.`));
+        process.exit(1);
+      }
+      console.log(`  ${green('✓')} Daemon started (PID ${health.pid})`);
+    } else {
+      console.log(`  ${green('✓')} Daemon already running (PID ${existing.pid})`);
+    }
+
+    console.log(`  Configuring Claude Code to use HTTP transport...`);
+    try {
+      configureClaudeDaemon(port);
+      console.log(`  ${green('✓')} Claude Code configured for http://localhost:${port}/mcp`);
+      console.log();
+      console.log(dim('  Restart any open Claude Code sessions for the change to take effect.'));
+    } catch (e) {
+      console.error(red(`  Failed to configure Claude Code: ${e.message}`));
+      process.exit(1);
+    }
+
+  } else if (sub === 'uninstall') {
+    console.log(`  Reverting Claude Code to stdio mode...`);
+    try {
+      const vaultDir = getFlag('--vault-dir') || join(HOME, '.vault');
+      const tool = { name: 'Claude Code', configPath: null };
+      await configureClaude(tool, vaultDir);
+      console.log(`  ${green('✓')} Claude Code reverted to stdio`);
+    } catch (e) {
+      console.error(red(`  Failed to reconfigure Claude Code: ${e.message}`));
+    }
+
+    const existing = readPid();
+    if (existing && isAlive(existing.pid)) {
+      console.log(`  Stopping daemon (PID ${existing.pid})...`);
+      process.kill(existing.pid, 'SIGTERM');
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline && isAlive(existing.pid)) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (isAlive(existing.pid)) {
+        try { process.kill(existing.pid, 'SIGKILL'); } catch {}
+      }
+      try { unlinkSync(pidPath); } catch {}
+      console.log(`  ${green('✓')} Daemon stopped.`);
+    }
+
+  } else {
+    console.error(red(`  Unknown daemon subcommand: ${sub}`));
+    console.error(`  Run ${cyan('context-vault daemon --help')} for usage.`);
+    process.exit(1);
+  }
+}
+
 async function runServe() {
   await import('../dist/server.js');
 }
@@ -5323,6 +5562,9 @@ async function main() {
       break;
     case 'switch':
       await runSwitch();
+      break;
+    case 'daemon':
+      await runDaemon();
       break;
     case 'serve':
       await runServe();

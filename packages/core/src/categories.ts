@@ -7,6 +7,7 @@ const KIND_CATEGORY: Record<string, string> = {
   document: 'knowledge',
   reference: 'knowledge',
   contact: 'entity',
+  org: 'entity',
   project: 'entity',
   tool: 'entity',
   source: 'entity',

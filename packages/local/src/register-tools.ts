@@ -38,6 +38,15 @@ const toolModules = [
 
 const TOOL_TIMEOUT_MS = 120_000;
 
+// Reindex state hoisted to module scope so that in HTTP daemon mode
+// (where registerTools is called once per session), the reindex only
+// runs once for the entire process rather than once per connecting session.
+let reindexDone = false;
+let reindexPromise: Promise<void> | null = null;
+let reindexAttempts = 0;
+let reindexFailed = false;
+const MAX_REINDEX_ATTEMPTS = 2;
+
 export function registerTools(server: any, ctx: LocalCtx): void {
   function tracked(
     handler: (...args: any[]) => Promise<ToolResult>,
@@ -116,12 +125,6 @@ export function registerTools(server: any, ctx: LocalCtx): void {
       }
     };
   }
-
-  let reindexDone = false;
-  let reindexPromise: Promise<void> | null = null;
-  let reindexAttempts = 0;
-  let reindexFailed = false;
-  const MAX_REINDEX_ATTEMPTS = 2;
 
   async function ensureIndexed({ blocking = true }: { blocking?: boolean } = {}): Promise<void> {
     if (reindexDone) return;
