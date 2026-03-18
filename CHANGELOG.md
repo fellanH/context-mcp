@@ -2,6 +2,19 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.4.1] — 2026-03-18
+
+### Added
+
+- **Auto-daemonize from stdio**: When a stdio session starts and no daemon is running, it automatically spawns one and reconfigures Claude Code for HTTP. No manual setup needed.
+- **macOS LaunchAgent**: `daemon install` writes `~/Library/LaunchAgents/com.context-vault.daemon.plist` with `KeepAlive` and `RunAtLoad`. Daemon auto-starts on login and restarts on crash.
+- **Opt-out**: Set `CONTEXT_VAULT_NO_DAEMON=1` to disable auto-daemonize behavior.
+
+### Changed
+
+- `daemon install` now uses launchd on macOS instead of a bare `spawn`, providing crash recovery and boot persistence
+- `daemon uninstall` removes the LaunchAgent and stops the daemon cleanly
+
 ## [3.4.0] — 2026-03-18
 
 ### Added

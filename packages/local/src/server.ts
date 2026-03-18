@@ -30,6 +30,66 @@ import {
 import { registerTools } from './register-tools.js';
 import { pruneExpired } from '@context-vault/core/index';
 
+const DAEMON_PORT = 3377;
+const PID_PATH = join(homedir(), '.context-mcp', 'daemon.pid');
+
+async function tryAutoDaemon(): Promise<void> {
+  // Check if daemon is already running
+  if (existsSync(PID_PATH)) {
+    try {
+      const { pid, port } = JSON.parse(readFileSync(PID_PATH, 'utf-8'));
+      process.kill(pid, 0); // throws if dead
+      const res = await fetch(`http://localhost:${port}/health`);
+      if (res.ok) return; // daemon is healthy, nothing to do
+    } catch {
+      // stale PID file or unhealthy, continue to start daemon
+    }
+  }
+
+  const { spawn, execFileSync } = await import('node:child_process');
+
+  // Spawn daemon process
+  const serverPath = join(__dirname, 'server.js');
+  const child = spawn(process.execPath, [serverPath, '--http', '--port', String(DAEMON_PORT)], {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, NODE_OPTIONS: '--no-warnings=ExperimentalWarning' },
+  });
+  child.unref();
+
+  // Wait for daemon to be healthy
+  const deadline = Date.now() + 5000;
+  let healthy = false;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`http://localhost:${DAEMON_PORT}/health`);
+      if (res.ok) { healthy = true; break; }
+    } catch {}
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  if (!healthy) {
+    console.error('[context-vault] Auto-daemon failed to start, continuing in stdio mode');
+    return;
+  }
+
+  // Reconfigure Claude Code to use HTTP transport
+  const env = { ...process.env };
+  delete (env as Record<string, string | undefined>).CLAUDECODE;
+  try {
+    execFileSync('claude', ['mcp', 'remove', 'context-vault', '-s', 'user'], { stdio: 'pipe', env });
+  } catch {}
+  try {
+    execFileSync('claude', [
+      'mcp', 'add', '-s', 'user', '--transport', 'http',
+      'context-vault', `http://localhost:${DAEMON_PORT}/mcp`,
+    ], { stdio: 'pipe', env });
+    console.error(`[context-vault] Daemon started on port ${DAEMON_PORT}. New sessions will use shared HTTP mode.`);
+  } catch {
+    console.error('[context-vault] Daemon started but could not reconfigure Claude Code');
+  }
+}
+
 async function main(): Promise<void> {
   let phase = 'CONFIG';
   let db: import('node:sqlite').DatabaseSync | undefined;
@@ -289,6 +349,13 @@ async function main(): Promise<void> {
     } else {
       const transport = new StdioServerTransport();
       await server.connect(transport);
+
+      // Auto-daemonize: if no daemon is running, spawn one in the background
+      // and reconfigure Claude Code to use HTTP. Next session onwards, all
+      // sessions share the single daemon process. This session stays on stdio.
+      if (!process.env.CONTEXT_VAULT_NO_DAEMON) {
+        setTimeout(() => tryAutoDaemon().catch(() => {}), 2000);
+      }
     }
 
     setTimeout(() => {

@@ -5457,33 +5457,100 @@ ${bold('Subcommands:')}
 
   } else if (sub === 'install') {
     const port = parseInt(getFlag('--port') || String(defaultPort), 10);
-    const existing = readPid();
 
-    if (!existing || !isAlive(existing.pid)) {
-      if (existing) try { unlinkSync(pidPath); } catch {}
-
-      console.log(`  Starting daemon on port ${port}...`);
+    // 1. Install LaunchAgent on macOS for auto-start on login
+    if (platform() === 'darwin') {
+      const launchAgentDir = join(HOME, 'Library', 'LaunchAgents');
+      const plistPath = join(launchAgentDir, 'com.context-vault.daemon.plist');
+      const logPath = join(HOME, '.context-mcp', 'daemon.log');
       const vaultDir = getFlag('--vault-dir');
-      const serverArgs = [SERVER_PATH, '--http', '--port', String(port)];
-      if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
+      const progArgs = [process.execPath, SERVER_PATH, '--http', '--port', String(port)];
+      if (vaultDir) progArgs.push('--vault-dir', vaultDir);
 
-      const child = spawn(process.execPath, serverArgs, {
-        detached: true,
-        stdio: 'ignore',
-        env: { ...process.env, NODE_OPTIONS: '--no-warnings=ExperimentalWarning' },
-      });
-      child.unref();
+      const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.context-vault.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+${progArgs.map(a => `    <string>${a}</string>`).join('\n')}
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardErrorPath</key>
+  <string>${logPath}</string>
+  <key>StandardOutPath</key>
+  <string>/dev/null</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_OPTIONS</key>
+    <string>--no-warnings=ExperimentalWarning</string>
+    <key>CONTEXT_VAULT_NO_DAEMON</key>
+    <string>1</string>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+</dict>
+</plist>`;
 
-      const health = await pollHealth(port);
-      if (!health) {
-        console.error(red(`  Failed to start daemon.`));
+      mkdirSync(launchAgentDir, { recursive: true });
+
+      // Unload existing agent if present
+      try { execSync(`launchctl unload "${plistPath}" 2>/dev/null`, { stdio: 'pipe' }); } catch {}
+
+      writeFileSync(plistPath, plist);
+      try {
+        execSync(`launchctl load -w "${plistPath}"`, { stdio: 'pipe' });
+        console.log(`  ${green('✓')} LaunchAgent installed (auto-starts on login, restarts on crash)`);
+      } catch (e) {
+        console.log(`  ${yellow('!')} LaunchAgent write succeeded but launchctl load failed: ${e.message}`);
+      }
+
+      // Wait for launchd to start the daemon
+      const health = await pollHealth(port, 8000);
+      if (health) {
+        console.log(`  ${green('✓')} Daemon running (PID ${health.pid})`);
+      } else {
+        console.error(red(`  Daemon did not start. Check log: ${logPath}`));
         process.exit(1);
       }
-      console.log(`  ${green('✓')} Daemon started (PID ${health.pid})`);
     } else {
-      console.log(`  ${green('✓')} Daemon already running (PID ${existing.pid})`);
+      // Non-macOS: direct spawn (no service manager integration yet)
+      const existing = readPid();
+      if (!existing || !isAlive(existing.pid)) {
+        if (existing) try { unlinkSync(pidPath); } catch {}
+
+        console.log(`  Starting daemon on port ${port}...`);
+        const vaultDir = getFlag('--vault-dir');
+        const serverArgs = [SERVER_PATH, '--http', '--port', String(port)];
+        if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
+
+        const child = spawn(process.execPath, serverArgs, {
+          detached: true,
+          stdio: 'ignore',
+          env: { ...process.env, NODE_OPTIONS: '--no-warnings=ExperimentalWarning' },
+        });
+        child.unref();
+
+        const health = await pollHealth(port);
+        if (!health) {
+          console.error(red(`  Failed to start daemon.`));
+          process.exit(1);
+        }
+        console.log(`  ${green('✓')} Daemon started (PID ${health.pid})`);
+      } else {
+        console.log(`  ${green('✓')} Daemon already running (PID ${existing.pid})`);
+      }
     }
 
+    // 2. Configure Claude Code for HTTP transport
     console.log(`  Configuring Claude Code to use HTTP transport...`);
     try {
       configureClaudeDaemon(port);
@@ -5496,6 +5563,7 @@ ${bold('Subcommands:')}
     }
 
   } else if (sub === 'uninstall') {
+    // 1. Revert Claude Code to stdio
     console.log(`  Reverting Claude Code to stdio mode...`);
     try {
       const vaultDir = getFlag('--vault-dir') || join(HOME, '.vault');
@@ -5506,6 +5574,17 @@ ${bold('Subcommands:')}
       console.error(red(`  Failed to reconfigure Claude Code: ${e.message}`));
     }
 
+    // 2. Remove LaunchAgent on macOS
+    if (platform() === 'darwin') {
+      const plistPath = join(HOME, 'Library', 'LaunchAgents', 'com.context-vault.daemon.plist');
+      if (existsSync(plistPath)) {
+        try { execSync(`launchctl unload "${plistPath}" 2>/dev/null`, { stdio: 'pipe' }); } catch {}
+        try { unlinkSync(plistPath); } catch {}
+        console.log(`  ${green('✓')} LaunchAgent removed`);
+      }
+    }
+
+    // 3. Stop daemon if running
     const existing = readPid();
     if (existing && isAlive(existing.pid)) {
       console.log(`  Stopping daemon (PID ${existing.pid})...`);
