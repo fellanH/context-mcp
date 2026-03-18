@@ -2,6 +2,19 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.4.2] — 2026-03-18
+
+### Added
+
+- **Stale session recovery**: When daemon restarts (crash, update, reboot), clients get HTTP 404 per MCP spec, triggering automatic re-initialization. No manual intervention needed.
+- **Startup self-check**: Daemon validates its own infrastructure on boot: LaunchAgent paths, Claude Code MCP config. Auto-repairs mismatches (e.g., after Node.js update).
+- **Periodic health monitor**: Every 5 minutes, daemon verifies DB access, PID file correctness, and vault directory. Self-repairs PID file if stale.
+
+### Changed
+
+- HTTP handler allows re-initialization with stale session IDs (previously required no session ID)
+- Unknown session IDs return 404 (was 400), matching MCP spec for proper client recovery
+
 ## [3.4.1] — 2026-03-18
 
 ### Added

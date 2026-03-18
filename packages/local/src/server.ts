@@ -90,6 +90,92 @@ async function tryAutoDaemon(): Promise<void> {
   }
 }
 
+async function selfCheck(port: number): Promise<void> {
+  const { execFileSync } = await import('node:child_process');
+  const env = { ...process.env };
+  delete (env as Record<string, string | undefined>).CLAUDECODE;
+
+  // 1. Validate LaunchAgent plist on macOS (correct node/server paths)
+  if (process.platform === 'darwin') {
+    const plistPath = join(homedir(), 'Library', 'LaunchAgents', 'com.context-vault.daemon.plist');
+    if (existsSync(plistPath)) {
+      try {
+        const plist = readFileSync(plistPath, 'utf-8');
+        const currentNode = process.execPath;
+        const currentServer = join(__dirname, 'server.js');
+        if (!plist.includes(currentNode) || !plist.includes(currentServer)) {
+          console.error('[context-vault] Self-heal: LaunchAgent has stale paths, rewriting...');
+          const vaultDirIdx = process.argv.indexOf('--vault-dir');
+          const vaultDir = vaultDirIdx !== -1 ? process.argv[vaultDirIdx + 1] : undefined;
+          const progArgs = [currentNode, currentServer, '--http', '--port', String(port)];
+          if (vaultDir) progArgs.push('--vault-dir', vaultDir);
+          const logPath = join(homedir(), '.context-mcp', 'daemon.log');
+          const newPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.context-vault.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+${progArgs.map(a => `    <string>${a}</string>`).join('\n')}
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardErrorPath</key>
+  <string>${logPath}</string>
+  <key>StandardOutPath</key>
+  <string>/dev/null</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_OPTIONS</key>
+    <string>--no-warnings=ExperimentalWarning</string>
+    <key>CONTEXT_VAULT_NO_DAEMON</key>
+    <string>1</string>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+</dict>
+</plist>`;
+          writeFileSync(plistPath, newPlist);
+          // Reload the agent so launchd picks up new paths
+          try { execFileSync('launchctl', ['unload', plistPath], { stdio: 'pipe' }); } catch {}
+          try { execFileSync('launchctl', ['load', '-w', plistPath], { stdio: 'pipe' }); } catch {}
+          console.error('[context-vault] Self-heal: LaunchAgent updated with current paths');
+        }
+      } catch (e) {
+        console.error(`[context-vault] LaunchAgent check failed: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  // 2. Validate Claude Code MCP config points to this daemon
+  try {
+    const result = execFileSync('claude', ['mcp', 'list'], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env,
+      timeout: 5000,
+    });
+    if (result.includes('context-vault') && !result.includes(`localhost:${port}`)) {
+      console.error('[context-vault] Self-heal: Claude Code not pointing to this daemon, reconfiguring...');
+      try { execFileSync('claude', ['mcp', 'remove', 'context-vault', '-s', 'user'], { stdio: 'pipe', env }); } catch {}
+      execFileSync('claude', [
+        'mcp', 'add', '-s', 'user', '--transport', 'http',
+        'context-vault', `http://localhost:${port}/mcp`,
+      ], { stdio: 'pipe', env });
+      console.error('[context-vault] Self-heal: Claude Code reconfigured');
+    }
+  } catch {
+    // claude CLI not available or check failed, skip
+  }
+}
+
 async function main(): Promise<void> {
   let phase = 'CONFIG';
   let db: import('node:sqlite').DatabaseSync | undefined;
@@ -274,28 +360,45 @@ async function main(): Promise<void> {
         }));
       });
 
+      function createTransport(): StreamableHTTPServerTransport {
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (sid: string) => {
+            transports[sid] = transport;
+          },
+        });
+        transport.onclose = () => {
+          const sid = transport.sessionId;
+          if (sid && transports[sid]) {
+            delete transports[sid];
+          }
+        };
+        return transport;
+      }
+
       app.post('/mcp', async (req: IncomingMessage & { body?: unknown }, res: ServerResponse) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         try {
           let transport: StreamableHTTPServerTransport;
           if (sessionId && transports[sessionId]) {
             transport = transports[sessionId];
-          } else if (!sessionId && isInitializeRequest((req as any).body)) {
-            transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => randomUUID(),
-              onsessioninitialized: (sid: string) => {
-                transports[sid] = transport;
-              },
-            });
-            transport.onclose = () => {
-              const sid = transport.sessionId;
-              if (sid && transports[sid]) {
-                delete transports[sid];
-              }
-            };
+          } else if (isInitializeRequest((req as any).body)) {
+            // Allow (re-)initialization with or without a stale session ID.
+            // Covers: first connect, reconnect after daemon restart.
+            transport = createTransport();
             const sessionServer = createServer();
             await sessionServer.connect(transport);
             await transport.handleRequest(req, res, (req as any).body);
+            return;
+          } else if (sessionId) {
+            // Stale session (e.g., daemon restarted). Per MCP spec, 404 tells
+            // the client to re-initialize automatically.
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              jsonrpc: '2.0',
+              error: { code: -32000, message: 'Session not found. Please reinitialize.' },
+              id: null,
+            }));
             return;
           } else {
             res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -323,8 +426,8 @@ async function main(): Promise<void> {
       app.get('/mcp', async (req: IncomingMessage, res: ServerResponse) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         if (!sessionId || !transports[sessionId]) {
-          res.writeHead(400);
-          res.end('Invalid or missing session ID');
+          res.writeHead(404);
+          res.end('Session not found');
           return;
         }
         await transports[sessionId].handleRequest(req, res);
@@ -333,8 +436,8 @@ async function main(): Promise<void> {
       app.delete('/mcp', async (req: IncomingMessage, res: ServerResponse) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         if (!sessionId || !transports[sessionId]) {
-          res.writeHead(400);
-          res.end('Invalid or missing session ID');
+          res.writeHead(404);
+          res.end('Session not found');
           return;
         }
         await transports[sessionId].handleRequest(req, res);
@@ -345,6 +448,31 @@ async function main(): Promise<void> {
         const pidDir = join(homedir(), '.context-mcp');
         mkdirSync(pidDir, { recursive: true });
         writeFileSync(join(pidDir, 'daemon.pid'), JSON.stringify({ pid: process.pid, port }));
+
+        // Self-healing: validate and repair infrastructure on startup
+        selfCheck(port).catch(() => {});
+
+        // Periodic health monitor: validate DB, vault, and PID file every 5 minutes
+        setInterval(() => {
+          try {
+            // Verify DB is accessible
+            ctx.db.exec('SELECT 1');
+            // Verify PID file is correct
+            const pidData = existsSync(PID_PATH)
+              ? JSON.parse(readFileSync(PID_PATH, 'utf-8'))
+              : null;
+            if (!pidData || pidData.pid !== process.pid || pidData.port !== port) {
+              writeFileSync(PID_PATH, JSON.stringify({ pid: process.pid, port }));
+              console.error('[context-vault] Self-heal: repaired stale PID file');
+            }
+            // Verify vault directory
+            if (!existsSync(ctx.config.vaultDir)) {
+              console.error(`[context-vault] Warning: vault directory missing: ${ctx.config.vaultDir}`);
+            }
+          } catch (e) {
+            console.error(`[context-vault] Health check failed: ${(e as Error).message}`);
+          }
+        }, 5 * 60 * 1000);
       });
     } else {
       const transport = new StdioServerTransport();
