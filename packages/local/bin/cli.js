@@ -1194,6 +1194,9 @@ async function runSetup() {
       `  ${dim(`Skip:   ${cli} setup --no-rules`)}`
     );
   }
+  if (claudeConfigured) {
+    boxLines.push(``, `  ${dim('Personalize: run /vault-setup in your next session')}`);
+  }
   const innerWidth = Math.max(...boxLines.map((l) => l.length)) + 2;
   const pad = (s) => s + ' '.repeat(Math.max(0, innerWidth - s.length));
   console.log();
@@ -4500,7 +4503,15 @@ async function runRules() {
           if (rulesPath) console.log(`     ${dim(rulesPath)}`);
           installed++;
         } else {
-          console.log(`  ${dim('-')} ${tool.name} — already installed or not supported`);
+          const hasPath = !!rulesPath;
+          const alreadyExists = hasPath && existsSync(rulesPath);
+          if (alreadyExists) {
+            console.log(`  ${dim('-')} ${tool.name} — already installed`);
+          } else if (hasPath) {
+            console.log(`  ${dim('-')} ${tool.name} — skipped (up to date)`);
+          } else {
+            console.log(`  ${dim('-')} ${tool.name} — not supported`);
+          }
         }
       } catch (e) {
         console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
