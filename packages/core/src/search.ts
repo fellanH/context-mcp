@@ -106,6 +106,7 @@ export async function hybridSearch(
     decayDays = 30,
     includeSuperseeded = false,
     includeEphemeral = false,
+    contextEmbedding = null,
   } = opts;
 
   const rowMap = new Map<string, VaultEntry>();
@@ -209,9 +210,60 @@ export async function hybridSearch(
     }
   }
 
+  // Context vector pass: KNN against vault_ctx_vec for contextual reinstatement
+  const ctxRankedIds: string[] = [];
+  if (contextEmbedding) {
+    try {
+      const ctxVecCount = (
+        ctx.db.prepare('SELECT COUNT(*) as c FROM vault_ctx_vec').get() as { c: number }
+      ).c;
+      if (ctxVecCount > 0) {
+        const ctxRows = ctx.db
+          .prepare(
+            `SELECT v.rowid, v.distance FROM vault_ctx_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT 15`
+          )
+          .all(contextEmbedding, 15) as { rowid: number; distance: number }[];
+
+        if (ctxRows.length) {
+          const ctxRowids = ctxRows.map((cr) => cr.rowid);
+          const placeholders = ctxRowids.map(() => '?').join(',');
+          const ctxHydrated = ctx.db
+            .prepare(`SELECT rowid, * FROM vault WHERE rowid IN (${placeholders})`)
+            .all(...ctxRowids) as unknown as (VaultEntry & { rowid: number })[];
+
+          const ctxByRowid = new Map<number, VaultEntry & { rowid: number }>();
+          for (const row of ctxHydrated) ctxByRowid.set(row.rowid, row);
+
+          for (const cr of ctxRows) {
+            const row = ctxByRowid.get(cr.rowid);
+            if (!row) continue;
+            if (kindFilter && row.kind !== kindFilter) continue;
+            if (categoryFilter && row.category !== categoryFilter) continue;
+            if (excludeEvents && row.category === 'event') continue;
+            if (since && row.created_at < since) continue;
+            if (until && row.created_at > until) continue;
+            if (row.expires_at && new Date(row.expires_at) <= new Date()) continue;
+
+            const { rowid: _rowid, ...cleanRow } = row;
+            ctxRankedIds.push(cleanRow.id);
+            if (!rowMap.has(cleanRow.id)) rowMap.set(cleanRow.id, cleanRow);
+            if (!idToRowid.has(cleanRow.id)) idToRowid.set(cleanRow.id, Number(row.rowid));
+          }
+        }
+      }
+    } catch (err) {
+      if (!(err as Error).message?.includes('no such table')) {
+        console.error(`[retrieve] Context vector search error: ${(err as Error).message}`);
+      }
+    }
+  }
+
   if (rowMap.size === 0) return [];
 
-  const rrfScores = reciprocalRankFusion([ftsRankedIds, vecRankedIds]);
+  // Build ranked lists for RRF: content FTS + content vec + optional context vec
+  const rankedLists = [ftsRankedIds, vecRankedIds];
+  if (ctxRankedIds.length > 0) rankedLists.push(ctxRankedIds);
+  const rrfScores = reciprocalRankFusion(rankedLists);
 
   for (const [id, entry] of rowMap) {
     const boost = recencyBoost(entry.created_at, entry.category, decayDays);
@@ -274,7 +326,7 @@ export async function hybridSearch(
   return finalPage;
 }
 
-function trackAccess(ctx: BaseCtx, entries: SearchResult[]): void {
+export function trackAccess(ctx: BaseCtx, entries: SearchResult[]): void {
   if (!entries.length) return;
   try {
     const placeholders = entries.map(() => '?').join(',');

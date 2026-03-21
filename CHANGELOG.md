@@ -2,6 +2,12 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.4.4] — 2026-03-21
+
+### Fixed
+
+- **hit_count tracking for filter-only and identity_key lookups**: `get_context` calls using only filters (kind, tags, category, since/until) or `identity_key` exact-match now correctly increment `hit_count` and update `last_accessed_at`. Previously only query-based hybrid search tracked access, making filter-retrieved entries appear as "never accessed."
+
 ## [3.4.3] — 2026-03-18
 
 ### Added

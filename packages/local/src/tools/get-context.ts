@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { hybridSearch } from '@context-vault/core/search';
+import { hybridSearch, trackAccess } from '@context-vault/core/search';
 import { categoryFor } from '@context-vault/core/categories';
 import { normalizeKind } from '@context-vault/core/files';
+import { parseContextParam } from '@context-vault/core/context';
 import { resolveTemporalParams } from '../temporal.js';
 import { collectLinkedEntries } from '../linking.js';
 import { ok, err, errWithHint } from '../helpers.js';
@@ -346,6 +347,12 @@ export const inputSchema = {
     .describe(
       'When true with identity_key, return a clear "not found" instead of falling through to semantic search on miss. Default: false.'
     ),
+  context: z
+    .any()
+    .optional()
+    .describe(
+      'Current context for contextual reinstatement. Boosts entries that were saved in a similar context. Pass a structured object (e.g. { project: "myapp", arc: "auth-rewrite", task: "debugging token expiry" }) or a free-text string. Entries saved with matching encoding_context will rank higher.'
+    ),
 };
 
 export async function handler(
@@ -369,6 +376,7 @@ export async function handler(
     follow_links,
     body_limit,
     strict,
+    context,
   }: Record<string, any>,
   ctx: LocalCtx,
   { ensureIndexed, reindexFailed }: SharedCtx
@@ -413,6 +421,7 @@ export async function handler(
     if (!kindFilter) return err('identity_key requires kind to be specified', 'INVALID_INPUT');
     const match = ctx.stmts.getByIdentityKey.get(kindFilter, identity_key) as any;
     if (match) {
+      trackAccess(ctx, [{ ...match, score: 1 }]);
       const entryTags = match.tags ? JSON.parse(match.tags) : [];
       const tagStr = entryTags.length ? entryTags.join(', ') : 'none';
       const relPath =
@@ -452,6 +461,17 @@ export async function handler(
     ? Math.min(effectiveLimit * 10, MAX_FETCH_LIMIT)
     : effectiveLimit;
 
+  // Generate context embedding for contextual reinstatement boosting
+  let contextEmbedding: Float32Array | null = null;
+  const parsedCtx = parseContextParam(context);
+  if (parsedCtx?.text) {
+    try {
+      contextEmbedding = await ctx.embed(parsedCtx.text);
+    } catch {
+      // Non-fatal: proceed without context boosting
+    }
+  }
+
   let filtered: any[];
   if (hasQuery) {
     // Hybrid search mode
@@ -465,6 +485,7 @@ export async function handler(
       decayDays: config.eventDecayDays || 30,
       includeSuperseeded: include_superseded ?? false,
       includeEphemeral: include_ephemeral ?? false,
+      contextEmbedding,
     });
 
     // Post-filter by tags if provided, then apply requested limit
@@ -532,6 +553,9 @@ export async function handler(
 
     // Add score field for consistent output
     for (const r of filtered) r.score = 0;
+
+    // Track access for filter-only results (hybrid search tracks its own)
+    trackAccess(ctx, filtered);
   }
 
   // Brief score boost: briefs rank slightly higher so consolidated snapshots
