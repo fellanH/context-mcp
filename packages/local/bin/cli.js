@@ -1017,6 +1017,7 @@ async function runSetup() {
     console.log();
     console.log(dim('  Install Claude Code skills? (recommended)'));
     console.log(dim('  compile-context — compile vault entries into a project brief'));
+    console.log(dim('  vault-setup     — agent-assisted vault customization (/vault-setup)'));
     console.log();
     const skillAnswer = await prompt('  Install Claude Code skills? (Y/n):', 'Y');
     const installSkillsFlag = skillAnswer.toLowerCase() !== 'n';
@@ -1036,23 +1037,33 @@ async function runSetup() {
     }
   }
 
-  // Agent rules installation (opt-in per tool)
+  // Agent rules installation (opt-in per tool, skip if --no-rules)
   const configuredTools = results.filter((r) => r.ok).map((r) => r.tool);
-  if (configuredTools.length > 0 && !isNonInteractive) {
-    console.log();
-    console.log(dim('  Install agent rules? (recommended)'));
-    console.log(dim('  Teaches your AI agent when and how to save knowledge to the vault'));
-    console.log(dim('  automatically — the key to building useful memory over time.'));
-    console.log();
-    const rulesAnswer = await prompt('  Install agent rules? (Y/n):', 'Y');
-    if (rulesAnswer.toLowerCase() !== 'n') {
+  const installedRulesPaths = [];
+  if (configuredTools.length > 0 && !flags.has('--no-rules')) {
+    let installRules = isNonInteractive;
+    if (!isNonInteractive) {
+      console.log();
+      console.log(dim('  Install agent rules? (recommended)'));
+      console.log(dim('  Teaches your AI agent when and how to save knowledge to the vault'));
+      console.log(dim('  automatically — the key to building useful memory over time.'));
+      console.log();
+      const rulesAnswer = await prompt('  Install agent rules? (Y/n):', 'Y');
+      installRules = rulesAnswer.toLowerCase() !== 'n';
+    }
+    if (installRules) {
       const rulesContent = loadAgentRules();
       if (rulesContent) {
         for (const tool of configuredTools) {
           try {
             const installed = installAgentRulesForTool(tool, rulesContent);
+            const rulesPath = getRulesPathForTool(tool);
             if (installed) {
               console.log(`  ${green('+')} ${tool.name} — agent rules installed`);
+              if (rulesPath) {
+                console.log(`     ${dim(rulesPath)}`);
+                installedRulesPaths.push({ tool: tool.name, path: rulesPath });
+              }
             }
           } catch (e) {
             console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
@@ -1064,6 +1075,8 @@ async function runSetup() {
     } else {
       console.log(dim('  Skipped — install later: context-vault rules install'));
     }
+  } else if (flags.has('--no-rules')) {
+    console.log(dim('  Agent rules skipped (--no-rules)'));
   }
 
   // Seed entry
@@ -1168,6 +1181,18 @@ async function runSetup() {
         ? [``, `  ${dim('Tip: npm i -g context-vault for faster MCP startup')}`]
         : []),
     ];
+  }
+  if (installedRulesPaths.length > 0) {
+    boxLines.push(``, `  ${bold('Agent rules installed:')}`);
+    for (const { path } of installedRulesPaths) {
+      boxLines.push(`  ${dim(path)}`);
+    }
+    boxLines.push(
+      ``,
+      `  ${dim(`View:   ${cli} rules show`)}`,
+      `  ${dim(`Remove: ${cli} uninstall`)}`,
+      `  ${dim(`Skip:   ${cli} setup --no-rules`)}`
+    );
   }
   const innerWidth = Math.max(...boxLines.map((l) => l.length)) + 2;
   const pad = (s) => s + ' '.repeat(Math.max(0, innerWidth - s.length));
@@ -2376,6 +2401,34 @@ async function runUninstall() {
     const { rmSync } = await import('node:fs');
     rmSync(skillsDir, { recursive: true, force: true });
     console.log(`  ${green('+')} Removed installed skills`);
+  }
+
+  // Remove agent rules files
+  const claudeRulesPath = join(HOME, '.claude', 'rules', 'context-vault.md');
+  const cursorRulesPath = join(HOME, '.cursor', 'rules', 'context-vault.mdc');
+  const windsurfRulesPath = join(HOME, '.windsurfrules');
+
+  if (existsSync(claudeRulesPath)) {
+    unlinkSync(claudeRulesPath);
+    console.log(`  ${green('+')} Removed agent rules (Claude Code: ${claudeRulesPath})`);
+  }
+  if (existsSync(cursorRulesPath)) {
+    unlinkSync(cursorRulesPath);
+    console.log(`  ${green('+')} Removed agent rules (Cursor: ${cursorRulesPath})`);
+  }
+  if (existsSync(windsurfRulesPath)) {
+    const content = readFileSync(windsurfRulesPath, 'utf-8');
+    if (content.includes(RULES_DELIMITER_START)) {
+      const cleaned = content
+        .replace(new RegExp(`\n?${RULES_DELIMITER_START}[\\s\\S]*?${RULES_DELIMITER_END}\n?`, 'g'), '\n')
+        .trim();
+      if (cleaned) {
+        writeFileSync(windsurfRulesPath, cleaned + '\n');
+      } else {
+        unlinkSync(windsurfRulesPath);
+      }
+      console.log(`  ${green('+')} Removed agent rules section from ${windsurfRulesPath}`);
+    }
   }
 
   // Optionally remove data directory
@@ -4003,6 +4056,17 @@ function loadAgentRules() {
 }
 
 /**
+ * Return the path where agent rules are/would be installed for a given tool.
+ * Returns null for tools with no rules install path.
+ */
+function getRulesPathForTool(tool) {
+  if (tool.id === 'claude-code') return join(HOME, '.claude', 'rules', 'context-vault.md');
+  if (tool.id === 'cursor') return join(HOME, '.cursor', 'rules', 'context-vault.mdc');
+  if (tool.id === 'windsurf') return join(HOME, '.windsurfrules');
+  return null;
+}
+
+/**
  * Install agent rules for a specific tool.
  * - Claude Code: writes ~/.claude/rules/context-vault.md
  * - Cursor: appends to .cursorrules in cwd (with delimiters)
@@ -4404,6 +4468,7 @@ ${bold('Commands:')}
 
 ${bold('Bundled skills:')}
   ${cyan('compile-context')}  Compile vault entries into a project brief using create_snapshot
+  ${cyan('vault-setup')}      Agent-assisted vault customization (run /vault-setup)
 `);
   }
 }
@@ -4429,8 +4494,10 @@ async function runRules() {
     for (const tool of detected) {
       try {
         const ok = installAgentRulesForTool(tool, rulesContent);
+        const rulesPath = getRulesPathForTool(tool);
         if (ok) {
           console.log(`  ${green('+')} ${tool.name} — agent rules installed`);
+          if (rulesPath) console.log(`     ${dim(rulesPath)}`);
           installed++;
         } else {
           console.log(`  ${dim('-')} ${tool.name} — already installed or not supported`);
@@ -4444,16 +4511,93 @@ async function runRules() {
     if (installed > 0) {
       console.log(dim('  Rules teach your AI agent when to save knowledge automatically.'));
       console.log(dim('  Restart your AI tools to apply.'));
+      console.log(dim(`  View:   context-vault rules show`));
+      console.log(dim(`  Remove: context-vault uninstall`));
     }
     console.log();
+  } else if (sub === 'show') {
+    const { detected } = await detectAllTools();
+    const tool = detected.find((t) => getRulesPathForTool(t));
+    if (!tool) {
+      console.log(`\n  ${yellow('!')} No supported tool detected.\n`);
+      process.exit(1);
+    }
+    const rulesPath = getRulesPathForTool(tool);
+    if (!rulesPath || !existsSync(rulesPath)) {
+      console.log(`\n  ${yellow('!')} No rules file installed for ${tool.name}.`);
+      console.log(dim(`  Run: context-vault rules install\n`));
+      process.exit(1);
+    }
+    console.log(`\n  ${dim(`${tool.name}: ${rulesPath}`)}\n`);
+    console.log(readFileSync(rulesPath, 'utf-8'));
+  } else if (sub === 'path') {
+    const { detected } = await detectAllTools();
+    const supportedTools = detected.filter((t) => getRulesPathForTool(t));
+    if (supportedTools.length === 0) {
+      console.log(`\n  ${yellow('!')} No supported tool detected.\n`);
+      process.exit(1);
+    }
+    console.log();
+    for (const tool of supportedTools) {
+      const p = getRulesPathForTool(tool);
+      const installed = existsSync(p);
+      console.log(`  ${tool.name}: ${p} ${installed ? green('(installed)') : dim('(not installed)')}`);
+    }
+    console.log();
+  } else if (sub === 'diff') {
+    const bundled = loadAgentRules();
+    if (!bundled) {
+      console.log(`\n  ${yellow('!')} Agent rules file not found in package.\n`);
+      process.exit(1);
+    }
+    const { detected } = await detectAllTools();
+    const tool = detected.find((t) => getRulesPathForTool(t));
+    if (!tool) {
+      console.log(`\n  ${yellow('!')} No supported tool detected.\n`);
+      process.exit(1);
+    }
+    const rulesPath = getRulesPathForTool(tool);
+    if (!rulesPath || !existsSync(rulesPath)) {
+      console.log(`\n  ${yellow('!')} No rules file installed for ${tool.name}.`);
+      console.log(dim(`  Run: context-vault rules install\n`));
+      process.exit(1);
+    }
+    const installed = readFileSync(rulesPath, 'utf-8');
+    if (installed.trim() === bundled.trim()) {
+      console.log(`\n  ${green('✓')} Rules are up to date (${rulesPath})\n`);
+    } else {
+      console.log(`\n  ${yellow('!')} Installed rules differ from bundled version.`);
+      console.log(`  ${dim(rulesPath)}\n`);
+      const installedLines = installed.split('\n');
+      const bundledLines = bundled.split('\n');
+      const maxLines = Math.max(installedLines.length, bundledLines.length);
+      for (let i = 0; i < maxLines; i++) {
+        const a = installedLines[i];
+        const b = bundledLines[i];
+        if (a === undefined) {
+          console.log(`  ${green('+')} ${b}`);
+        } else if (b === undefined) {
+          console.log(`  ${red('-')} ${a}`);
+        } else if (a !== b) {
+          console.log(`  ${red('-')} ${a}`);
+          console.log(`  ${green('+')} ${b}`);
+        }
+      }
+      console.log();
+      console.log(dim('  To upgrade: context-vault rules install'));
+      console.log();
+    }
   } else {
     console.log(`
-  ${bold('context-vault rules')} <install>
+  ${bold('context-vault rules')} <command>
 
-  Install agent rules that teach AI tools when and how to use the vault.
+  Manage agent rules that teach AI tools when and how to use the vault.
 
 ${bold('Commands:')}
   ${cyan('rules install')}   Install agent rules for all detected AI tools
+  ${cyan('rules show')}      Print the currently installed rules file
+  ${cyan('rules diff')}      Show diff between installed rules and bundled version
+  ${cyan('rules path')}      Print the path where rules are/would be installed
 
 ${bold('Installed to:')}
   ${cyan('Claude Code')}     ~/.claude/rules/context-vault.md
