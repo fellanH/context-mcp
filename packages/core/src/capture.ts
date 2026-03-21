@@ -36,6 +36,7 @@ function writeEntryFile(
     expires_at?: string | null;
     supersedes?: string[] | null;
     related_to?: string[] | null;
+    tier?: string | null;
   }
 ): string {
   const resolvedFolder = params.folder || (params.meta?.folder as string) || '';
@@ -49,6 +50,10 @@ function writeEntryFile(
 
   const created = params.createdAt || new Date().toISOString();
   const fmFields: Record<string, unknown> = { id: params.id };
+
+  if (params.title) fmFields.title = params.title;
+  fmFields.kind = kind;
+  if (params.tier) fmFields.tier = params.tier;
 
   if (params.meta) {
     for (const [k, v] of Object.entries(params.meta)) {
@@ -150,6 +155,7 @@ export function writeEntry(ctx: BaseCtx, data: CaptureInput): CaptureResult {
     expires_at: data.expires_at,
     supersedes: data.supersedes,
     related_to: data.related_to,
+    tier: data.tier,
   });
 
   return {
@@ -225,6 +231,9 @@ export function updateEntryFile(
 
   const now = new Date().toISOString();
   const fmFields: Record<string, unknown> = { id: existing.id };
+  if (title) fmFields.title = title;
+  fmFields.kind = existing.kind;
+  if (existing.tier) fmFields.tier = existing.tier;
   for (const [k, v] of Object.entries(mergedMeta)) {
     if (k === 'folder') continue;
     if (v !== null && v !== undefined) fmFields[k] = v;

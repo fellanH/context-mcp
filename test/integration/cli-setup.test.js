@@ -265,7 +265,7 @@ describe('seed entries', () => {
 
   it('creates getting-started.md seed entry with valid frontmatter', () => {
     const vaultDir = join(tmpDir, 'vault');
-    const insightDir = join(vaultDir, 'knowledge', 'insights');
+    const insightDir = join(vaultDir, 'knowledge', 'insight');
     const insightPath = join(insightDir, 'getting-started.md');
 
     mkdirSync(insightDir, { recursive: true });
@@ -273,7 +273,7 @@ describe('seed entries', () => {
     const now = new Date().toISOString();
     writeFileSync(
       insightPath,
-      `---\nid: ${id}\ntags: ["getting-started", "vault"]\nsource: context-vault-setup\ncreated: ${now}\n---\nWelcome to your context vault!\n`
+      `---\nid: ${id}\ntitle: Getting started with your context vault\nkind: insight\ntier: durable\ntags: ["getting-started", "vault"]\nsource: context-vault-setup\ncreated: ${now}\n---\nWelcome to your context vault!\n`
     );
 
     expect(existsSync(insightPath)).toBe(true);
@@ -285,7 +285,7 @@ describe('seed entries', () => {
 
   it('does not overwrite existing seed entries', () => {
     const vaultDir = join(tmpDir, 'vault2');
-    const insightDir = join(vaultDir, 'knowledge', 'insights');
+    const insightDir = join(vaultDir, 'knowledge', 'insight');
     const insightPath = join(insightDir, 'getting-started.md');
 
     mkdirSync(insightDir, { recursive: true });
@@ -351,10 +351,12 @@ describe('full setup flow E2E', () => {
     expect(config.dbPath).toBeDefined();
 
     // Seed entries created
-    const seedPath = join(vaultDir, 'knowledge', 'insights', 'getting-started.md');
+    const seedPath = join(vaultDir, 'knowledge', 'insight', 'getting-started.md');
     expect(existsSync(seedPath)).toBe(true);
     const seedContent = readFileSync(seedPath, 'utf-8');
     expect(seedContent).toContain('getting-started');
+    expect(seedContent).toContain('title: Getting started with your context vault');
+    expect(seedContent).toContain('kind: insight');
 
     // Health check ran and shows timing
     expect(stdout).toContain('Health check');
@@ -396,7 +398,7 @@ describe('setup --vault-dir flag', () => {
         timeout: 60000,
       });
 
-      const seedPath = join(customVault, 'knowledge', 'insights', 'getting-started.md');
+      const seedPath = join(customVault, 'knowledge', 'insight', 'getting-started.md');
       expect(existsSync(seedPath)).toBe(true);
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });

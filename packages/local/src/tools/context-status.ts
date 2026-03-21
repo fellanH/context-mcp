@@ -39,7 +39,7 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
       `Data dir:  ${config.dataDir}`,
       `Config:    ${config.configPath}`,
       `Resolved via: ${status.resolvedFrom}`,
-      `Schema:    v9 (updated_at, superseded_by)`,
+      `Schema:    v${(ctx.db.prepare('PRAGMA user_version').get() as any)?.user_version ?? 'unknown'}`,
     ];
 
     if (status.embeddingStatus) {
@@ -62,7 +62,10 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
     lines.push(``, `### Indexed`);
 
     if (status.kindCounts.length) {
-      for (const { kind, c } of status.kindCounts) lines.push(`- ${c} ${kind}s`);
+      for (const { kind, c } of status.kindCounts) {
+        const plural = kind.endsWith('s') ? kind : kind + 's';
+        lines.push(`- ${c} ${plural}`);
+      }
     } else {
       lines.push(`- (empty)`);
     }

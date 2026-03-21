@@ -1,5 +1,15 @@
 #!/usr/bin/env node
 
+// Suppress Node.js ExperimentalWarning for built-in SQLite (used by context-vault)
+const originalEmit = process.emit;
+process.emit = function (name, data, ...args) {
+  if (name === 'warning' && typeof data === 'object' && data?.name === 'ExperimentalWarning' &&
+      typeof data?.message === 'string' && data.message.includes('SQLite')) {
+    return false;
+  }
+  return originalEmit.call(process, name, data, ...args);
+};
+
 // Node.js version guard — must run before any ESM imports
 const nodeVersion = parseInt(process.versions.node.split('.')[0], 10);
 if (nodeVersion < 22) {
@@ -1368,8 +1378,8 @@ function configureJsonTool(tool, vaultDir) {
 function createSeedEntries(vaultDir) {
   let created = 0;
 
-  // Entry 1: Getting started (improved)
-  const insightDir = join(vaultDir, 'knowledge', 'insights');
+  // Entry 1: Getting started
+  const insightDir = join(vaultDir, 'knowledge', 'insight');
   const insightPath = join(insightDir, 'getting-started.md');
   if (!existsSync(insightPath)) {
     mkdirSync(insightDir, { recursive: true });
@@ -1379,6 +1389,9 @@ function createSeedEntries(vaultDir) {
       insightPath,
       `---
 id: ${id1}
+title: Getting started with your context vault
+kind: insight
+tier: durable
 tags: ["getting-started", "vault"]
 source: context-vault-setup
 created: ${now}
@@ -1402,7 +1415,7 @@ ${insightPath}
   }
 
   // Entry 2: Example decision
-  const decisionDir = join(vaultDir, 'knowledge', 'decisions');
+  const decisionDir = join(vaultDir, 'knowledge', 'decision');
   const decisionPath = join(decisionDir, 'example-local-first-data.md');
   if (!existsSync(decisionPath)) {
     mkdirSync(decisionDir, { recursive: true });
@@ -1412,6 +1425,9 @@ ${insightPath}
       decisionPath,
       `---
 id: ${id2}
+title: Use local-first data storage over cloud databases
+kind: decision
+tier: durable
 tags: ["example", "architecture"]
 source: context-vault-setup
 created: ${now}
@@ -2131,6 +2147,11 @@ async function runStatus() {
   }
 
   const status = gatherVaultStatus({ db, config });
+  let schemaVersion = 'unknown';
+  try {
+    const row = db.prepare('PRAGMA user_version').get();
+    schemaVersion = String(row?.user_version ?? 'unknown');
+  } catch {}
 
   db.close();
 
@@ -2148,7 +2169,7 @@ async function runStatus() {
     `  Config:    ${config.configPath} ${dim(`(${existsSync(config.configPath) ? 'exists' : 'missing'})`)}`
   );
   console.log(`  Resolved:  ${status.resolvedFrom}`);
-  console.log(`  Schema:    v7 (teams)`);
+  console.log(`  Schema:    v${schemaVersion}`);
 
   if (status.kindCounts.length) {
     const BAR_WIDTH = 20;
@@ -2159,7 +2180,8 @@ async function runStatus() {
       const filled = maxCount > 0 ? Math.round((c / maxCount) * BAR_WIDTH) : 0;
       const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
       const countStr = String(c).padStart(4);
-      console.log(`    ${dim(bar)} ${countStr} ${kind}s`);
+      const plural = kind.endsWith('s') ? kind : kind + 's';
+      console.log(`    ${dim(bar)} ${countStr} ${plural}`);
     }
   } else {
     console.log(`\n  ${dim('(empty — no entries indexed)')}`);

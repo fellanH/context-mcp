@@ -59,6 +59,8 @@ export function parseFrontmatter(text: string): {
 const RESERVED_FM_KEYS = new Set([
   'id',
   'title',
+  'kind',
+  'tier',
   'tags',
   'source',
   'created',
