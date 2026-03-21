@@ -35,3 +35,20 @@ delete corePkg.dependencies;
 writeFileSync(corePkgPath, JSON.stringify(corePkg, null, 2) + '\n');
 
 console.log('[prepack] Bundled @context-vault/core into node_modules');
+
+// Copy monorepo-level assets (agent-rules.md, setup-prompt.md) into local assets/
+// so they ship with the npm package.
+const MONOREPO_ASSETS = join(LOCAL_ROOT, '..', '..', 'assets');
+const LOCAL_ASSETS = join(LOCAL_ROOT, 'assets');
+const ASSET_FILES = ['agent-rules.md', 'setup-prompt.md'];
+
+for (const file of ASSET_FILES) {
+  const src = join(MONOREPO_ASSETS, file);
+  const dest = join(LOCAL_ASSETS, file);
+  try {
+    cpSync(src, dest);
+    console.log(`[prepack] Copied ${file} to assets/`);
+  } catch (e) {
+    console.warn(`[prepack] Warning: could not copy ${file}: ${e.message}`);
+  }
+}

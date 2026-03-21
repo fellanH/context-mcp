@@ -363,6 +363,7 @@ ${bold('Commands:')}
   ${cyan('hooks')} install|uninstall    Install or remove Claude Code memory hook
   ${cyan('claude')} install|uninstall   Alias for hooks install|uninstall
   ${cyan('skills')} install             Install bundled Claude Code skills
+  ${cyan('rules')} install              Install agent rules for detected AI tools
   ${cyan('health')}                     Quick health check — vault, DB, entry count
   ${cyan('status')}                     Show vault diagnostics
   ${cyan('doctor')}                     Diagnose and repair common issues
@@ -948,8 +949,8 @@ async function runSetup() {
       console.log(dim('  Searches your vault on every prompt and injects relevant entries'));
       console.log(dim("  as additional context alongside Claude's native memory."));
       console.log();
-      const answer = await prompt('  Install Claude Code memory hook? (y/N):', 'N');
-      installHook = answer.toLowerCase() === 'y';
+      const answer = await prompt('  Install Claude Code memory hook? (Y/n):', 'Y');
+      installHook = answer.toLowerCase() !== 'n';
     }
     if (installHook) {
       try {
@@ -1032,6 +1033,36 @@ async function runSetup() {
       }
     } else {
       console.log(dim(`  Skipped — install later: context-vault skills install`));
+    }
+  }
+
+  // Agent rules installation (opt-in per tool)
+  const configuredTools = results.filter((r) => r.ok).map((r) => r.tool);
+  if (configuredTools.length > 0 && !isNonInteractive) {
+    console.log();
+    console.log(dim('  Install agent rules? (recommended)'));
+    console.log(dim('  Teaches your AI agent when and how to save knowledge to the vault'));
+    console.log(dim('  automatically — the key to building useful memory over time.'));
+    console.log();
+    const rulesAnswer = await prompt('  Install agent rules? (Y/n):', 'Y');
+    if (rulesAnswer.toLowerCase() !== 'n') {
+      const rulesContent = loadAgentRules();
+      if (rulesContent) {
+        for (const tool of configuredTools) {
+          try {
+            const installed = installAgentRulesForTool(tool, rulesContent);
+            if (installed) {
+              console.log(`  ${green('+')} ${tool.name} — agent rules installed`);
+            }
+          } catch (e) {
+            console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
+          }
+        }
+      } else {
+        console.log(dim('  Agent rules file not found in package — skipping.'));
+      }
+    } else {
+      console.log(dim('  Skipped — install later: context-vault rules install'));
     }
   }
 
@@ -3958,6 +3989,66 @@ function installSkills() {
   return installed;
 }
 
+const RULES_DELIMITER_START = '<!-- context-vault agent rules -->';
+const RULES_DELIMITER_END = '<!-- /context-vault agent rules -->';
+
+/**
+ * Load agent-rules.md from the assets directory.
+ * Returns the file content or null if not found.
+ */
+function loadAgentRules() {
+  const rulesPath = join(ROOT, 'assets', 'agent-rules.md');
+  if (!existsSync(rulesPath)) return null;
+  return readFileSync(rulesPath, 'utf-8');
+}
+
+/**
+ * Install agent rules for a specific tool.
+ * - Claude Code: writes ~/.claude/rules/context-vault.md
+ * - Cursor: appends to .cursorrules in cwd (with delimiters)
+ * - Windsurf: appends to .windsurfrules in cwd (with delimiters)
+ * - Other tools: skipped
+ * Returns true if installed, false if skipped or already present.
+ */
+function installAgentRulesForTool(tool, rulesContent) {
+  if (tool.id === 'claude-code') {
+    const rulesDir = join(HOME, '.claude', 'rules');
+    const rulesPath = join(rulesDir, 'context-vault.md');
+    if (existsSync(rulesPath)) {
+      const existing = readFileSync(rulesPath, 'utf-8');
+      if (existing.trim() === rulesContent.trim()) return false;
+    }
+    mkdirSync(rulesDir, { recursive: true });
+    writeFileSync(rulesPath, rulesContent);
+    return true;
+  }
+
+  if (tool.id === 'cursor') {
+    const rulesPath = join(HOME, '.cursor', 'rules', 'context-vault.mdc');
+    // Cursor supports project rules in .cursor/rules/ directory
+    if (existsSync(rulesPath)) return false;
+    mkdirSync(join(HOME, '.cursor', 'rules'), { recursive: true });
+    writeFileSync(rulesPath, rulesContent);
+    return true;
+  }
+
+  if (tool.id === 'windsurf') {
+    const rulesPath = join(HOME, '.windsurfrules');
+    const delimited = `\n${RULES_DELIMITER_START}\n${rulesContent}\n${RULES_DELIMITER_END}\n`;
+    if (existsSync(rulesPath)) {
+      const existing = readFileSync(rulesPath, 'utf-8');
+      if (existing.includes(RULES_DELIMITER_START)) return false;
+      writeFileSync(rulesPath, existing + delimited);
+    } else {
+      writeFileSync(rulesPath, delimited.trimStart());
+    }
+    return true;
+  }
+
+  // Other tools: no rules installation path yet
+  return false;
+}
+
 /** Returns the path to Claude Code's global settings.json */
 function claudeSettingsPath() {
   return join(HOME, '.claude', 'settings.json');
@@ -4313,6 +4404,61 @@ ${bold('Commands:')}
 
 ${bold('Bundled skills:')}
   ${cyan('compile-context')}  Compile vault entries into a project brief using create_snapshot
+`);
+  }
+}
+
+async function runRules() {
+  const sub = args[1];
+
+  if (sub === 'install') {
+    console.log();
+    const rulesContent = loadAgentRules();
+    if (!rulesContent) {
+      console.log(`  ${yellow('!')} Agent rules file not found in package.\n`);
+      process.exit(1);
+    }
+
+    const { detected } = await detectAllTools();
+    if (detected.length === 0) {
+      console.log(`  ${yellow('!')} No supported tools detected.\n`);
+      process.exit(1);
+    }
+
+    let installed = 0;
+    for (const tool of detected) {
+      try {
+        const ok = installAgentRulesForTool(tool, rulesContent);
+        if (ok) {
+          console.log(`  ${green('+')} ${tool.name} — agent rules installed`);
+          installed++;
+        } else {
+          console.log(`  ${dim('-')} ${tool.name} — already installed or not supported`);
+        }
+      } catch (e) {
+        console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
+      }
+    }
+
+    console.log();
+    if (installed > 0) {
+      console.log(dim('  Rules teach your AI agent when to save knowledge automatically.'));
+      console.log(dim('  Restart your AI tools to apply.'));
+    }
+    console.log();
+  } else {
+    console.log(`
+  ${bold('context-vault rules')} <install>
+
+  Install agent rules that teach AI tools when and how to use the vault.
+
+${bold('Commands:')}
+  ${cyan('rules install')}   Install agent rules for all detected AI tools
+
+${bold('Installed to:')}
+  ${cyan('Claude Code')}     ~/.claude/rules/context-vault.md
+  ${cyan('Cursor')}          ~/.cursor/rules/context-vault.mdc
+  ${cyan('Windsurf')}        ~/.windsurfrules (appended with delimiters)
 `);
   }
 }
@@ -5678,6 +5824,9 @@ async function main() {
       break;
     case 'skills':
       await runSkills();
+      break;
+    case 'rules':
+      await runRules();
       break;
     case 'flush':
       await runFlush();

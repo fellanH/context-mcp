@@ -611,6 +611,12 @@ export async function handler(
   if (tags?.length) parts.push(`  tags: ${tags.join(', ')}`);
   parts.push(`  tier: ${effectiveTier}`);
   parts.push('', '_Use this id to update or delete later._');
+  if (effectiveTier === 'ephemeral') {
+    parts.push(
+      '',
+      '_Note: ephemeral entries are excluded from default search. Use `include_ephemeral: true` in get_context to find them._'
+    );
+  }
   const hasBucketTag = (tags || []).some(
     (t: any) => typeof t === 'string' && t.startsWith('bucket:')
   );
@@ -624,18 +630,25 @@ export async function handler(
     (t: any) => typeof t === 'string' && t.startsWith('bucket:')
   );
   for (const bt of bucketTags) {
-    const bucketUserClause = '';
-    const bucketParams = false ? [bt] : [bt];
     const exists = ctx.db
       .prepare(
-        `SELECT 1 FROM vault WHERE kind = 'bucket' AND identity_key = ? ${bucketUserClause} LIMIT 1`
+        `SELECT 1 FROM vault WHERE kind = 'bucket' AND identity_key = ? LIMIT 1`
       )
-      .get(...bucketParams);
+      .get(bt);
     if (!exists) {
-      parts.push(
-        ``,
-        `_Note: bucket '${bt}' is not registered. Use save_context(kind: "bucket", identity_key: "${bt}") to register it._`
-      );
+      // Auto-register the bucket silently
+      const bucketName = bt.replace(/^bucket:/, '');
+      try {
+        await captureAndIndex(ctx, {
+          kind: 'bucket',
+          title: bucketName,
+          body: `Bucket for project: ${bucketName}`,
+          tags: [bt],
+          identity_key: bt,
+        });
+      } catch {
+        // Non-fatal: bucket registration failure should not block the save
+      }
     }
   }
   if (similarEntries.length) {
