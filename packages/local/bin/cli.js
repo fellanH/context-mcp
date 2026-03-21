@@ -556,7 +556,7 @@ async function runSetup() {
         }
       } catch {}
 
-      console.log(`\n  ${dim('[2/2]')}${bold(' Configuring tools...\n')}`);
+      console.log(`\n  ${dim('[2/3]')}${bold(' Configuring tools...\n')}`);
       for (const tool of selected) {
         try {
           if (tool.configType === 'cli' && tool.id === 'codex') {
@@ -569,6 +569,40 @@ async function runSetup() {
           console.log(`  ${green('+')} ${tool.name} — configured`);
         } catch (e) {
           console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
+        }
+      }
+
+      // Offer rules installation for users who previously skipped or used an older version
+      console.log(`\n  ${dim('[3/3]')}${bold(' Agent rules...\n')}`);
+      const rulesContent = loadAgentRules();
+      if (rulesContent && !flags.has('--no-rules')) {
+        const missingRules = selected.filter((t) => {
+          const p = getRulesPathForTool(t);
+          return p && !existsSync(p);
+        });
+        if (missingRules.length > 0) {
+          console.log(dim('  Agent rules teach your AI when to save knowledge automatically.'));
+          console.log(dim('  No rules file detected for: ' + missingRules.map((t) => t.name).join(', ')));
+          console.log();
+          const rulesAnswer = await prompt('  Install agent rules? (Y/n):', 'Y');
+          if (rulesAnswer.toLowerCase() !== 'n') {
+            for (const tool of missingRules) {
+              try {
+                const ok = installAgentRulesForTool(tool, rulesContent);
+                const rulesPath = getRulesPathForTool(tool);
+                if (ok) {
+                  console.log(`  ${green('+')} ${tool.name} — agent rules installed`);
+                  if (rulesPath) console.log(`     ${dim(rulesPath)}`);
+                }
+              } catch (e) {
+                console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
+              }
+            }
+          } else {
+            console.log(dim('  Skipped — install later: context-vault rules install'));
+          }
+        } else {
+          console.log(dim('  Agent rules already installed — skipping.'));
         }
       }
 

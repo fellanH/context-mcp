@@ -50,8 +50,8 @@ The rules file is a small (~50 lines) markdown file that guides your agent on:
 
 You can edit or delete the rules file at any time. It lives at:
 - **Claude Code:** `~/.claude/rules/context-vault.md`
-- **Cursor:** `.cursorrules` (appended with delimiter markers)
-- **Windsurf:** `.windsurfrules` (appended with delimiter markers)
+- **Cursor:** `~/.cursor/rules/context-vault.mdc` (global Cursor rules)
+- **Windsurf:** `~/.windsurfrules` (appended with delimiter markers)
 
 ## Manual installation
 
