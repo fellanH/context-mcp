@@ -53,6 +53,8 @@ export interface PreparedStatements {
   deleteVecStmt: StatementSync;
   updateSupersededBy: StatementSync;
   clearSupersededByRef: StatementSync;
+  insertCtxVecStmt: StatementSync;
+  deleteCtxVecStmt: StatementSync;
 }
 
 export interface VaultEntry {
@@ -151,6 +153,8 @@ export interface BaseCtx {
   embed: (text: string) => Promise<Float32Array | null>;
   insertVec: (rowid: number, embedding: Float32Array) => void;
   deleteVec: (rowid: number) => void;
+  insertCtxVec: (rowid: number, embedding: Float32Array) => void;
+  deleteCtxVec: (rowid: number) => void;
 }
 
 export interface SearchOptions {
@@ -164,4 +168,6 @@ export interface SearchOptions {
   decayDays?: number;
   includeSuperseeded?: boolean;
   includeEphemeral?: boolean;
+  /** Pre-computed context embedding for contextual reinstatement boosting. */
+  contextEmbedding?: Float32Array | null;
 }

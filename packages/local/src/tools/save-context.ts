@@ -3,6 +3,7 @@ import { captureAndIndex, updateEntryFile } from '@context-vault/core/capture';
 import { indexEntry } from '@context-vault/core/index';
 import { categoryFor, defaultTierFor } from '@context-vault/core/categories';
 import { normalizeKind } from '@context-vault/core/files';
+import { parseContextParam } from '@context-vault/core/context';
 import { ok, err, errWithHint, ensureVaultExists, ensureValidKind } from '../helpers.js';
 import { maybeShowFeedbackPrompt } from '../telemetry.js';
 import { validateRelatedTo } from '../linking.js';
@@ -310,6 +311,12 @@ export const inputSchema = {
     .describe(
       'Conflict resolution mode. "suggest" (default): when similar entries are found, return structured conflict_candidates with suggested_action (ADD/UPDATE/SKIP) and reasoning_context for the calling agent to decide. Thresholds: score > 0.95 → SKIP (near-duplicate), score > 0.85 → UPDATE (very similar), score < 0.85 → ADD (distinct enough). "off": flag similar entries only (legacy behavior).'
     ),
+  encoding_context: z
+    .any()
+    .optional()
+    .describe(
+      'Encoding context for contextual reinstatement. Captures the situation when this entry was created, enabling context-aware retrieval boosting. Pass a structured object (e.g. { project: "myapp", arc: "auth-rewrite", task: "implementing JWT" }) or a free-text string describing the current context.'
+    ),
 };
 
 export async function handler(
@@ -331,6 +338,7 @@ export async function handler(
     similarity_threshold,
     tier,
     conflict_resolution,
+    encoding_context,
   }: Record<string, any>,
   ctx: LocalCtx,
   { ensureIndexed }: SharedCtx
@@ -388,13 +396,21 @@ export async function handler(
       );
     }
 
+    // Merge encoding context into meta for update path
+    const updateParsedCtx = parseContextParam(encoding_context);
+    let updateMeta = meta;
+    if (updateParsedCtx) {
+      updateMeta = { ...(meta || {}) };
+      updateMeta.encoding_context = updateParsedCtx.structured || updateParsedCtx.text;
+    }
+
     let entry;
     try {
       entry = updateEntryFile(ctx, existing, {
         title,
         body,
         tags,
-        meta,
+        meta: updateMeta,
         source,
         expires_at,
         supersedes,
@@ -409,6 +425,24 @@ export async function handler(
         'context-vault save_context update is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
       );
     }
+
+    // Store context embedding for updated entry
+    if (updateParsedCtx?.text) {
+      try {
+        const ctxEmbed = await ctx.embed(updateParsedCtx.text);
+        if (ctxEmbed) {
+          const rowidResult = ctx.stmts.getRowid.get(entry.id) as { rowid: number } | undefined;
+          if (rowidResult?.rowid) {
+            const rowid = Number(rowidResult.rowid);
+            try { ctx.deleteCtxVec(rowid); } catch {}
+            ctx.insertCtxVec(rowid, ctxEmbed);
+          }
+        }
+      } catch (e) {
+        console.warn(`[context-vault] Context embedding update failed: ${(e as Error).message}`);
+      }
+    }
+
     if (entry.related_to?.length && ctx.stmts.updateRelatedTo) {
       ctx.stmts.updateRelatedTo.run(JSON.stringify(entry.related_to), entry.id);
     } else if (entry.related_to === null && ctx.stmts.updateRelatedTo) {
@@ -502,6 +536,15 @@ export async function handler(
 
   const mergedMeta = { ...(meta || {}) };
   if (folder) mergedMeta.folder = folder;
+
+  // Merge encoding context into meta for persistence
+  const parsedCtx = parseContextParam(encoding_context);
+  if (parsedCtx?.structured) {
+    mergedMeta.encoding_context = parsedCtx.structured;
+  } else if (parsedCtx?.text) {
+    mergedMeta.encoding_context = parsedCtx.text;
+  }
+
   const finalMeta = Object.keys(mergedMeta).length ? mergedMeta : undefined;
 
   const effectiveTier = tier ?? defaultTierFor(normalizedKind);
@@ -536,6 +579,24 @@ export async function handler(
       'SAVE_FAILED',
       'context-vault save_context is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
     );
+  }
+
+  // Store context embedding in vault_ctx_vec for contextual reinstatement
+  if (parsedCtx?.text && entry) {
+    try {
+      const ctxEmbedding = await ctx.embed(parsedCtx.text);
+      if (ctxEmbedding) {
+        const rowidResult = ctx.stmts.getRowid.get(entry.id) as { rowid: number } | undefined;
+        if (rowidResult?.rowid) {
+          const rowid = Number(rowidResult.rowid);
+          try { ctx.deleteCtxVec(rowid); } catch {}
+          ctx.insertCtxVec(rowid, ctxEmbedding);
+        }
+      }
+    } catch (e) {
+      // Non-fatal: context embedding failure should not block the save
+      console.warn(`[context-vault] Context embedding failed: ${(e as Error).message}`);
+    }
   }
 
   if (ctx.config?.dataDir) {

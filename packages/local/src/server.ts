@@ -26,6 +26,8 @@ import {
   prepareStatements,
   insertVec,
   deleteVec,
+  insertCtxVec,
+  deleteCtxVec,
 } from '@context-vault/core/db';
 import { registerTools } from './register-tools.js';
 import { pruneExpired } from '@context-vault/core/index';
@@ -328,6 +330,8 @@ async function main(): Promise<void> {
       embed,
       insertVec: (rowid: number, embedding: Float32Array) => insertVec(stmts, rowid, embedding),
       deleteVec: (rowid: number) => deleteVec(stmts, rowid),
+      insertCtxVec: (rowid: number, embedding: Float32Array) => insertCtxVec(stmts, rowid, embedding),
+      deleteCtxVec: (rowid: number) => deleteCtxVec(stmts, rowid),
       activeOps: { count: 0 },
       toolStats: { ok: 0, errors: 0, lastError: null },
     };
@@ -480,15 +484,34 @@ async function main(): Promise<void> {
             await transport.handleRequest(req, res, (req as any).body);
             return;
           } else if (sessionId) {
-            // Stale session (e.g., daemon restarted). Per MCP spec, 404 tells
-            // the client to re-initialize automatically.
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              jsonrpc: '2.0',
-              error: { code: -32000, message: 'Session not found. Please reinitialize.' },
-              id: null,
-            }));
-            return;
+            // Stale session (e.g., daemon restarted). Claude Code's MCP client
+            // does not auto-reinitialize on 404, so we recover transparently:
+            // create a new transport reusing the stale session ID, force it into
+            // initialized state, and handle the request as if nothing happened.
+            console.error(`[context-vault] Recovering stale session ${sessionId.slice(0, 8)}...`);
+
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => sessionId,
+              onsessioninitialized: (sid: string) => {
+                transports[sid] = transport;
+              },
+            });
+            transport.onclose = () => {
+              if (transports[sessionId]) delete transports[sessionId];
+            };
+
+            const sessionServer = createServer();
+            await sessionServer.connect(transport);
+
+            // Force transport into initialized state, bypassing the initialize
+            // handshake. The inner WebStandardStreamableHTTPServerTransport holds
+            // the _initialized flag and sessionId.
+            const inner = (transport as any)._webStandardTransport;
+            inner._initialized = true;
+            inner.sessionId = sessionId;
+            transports[sessionId] = transport;
+
+            // Fall through to handleRequest below
           } else {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({

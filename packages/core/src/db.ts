@@ -175,9 +175,11 @@ export const SCHEMA_DDL = `
   END;
 
   CREATE VIRTUAL TABLE IF NOT EXISTS vault_vec USING vec0(embedding float[384]);
+
+  CREATE VIRTUAL TABLE IF NOT EXISTS vault_ctx_vec USING vec0(embedding float[384]);
 `;
 
-const CURRENT_VERSION = 15;
+const CURRENT_VERSION = 16;
 
 export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
   const sqliteVec = await loadSqliteVec();
@@ -201,6 +203,17 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
     const db = createDb(dbPath);
     const version = (db.prepare('PRAGMA user_version').get() as { user_version: number })
       .user_version;
+
+    // v15 -> v16: add vault_ctx_vec table for contextual reinstatement
+    if (version === 15) {
+      try {
+        db.exec('CREATE VIRTUAL TABLE IF NOT EXISTS vault_ctx_vec USING vec0(embedding float[384])');
+        db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+      } catch (e) {
+        console.error(`[context-vault] v15->v16 migration failed: ${(e as Error).message}`);
+      }
+      return db;
+    }
 
     if (version > 0 && version < 15) {
       console.error(`[context-vault] Schema v${version} is outdated. Rebuilding database...`);
@@ -243,7 +256,7 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
       return freshDb;
     }
 
-    if (version < 15) {
+    if (version < 16) {
       db.exec(SCHEMA_DDL);
       db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
     }
@@ -279,6 +292,8 @@ export function prepareStatements(db: DatabaseSync): PreparedStatements {
       clearSupersededByRef: db.prepare(
         `UPDATE vault SET superseded_by = NULL WHERE superseded_by = ?`
       ),
+      insertCtxVecStmt: db.prepare(`INSERT INTO vault_ctx_vec (rowid, embedding) VALUES (?, ?)`),
+      deleteCtxVecStmt: db.prepare(`DELETE FROM vault_ctx_vec WHERE rowid = ?`),
     };
   } catch (e) {
     throw new Error(
@@ -299,6 +314,18 @@ export function deleteVec(stmts: PreparedStatements, rowid: number): void {
   const safeRowid = BigInt(rowid);
   if (safeRowid < 1n) throw new Error(`Invalid rowid: ${rowid}`);
   stmts.deleteVecStmt.run(safeRowid);
+}
+
+export function insertCtxVec(stmts: PreparedStatements, rowid: number, embedding: Float32Array): void {
+  const safeRowid = BigInt(rowid);
+  if (safeRowid < 1n) throw new Error(`Invalid rowid: ${rowid}`);
+  stmts.insertCtxVecStmt.run(safeRowid, embedding);
+}
+
+export function deleteCtxVec(stmts: PreparedStatements, rowid: number): void {
+  const safeRowid = BigInt(rowid);
+  if (safeRowid < 1n) throw new Error(`Invalid rowid: ${rowid}`);
+  stmts.deleteCtxVecStmt.run(safeRowid);
 }
 
 export function testConnection(db: DatabaseSync): boolean {
