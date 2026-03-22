@@ -431,6 +431,7 @@ ${bold('Commands:')}
   --dry-run             Show what setup would do without writing anything
   --upgrade             Upgrade installed agent rules to the latest bundled version
   --no-rules            Skip agent rules installation during setup
+  --no-hooks            Skip recall/error hook installation during setup
 `);
 }
 
@@ -1135,7 +1136,7 @@ async function runSetup() {
 
   if (claudeConfigured) {
     if (isDryRun) {
-      console.log(`  ${yellow('[dry-run]')} Would install Claude Code hooks (memory recall, session capture, auto-capture)`);
+      console.log(`  ${yellow('[dry-run]')} Would install Claude Code hooks (memory recall, session capture, auto-capture, vault recall, error recall)`);
       console.log(`  ${yellow('[dry-run]')} Would install Claude Code skills (compile-context, vault-setup)`);
     } else {
       // Bundled hooks prompt: one Y/n for all three hooks
@@ -1165,6 +1166,20 @@ async function runSetup() {
           if (acInstalled) console.log(`  ${green('+')} Auto-capture hook installed`);
         } catch (e) {
           console.log(`  ${red('x')} Auto-capture hook failed: ${e.message}`);
+        }
+        if (!flags.has('--no-hooks')) {
+          try {
+            const recallInstalled = installRecallHook();
+            if (recallInstalled) console.log(`  ${green('+')} Vault recall hook installed`);
+          } catch (e) {
+            console.log(`  ${red('x')} Recall hook failed: ${e.message}`);
+          }
+          try {
+            const errorInstalled = installErrorHook();
+            if (errorInstalled) console.log(`  ${green('+')} Vault error hook installed`);
+          } catch (e) {
+            console.log(`  ${red('x')} Error hook failed: ${e.message}`);
+          }
         }
       } else {
         console.log(dim(`  Hooks skipped. Install later: context-vault hooks install`));
@@ -2908,7 +2923,9 @@ async function runUninstall() {
   const captureRemoved = removeSessionCaptureHook();
   const flushRemoved = removeSessionEndHook();
   const autoCaptureRemoved = removePostToolCallHook();
-  if (recallRemoved || captureRemoved || flushRemoved || autoCaptureRemoved) {
+  const recallHookRemoved = removeRecallHook();
+  const errorHookRemoved = removeErrorHook();
+  if (recallRemoved || captureRemoved || flushRemoved || autoCaptureRemoved || recallHookRemoved || errorHookRemoved) {
     console.log(`  ${green('+')} Removed Claude Code hooks`);
   } else {
     console.log(`  ${dim('-')} No Claude Code hooks to remove`);
@@ -5051,6 +5068,159 @@ function removePostToolCallHook() {
   return true;
 }
 
+/**
+ * Install the vault-recall-hook.mjs into ~/.claude/hooks/ and register it
+ * as a UserPromptSubmit hook in ~/.claude/settings.json.
+ * Returns true if installed, false if already present.
+ */
+function installRecallHook() {
+  const srcPath = join(ROOT, 'assets', 'vault-recall-hook.mjs');
+  if (!existsSync(srcPath)) return false;
+
+  const hooksDir = join(HOME, '.claude', 'hooks');
+  mkdirSync(hooksDir, { recursive: true });
+  const destPath = join(hooksDir, 'vault-recall-hook.mjs');
+  copyFileSync(srcPath, destPath);
+
+  const settingsPath = claudeSettingsPath();
+  let settings = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    } catch {
+      const bak = settingsPath + '.bak';
+      copyFileSync(settingsPath, bak);
+    }
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.UserPromptSubmit) settings.hooks.UserPromptSubmit = [];
+
+  const hookCmd = `node ${destPath}`;
+  const alreadyInstalled = settings.hooks.UserPromptSubmit.some((h) =>
+    h.hooks?.some((hh) => hh.command?.includes('vault-recall-hook'))
+  );
+  if (alreadyInstalled) return false;
+
+  settings.hooks.UserPromptSubmit.push({
+    hooks: [
+      {
+        type: 'command',
+        command: hookCmd,
+        timeout: 5,
+      },
+    ],
+  });
+
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  return true;
+}
+
+/**
+ * Remove the vault-recall-hook UserPromptSubmit hook from settings.json.
+ * Returns true if removed, false if not found.
+ */
+function removeRecallHook() {
+  const settingsPath = claudeSettingsPath();
+  if (!existsSync(settingsPath)) return false;
+
+  let settings;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+  } catch {
+    return false;
+  }
+
+  if (!settings.hooks?.UserPromptSubmit) return false;
+
+  const before = settings.hooks.UserPromptSubmit.length;
+  settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
+    (h) => !h.hooks?.some((hh) => hh.command?.includes('vault-recall-hook'))
+  );
+
+  if (settings.hooks.UserPromptSubmit.length === before) return false;
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  return true;
+}
+
+/**
+ * Install the vault-error-hook.mjs into ~/.claude/hooks/ and register it
+ * as a PostToolUse hook (matcher: Bash) in ~/.claude/settings.json.
+ * Returns true if installed, false if already present.
+ */
+function installErrorHook() {
+  const srcPath = join(ROOT, 'assets', 'vault-error-hook.mjs');
+  if (!existsSync(srcPath)) return false;
+
+  const hooksDir = join(HOME, '.claude', 'hooks');
+  mkdirSync(hooksDir, { recursive: true });
+  const destPath = join(hooksDir, 'vault-error-hook.mjs');
+  copyFileSync(srcPath, destPath);
+
+  const settingsPath = claudeSettingsPath();
+  let settings = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    } catch {
+      const bak = settingsPath + '.bak';
+      copyFileSync(settingsPath, bak);
+    }
+  }
+
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.PostToolUse) settings.hooks.PostToolUse = [];
+
+  const hookCmd = `node ${destPath}`;
+  const alreadyInstalled = settings.hooks.PostToolUse.some((h) =>
+    h.hooks?.some((hh) => hh.command?.includes('vault-error-hook'))
+  );
+  if (alreadyInstalled) return false;
+
+  settings.hooks.PostToolUse.push({
+    matcher: 'Bash',
+    hooks: [
+      {
+        type: 'command',
+        command: hookCmd,
+        timeout: 5,
+      },
+    ],
+  });
+
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  return true;
+}
+
+/**
+ * Remove the vault-error-hook PostToolUse hook from settings.json.
+ * Returns true if removed, false if not found.
+ */
+function removeErrorHook() {
+  const settingsPath = claudeSettingsPath();
+  if (!existsSync(settingsPath)) return false;
+
+  let settings;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+  } catch {
+    return false;
+  }
+
+  if (!settings.hooks?.PostToolUse) return false;
+
+  const before = settings.hooks.PostToolUse.length;
+  settings.hooks.PostToolUse = settings.hooks.PostToolUse.filter(
+    (h) => !h.hooks?.some((hh) => hh.command?.includes('vault-error-hook'))
+  );
+
+  if (settings.hooks.PostToolUse.length === before) return false;
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  return true;
+}
+
 async function runSkills() {
   const sub = args[1];
 
@@ -5348,6 +5518,25 @@ async function runHooksInstall() {
     }
     console.log();
   }
+
+  // Proactive surfacing hooks (vault recall + error recall)
+  try {
+    const recallInstalled = installRecallHook();
+    if (recallInstalled) {
+      console.log(`  ${green('✓')} Vault recall hook installed (proactive surfacing on prompts)`);
+    }
+  } catch (e) {
+    console.error(`  ${red('x')} Vault recall hook failed: ${e.message}`);
+  }
+  try {
+    const errorInstalled = installErrorHook();
+    if (errorInstalled) {
+      console.log(`  ${green('✓')} Vault error hook installed (surfaces past errors on Bash failures)`);
+    }
+  } catch (e) {
+    console.error(`  ${red('x')} Vault error hook failed: ${e.message}`);
+  }
+  console.log();
 }
 
 async function runHooksUninstall() {
@@ -5388,6 +5577,24 @@ async function runHooksUninstall() {
     }
   } catch (e) {
     console.error(`\n  ${red('x')} Failed to remove auto-capture hook: ${e.message}\n`);
+  }
+
+  try {
+    const recallHookRemoved = removeRecallHook();
+    if (recallHookRemoved) {
+      console.log(`\n  ${green('✓')} Vault recall hook removed.\n`);
+    }
+  } catch (e) {
+    console.error(`\n  ${red('x')} Failed to remove recall hook: ${e.message}\n`);
+  }
+
+  try {
+    const errorHookRemoved = removeErrorHook();
+    if (errorHookRemoved) {
+      console.log(`\n  ${green('✓')} Vault error hook removed.\n`);
+    }
+  } catch (e) {
+    console.error(`\n  ${red('x')} Failed to remove error hook: ${e.message}\n`);
   }
 }
 
