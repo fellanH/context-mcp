@@ -1427,43 +1427,147 @@ describe('context_status handler', () => {
 // ─── clear_context ────────────────────────────────────────────────────────────
 
 describe('clear_context handler', () => {
-  it('returns ok with reset message when called with no args', () => {
-    const result = clearContextTool.handler({});
+  it('returns ok with reset message when called with no args', async () => {
+    const result = await clearContextTool.handler({});
     const text = isOk(result);
     expect(text).toContain('Context Reset');
     expect(text).toContain('cleared');
     expect(text).toContain('no data was deleted');
   });
 
-  it('returns ok with reset message when called without arguments', () => {
-    const result = clearContextTool.handler();
+  it('returns ok with reset message when called without arguments', async () => {
+    const result = await clearContextTool.handler();
     const text = isOk(result);
     expect(text).toContain('Context Reset');
   });
 
-  it('includes scope name in response when scope is provided', () => {
-    const result = clearContextTool.handler({ scope: 'project-b' });
+  it('includes scope name in response when scope is provided', async () => {
+    const result = await clearContextTool.handler({ scope: 'project-b' });
     const text = isOk(result);
     expect(text).toContain('project-b');
     expect(text).toContain('Active Scope');
   });
 
-  it('trims whitespace from scope', () => {
-    const result = clearContextTool.handler({ scope: '  my-project  ' });
+  it('trims whitespace from scope', async () => {
+    const result = await clearContextTool.handler({ scope: '  my-project  ' });
     const text = isOk(result);
     expect(text).toContain('my-project');
     expect(text).toContain('Active Scope');
   });
 
-  it('treats whitespace-only scope as unset', () => {
-    const result = clearContextTool.handler({ scope: '   ' });
+  it('treats whitespace-only scope as unset', async () => {
+    const result = await clearContextTool.handler({ scope: '   ' });
     const text = isOk(result);
     expect(text).not.toContain('Active Scope');
     expect(text).toContain('No scope set');
   });
 
-  it('never returns an error response', () => {
-    const result = clearContextTool.handler({ scope: 'anything' });
+  it('never returns an error response', async () => {
+    const result = await clearContextTool.handler({ scope: 'anything' });
+    expect(result.isError).toBeFalsy();
+  });
+
+  it('sets _meta with scope info', async () => {
+    const result = await clearContextTool.handler({ scope: 'myproject' });
+    expect(result._meta).toBeDefined();
+    expect(result._meta.scope).toBe('myproject');
+  });
+
+  it('sets _meta.scope to null when no scope provided', async () => {
+    const result = await clearContextTool.handler({});
+    expect(result._meta).toBeDefined();
+    expect(result._meta.scope).toBeNull();
+  });
+
+  it('infers scope from preload_bucket when scope is not set', async () => {
+    const result = await clearContextTool.handler({ preload_bucket: 'autohub' });
+    const text = isOk(result);
+    expect(text).toContain('Active Scope: `autohub`');
+    expect(result._meta.scope).toBe('autohub');
+  });
+
+  it('prefers explicit scope over preload_bucket for scope name', async () => {
+    const result = await clearContextTool.handler({ scope: 'explicit', preload_bucket: 'other' });
+    const text = isOk(result);
+    expect(text).toContain('Active Scope: `explicit`');
+    expect(result._meta.scope).toBe('explicit');
+  });
+});
+
+describe('clear_context with preload_bucket', () => {
+  let ctx, cleanup;
+
+  beforeAll(async () => {
+    ({ ctx, cleanup } = await createTestCtx());
+    // Seed some entries with bucket tags
+    await captureAndIndex(ctx, {
+      kind: 'decision',
+      title: 'Use SQLite for local storage',
+      body: 'SQLite is fast and zero-ops for local-first apps.',
+      tags: ['bucket:testproject'],
+    });
+    await captureAndIndex(ctx, {
+      kind: 'insight',
+      title: 'Embedding model latency',
+      body: 'The local embedding model adds ~50ms per call.',
+      tags: ['bucket:testproject'],
+    });
+    await captureAndIndex(ctx, {
+      kind: 'insight',
+      title: 'Unrelated entry',
+      body: 'This entry is in a different bucket.',
+      tags: ['bucket:other'],
+    });
+  }, 30000);
+
+  afterAll(() => cleanup());
+
+  it('preloads bucket context when preload_bucket is set', async () => {
+    const result = await clearContextTool.handler(
+      { scope: 'testproject', preload_bucket: 'testproject' },
+      ctx,
+      shared
+    );
+    const text = isOk(result);
+    expect(text).toContain('Preloaded Context: `testproject`');
+    expect(text).toContain('SQLite');
+    expect(text).toContain('Embedding model');
+    expect(text).not.toContain('Unrelated entry');
+    expect(result._meta.preload_bucket).toBe('testproject');
+    expect(result._meta.preload_entries).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows message when bucket has no entries', async () => {
+    const result = await clearContextTool.handler(
+      { preload_bucket: 'nonexistent' },
+      ctx,
+      shared
+    );
+    const text = isOk(result);
+    expect(text).toContain('No recent entries found in bucket `nonexistent`');
+  });
+
+  it('respects max_tokens budget', async () => {
+    // Very small budget should limit entries
+    const result = await clearContextTool.handler(
+      { preload_bucket: 'testproject', max_tokens: 50 },
+      ctx,
+      shared
+    );
+    const text = isOk(result);
+    // Should still have the header at minimum
+    expect(text).toContain('Context Reset');
+    expect(result._meta.preload_tokens_budget).toBe(50);
+  });
+
+  it('works without ctx (no preload, no error)', async () => {
+    const result = await clearContextTool.handler(
+      { scope: 'myproject', preload_bucket: 'myproject' }
+    );
+    const text = isOk(result);
+    expect(text).toContain('Active Scope: `myproject`');
+    // No preload section since no ctx
+    expect(text).not.toContain('Preloaded Context');
     expect(result.isError).toBeFalsy();
   });
 });
