@@ -635,7 +635,7 @@ async function runSetup() {
   }
 
   // Detect tools
-  console.log(dim(`  [1/6]`) + bold(' Detecting tools...\n'));
+  console.log(dim(`  [1/7]`) + bold(' Detecting tools...\n'));
   verbose(userLevel, 'Scanning for AI tools on this machine.');
   if (userLevel === 'beginner') console.log();
   const { detected, results: detectionResults } = await detectAllTools();
@@ -706,8 +706,21 @@ async function runSetup() {
     }
   }
 
+  // Fast path for new users: recommended defaults
+  let useRecommendedDefaults = false;
+  const existingConfigForFastPath = join(HOME, '.context-mcp', 'config.json');
+  const isNewInstall = !existsSync(existingConfigForFastPath);
+  if (isNewInstall && !isNonInteractive) {
+    console.log(dim('  Install with recommended settings?'));
+    console.log(dim('  Vault in default location, all hooks, skills, and rules installed.'));
+    console.log();
+    const fastAnswer = await prompt('  Install with recommended settings? (Y/n):', 'Y');
+    useRecommendedDefaults = fastAnswer.toLowerCase() !== 'n';
+    if (useRecommendedDefaults) console.log();
+  }
+
   // Vault directory (content files)
-  console.log(dim(`  [2/6]`) + bold(' Configuring vault...\n'));
+  console.log(dim(`  [2/7]`) + bold(' Configuring vault...\n'));
   verbose(userLevel, 'Your vault is a folder of plain markdown files — you own it.');
   if (userLevel === 'beginner') console.log();
 
@@ -727,7 +740,7 @@ async function runSetup() {
     }
   }
 
-  if (!getFlag('--vault-dir') && !isNonInteractive) {
+  if (!getFlag('--vault-dir') && !isNonInteractive && !useRecommendedDefaults) {
     const existingVaults = scanForVaults();
     if (existingVaults.length === 1) {
       console.log(
@@ -759,9 +772,16 @@ async function runSetup() {
       }
       console.log();
     }
+  } else if (!getFlag('--vault-dir') && useRecommendedDefaults) {
+    // Fast path: still use detected vaults if found
+    const existingVaults = scanForVaults();
+    if (existingVaults.length >= 1) {
+      defaultVaultDir = existingVaults[0].path;
+      console.log(`  ${green('+')} Using existing vault at ${defaultVaultDir}`);
+    }
   }
 
-  const vaultDir = isNonInteractive
+  const vaultDir = (isNonInteractive || useRecommendedDefaults)
     ? defaultVaultDir
     : await prompt(`  Vault directory:`, defaultVaultDir);
   let resolvedVaultDir = resolve(vaultDir);
@@ -773,7 +793,7 @@ async function runSetup() {
       console.error(dim(`  Remove or rename the file, then run setup again.\n`));
       process.exit(1);
     }
-  } else if (isNonInteractive) {
+  } else if (isNonInteractive || useRecommendedDefaults) {
     mkdirSync(resolvedVaultDir, { recursive: true });
     console.log(`\n  ${green('+')} Created ${resolvedVaultDir}`);
   } else {
@@ -849,30 +869,6 @@ async function runSetup() {
   vaultConfig.devDir = join(HOME, 'dev');
   vaultConfig.mode = 'local';
 
-  // Telemetry opt-in
-  console.log(`\n  ${dim('[3/6]')}${bold(' Anonymous error reporting\n')}`);
-  verbose(userLevel, 'Entirely optional — works identically either way.\n');
-  console.log(dim('  When enabled, unhandled errors send a minimal event (type, tool name,'));
-  console.log(dim('  version, platform) to help diagnose issues. No vault content,'));
-  console.log(dim('  file paths, or personal data is ever sent. Off by default.'));
-  console.log(dim(`  Full schema: ${MARKETING_URL}/telemetry`));
-  console.log();
-
-  let telemetryEnabled = vaultConfig.telemetry === true;
-  if (!isNonInteractive) {
-    const defaultChoice = telemetryEnabled ? 'Y' : 'n';
-    const telemetryAnswer = await prompt(
-      `  Enable anonymous error reporting? (y/N):`,
-      defaultChoice
-    );
-    telemetryEnabled =
-      telemetryAnswer.toLowerCase() === 'y' || telemetryAnswer.toLowerCase() === 'yes';
-  }
-  vaultConfig.telemetry = telemetryEnabled;
-  console.log(
-    `  ${telemetryEnabled ? green('+') : dim('-')} Telemetry: ${telemetryEnabled ? 'enabled' : 'disabled'}`
-  );
-
   assertNotTestMode(configPath);
   writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + '\n');
   console.log(`\n  ${green('+')} Wrote ${configPath}`);
@@ -880,11 +876,11 @@ async function runSetup() {
   // Pre-download embedding model with spinner (skip with --skip-embeddings)
   const skipEmbeddings = flags.has('--skip-embeddings');
   if (skipEmbeddings) {
-    console.log(`\n  ${dim('[4/6]')}${bold(' Embedding model')} ${dim('(skipped)')}`);
+    console.log(`\n  ${dim('[3/7]')}${bold(' Embedding model')} ${dim('(skipped)')}`);
     console.log(dim('  FTS-only mode — full-text search works, semantic search disabled.'));
     console.log(dim('  To enable later: context-vault setup (without --skip-embeddings)'));
   } else {
-    console.log(`\n  ${dim('[4/6]')}${bold(' Downloading embedding model...')}`);
+    console.log(`\n  ${dim('[3/7]')}${bold(' Downloading embedding model...')}`);
     verbose(userLevel, 'Enables meaning-based search. ~22MB download, runs fully offline.');
     console.log(dim('  all-MiniLM-L6-v2 (~22MB, one-time download)'));
     console.log(dim(`  Slow connection? Re-run with --skip-embeddings (enables FTS-only mode)\n`));
@@ -967,7 +963,7 @@ async function runSetup() {
   }
 
   // Configure each tool — always pass vault dir explicitly to prevent config drift
-  console.log(`\n  ${dim('[5/6]')}${bold(' Configuring tools...\n')}`);
+  console.log(`\n  ${dim('[4/7]')}${bold(' Configuring tools...\n')}`);
   verbose(userLevel, 'Writing config so your AI tool can find your vault.\n');
   const results = [];
   const customVaultDir = resolvedVaultDir;
@@ -989,116 +985,77 @@ async function runSetup() {
     }
   }
 
-  // Claude Code hooks (opt-in)
+  // Claude Code extras: hooks, skills, rules (bundled into one step)
+  console.log(`\n  ${dim('[5/7]')}${bold(' Extras...\n')}`);
   const claudeConfigured = results.some((r) => r.ok && r.tool.id === 'claude-code');
   const hookFlag = flags.has('--hooks');
+  const configuredTools = results.filter((r) => r.ok).map((r) => r.tool);
+  const installedRulesPaths = [];
+
   if (claudeConfigured) {
-    // 1. Recall hook (UserPromptSubmit)
-    let installHook = hookFlag;
-    if (!hookFlag && !isNonInteractive) {
+    // Bundled hooks prompt: one Y/n for all three hooks
+    let installHooks = hookFlag || useRecommendedDefaults;
+    if (!hookFlag && !isNonInteractive && !useRecommendedDefaults) {
+      console.log(dim('  Install Claude Code hooks? (recommended)'));
+      console.log(dim('  Memory recall, session capture, and auto-capture.'));
       console.log();
-      console.log(dim('  Claude Code detected — install memory hook?'));
-      console.log(dim('  Searches your vault on every prompt and injects relevant entries'));
-      console.log(dim("  as additional context alongside Claude's native memory."));
-      console.log();
-      const answer = await prompt('  Install Claude Code memory hook? (Y/n):', 'Y');
-      installHook = answer.toLowerCase() !== 'n';
+      const answer = await prompt('  Install Claude Code hooks? (Y/n):', 'Y');
+      installHooks = answer.toLowerCase() !== 'n';
     }
-    if (installHook) {
+    if (installHooks) {
       try {
-        const installed = installClaudeHook();
-        if (installed) {
-          console.log(`\n  ${green('+')} Memory hook installed`);
-        }
+        const hookInstalled = installClaudeHook();
+        if (hookInstalled) console.log(`  ${green('+')} Memory recall hook installed`);
       } catch (e) {
-        console.log(`\n  ${red('x')} Hook install failed: ${e.message}`);
+        console.log(`  ${red('x')} Memory hook failed: ${e.message}`);
       }
-
-      // 2. Session capture hook (SessionEnd) — only offer if recall hook was installed
-      if (!isNonInteractive) {
-        console.log();
-        console.log(dim('  Auto-save session summaries when Claude Code exits?'));
-        console.log(dim('  Captures files touched, tools used, and decisions made per session.'));
-        console.log();
-        const captureAnswer = await prompt('  Install session capture hook? (Y/n):', 'Y');
-        if (captureAnswer.toLowerCase() !== 'n') {
-          try {
-            const captureInstalled = installSessionCaptureHook();
-            if (captureInstalled) {
-              console.log(`  ${green('+')} Session capture hook installed`);
-            }
-          } catch (e) {
-            console.log(`  ${red('x')} Session capture hook failed: ${e.message}`);
-          }
-        }
-      } else if (hookFlag) {
-        try {
-          installSessionCaptureHook();
-        } catch {}
+      try {
+        const captureInstalled = installSessionCaptureHook();
+        if (captureInstalled) console.log(`  ${green('+')} Session capture hook installed`);
+      } catch (e) {
+        console.log(`  ${red('x')} Session capture hook failed: ${e.message}`);
       }
-
-      // 3. Auto-capture hook (PostToolCall) — only offer if recall hook was installed
-      if (!isNonInteractive) {
-        console.log();
-        console.log(dim('  Passively log tool calls for richer session summaries?'));
-        console.log(dim('  Records tool names and file paths after each tool call (lightweight).'));
-        console.log();
-        const autoCaptureAnswer = await prompt('  Install auto-capture hook? (Y/n):', 'Y');
-        if (autoCaptureAnswer.toLowerCase() !== 'n') {
-          try {
-            const acInstalled = installPostToolCallHook();
-            if (acInstalled) {
-              console.log(`  ${green('+')} Auto-capture hook installed`);
-            }
-          } catch (e) {
-            console.log(`  ${red('x')} Auto-capture hook failed: ${e.message}`);
-          }
-        }
-      } else if (hookFlag) {
-        try {
-          installPostToolCallHook();
-        } catch {}
+      try {
+        const acInstalled = installPostToolCallHook();
+        if (acInstalled) console.log(`  ${green('+')} Auto-capture hook installed`);
+      } catch (e) {
+        console.log(`  ${red('x')} Auto-capture hook failed: ${e.message}`);
       }
-    } else if (!isNonInteractive && !hookFlag) {
-      console.log(dim(`  Skipped — install later: context-vault hooks install`));
+    } else {
+      console.log(dim(`  Hooks skipped. Install later: context-vault hooks install`));
     }
-  }
 
-  // Claude Code skills (opt-in)
-  if (claudeConfigured && !isNonInteractive) {
-    console.log();
-    console.log(dim('  Install Claude Code skills? (recommended)'));
-    console.log(dim('  compile-context — compile vault entries into a project brief'));
-    console.log(dim('  vault-setup     — agent-assisted vault customization (/vault-setup)'));
-    console.log();
-    const skillAnswer = await prompt('  Install Claude Code skills? (Y/n):', 'Y');
-    const installSkillsFlag = skillAnswer.toLowerCase() !== 'n';
+    // Skills (bundled, no separate prompt unless not using fast path)
+    let installSkillsFlag = useRecommendedDefaults || isNonInteractive;
+    if (!isNonInteractive && !useRecommendedDefaults) {
+      console.log();
+      console.log(dim('  Install Claude Code skills? (recommended)'));
+      console.log(dim('  compile-context, vault-setup'));
+      console.log();
+      const skillAnswer = await prompt('  Install Claude Code skills? (Y/n):', 'Y');
+      installSkillsFlag = skillAnswer.toLowerCase() !== 'n';
+    }
     if (installSkillsFlag) {
       try {
         const names = installSkills();
-        if (names.length > 0) {
-          for (const name of names) {
-            console.log(`\n  ${green('+')} ${name} skill installed`);
-          }
+        for (const name of names) {
+          console.log(`  ${green('+')} ${name} skill installed`);
         }
       } catch (e) {
-        console.log(`\n  ${red('x')} Skills install failed: ${e.message}`);
+        console.log(`  ${red('x')} Skills install failed: ${e.message}`);
       }
     } else {
-      console.log(dim(`  Skipped — install later: context-vault skills install`));
+      console.log(dim(`  Skills skipped. Install later: context-vault skills install`));
     }
   }
 
-  // Agent rules installation (opt-in per tool, skip if --no-rules)
-  const configuredTools = results.filter((r) => r.ok).map((r) => r.tool);
-  const installedRulesPaths = [];
+  // Agent rules installation
   if (configuredTools.length > 0 && !flags.has('--no-rules')) {
-    let installRules = isNonInteractive;
-    if (!isNonInteractive) {
+    let installRules = isNonInteractive || useRecommendedDefaults;
+    if (!isNonInteractive && !useRecommendedDefaults) {
       console.log();
       console.log(dim('  Install agent rules? (recommended)'));
-      console.log(dim('  Teaches your AI agent when and how to save knowledge to the vault'));
-      console.log(dim('  automatically — the key to building useful memory over time.'));
+      console.log(dim('  Teaches your AI agent when and how to save knowledge to the vault.'));
       console.log();
       const rulesAnswer = await prompt('  Install agent rules? (Y/n):', 'Y');
       installRules = rulesAnswer.toLowerCase() !== 'n';
@@ -1111,21 +1068,21 @@ async function runSetup() {
             const installed = installAgentRulesForTool(tool, rulesContent);
             const rulesPath = getRulesPathForTool(tool);
             if (installed) {
-              console.log(`  ${green('+')} ${tool.name} — agent rules installed`);
+              console.log(`  ${green('+')} ${tool.name} agent rules installed`);
               if (rulesPath) {
                 console.log(`     ${dim(rulesPath)}`);
                 installedRulesPaths.push({ tool: tool.name, path: rulesPath });
               }
             }
           } catch (e) {
-            console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
+            console.log(`  ${red('x')} ${tool.name} rules: ${e.message}`);
           }
         }
       } else {
-        console.log(dim('  Agent rules file not found in package — skipping.'));
+        console.log(dim('  Agent rules file not found in package.'));
       }
     } else {
-      console.log(dim('  Skipped — install later: context-vault rules install'));
+      console.log(dim('  Rules skipped. Install later: context-vault rules install'));
     }
   } else if (flags.has('--no-rules')) {
     console.log(dim('  Agent rules skipped (--no-rules)'));
@@ -1139,8 +1096,36 @@ async function runSetup() {
     );
   }
 
+  // Telemetry opt-in (moved to end, after user has seen value)
+  console.log(`\n  ${dim('[6/7]')}${bold(' Anonymous error reporting\n')}`);
+  verbose(userLevel, 'Entirely optional. Works identically either way.\n');
+  console.log(dim('  When enabled, unhandled errors send a minimal event (type, tool name,'));
+  console.log(dim('  version, platform) to help diagnose issues. No vault content,'));
+  console.log(dim('  file paths, or personal data is ever sent. Off by default.'));
+  console.log(dim(`  Full schema: ${MARKETING_URL}/telemetry`));
+  console.log();
+
+  let telemetryEnabled = vaultConfig.telemetry === true;
+  if (!isNonInteractive && !useRecommendedDefaults) {
+    const defaultChoice = telemetryEnabled ? 'Y' : 'n';
+    const telemetryAnswer = await prompt(
+      `  Enable anonymous error reporting? (y/N):`,
+      defaultChoice
+    );
+    telemetryEnabled =
+      telemetryAnswer.toLowerCase() === 'y' || telemetryAnswer.toLowerCase() === 'yes';
+  }
+  vaultConfig.telemetry = telemetryEnabled;
+  console.log(
+    `  ${telemetryEnabled ? green('+') : dim('-')} Telemetry: ${telemetryEnabled ? 'enabled' : 'disabled'}`
+  );
+
+  // Re-write config with telemetry setting
+  assertNotTestMode(configPath);
+  writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + '\n');
+
   // Health check
-  console.log(`\n  ${dim('[6/6]')}${bold(' Health check...')}\n`);
+  console.log(`\n  ${dim('[7/7]')}${bold(' Health check...')}\n`);
   verbose(userLevel, 'Verifying vault, config, and database are accessible.\n');
   const okResults = results.filter((r) => r.ok);
 
@@ -2318,7 +2303,8 @@ async function runStatus() {
       const filled = maxCount > 0 ? Math.round((c / maxCount) * BAR_WIDTH) : 0;
       const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
       const countStr = String(c).padStart(4);
-      const plural = kind.endsWith('s') ? kind : kind + 's';
+      const IRREGULAR_PLURALS = { activity: 'activities', inbox: 'inboxes', index: 'indexes', match: 'matches' };
+      const plural = IRREGULAR_PLURALS[kind] || (kind.endsWith('s') ? kind : kind + 's');
       console.log(`    ${dim(bar)} ${countStr} ${plural}`);
     }
   } else {
@@ -4675,19 +4661,28 @@ async function runRules() {
     console.log();
   } else if (sub === 'show') {
     const { detected } = await detectAllTools();
-    const tool = detected.find((t) => getRulesPathForTool(t));
-    if (!tool) {
+    const toolsWithRules = detected.filter((t) => getRulesPathForTool(t));
+    if (toolsWithRules.length === 0) {
       console.log(`\n  ${yellow('!')} No supported tool detected.\n`);
       process.exit(1);
     }
-    const rulesPath = getRulesPathForTool(tool);
-    if (!rulesPath || !existsSync(rulesPath)) {
-      console.log(`\n  ${yellow('!')} No rules file installed for ${tool.name}.`);
-      console.log(dim(`  Run: context-vault rules install\n`));
+    let anyShown = false;
+    for (const tool of toolsWithRules) {
+      const rulesPath = getRulesPathForTool(tool);
+      if (!rulesPath || !existsSync(rulesPath)) {
+        console.log(`\n  ${yellow('!')} No rules file installed for ${tool.name}.`);
+        console.log(dim(`  Run: context-vault rules install`));
+        continue;
+      }
+      if (anyShown) console.log(dim('  ' + '─'.repeat(40)));
+      console.log(`\n  ${dim(`${tool.name}: ${rulesPath}`)}\n`);
+      console.log(readFileSync(rulesPath, 'utf-8'));
+      anyShown = true;
+    }
+    if (!anyShown) {
+      console.log(dim(`\n  Run: context-vault rules install\n`));
       process.exit(1);
     }
-    console.log(`\n  ${dim(`${tool.name}: ${rulesPath}`)}\n`);
-    console.log(readFileSync(rulesPath, 'utf-8'));
   } else if (sub === 'path') {
     const { detected } = await detectAllTools();
     const supportedTools = detected.filter((t) => getRulesPathForTool(t));
@@ -4709,42 +4704,44 @@ async function runRules() {
       process.exit(1);
     }
     const { detected } = await detectAllTools();
-    const tool = detected.find((t) => getRulesPathForTool(t));
-    if (!tool) {
+    const toolsWithRules = detected.filter((t) => getRulesPathForTool(t));
+    if (toolsWithRules.length === 0) {
       console.log(`\n  ${yellow('!')} No supported tool detected.\n`);
       process.exit(1);
     }
-    const rulesPath = getRulesPathForTool(tool);
-    if (!rulesPath || !existsSync(rulesPath)) {
-      console.log(`\n  ${yellow('!')} No rules file installed for ${tool.name}.`);
-      console.log(dim(`  Run: context-vault rules install\n`));
-      process.exit(1);
-    }
-    const installed = readFileSync(rulesPath, 'utf-8');
-    if (installed.trim() === bundled.trim()) {
-      console.log(`\n  ${green('✓')} Rules are up to date (${rulesPath})\n`);
-    } else {
-      console.log(`\n  ${yellow('!')} Installed rules differ from bundled version.`);
-      console.log(`  ${dim(rulesPath)}\n`);
-      const installedLines = installed.split('\n');
-      const bundledLines = bundled.split('\n');
-      const maxLines = Math.max(installedLines.length, bundledLines.length);
-      for (let i = 0; i < maxLines; i++) {
-        const a = installedLines[i];
-        const b = bundledLines[i];
-        if (a === undefined) {
-          console.log(`  ${green('+')} ${b}`);
-        } else if (b === undefined) {
-          console.log(`  ${red('-')} ${a}`);
-        } else if (a !== b) {
-          console.log(`  ${red('-')} ${a}`);
-          console.log(`  ${green('+')} ${b}`);
-        }
+    for (const tool of toolsWithRules) {
+      const rulesPath = getRulesPathForTool(tool);
+      if (!rulesPath || !existsSync(rulesPath)) {
+        console.log(`\n  ${yellow('!')} No rules file installed for ${tool.name}.`);
+        console.log(dim(`  Run: context-vault rules install`));
+        continue;
       }
-      console.log();
-      console.log(dim('  To upgrade: context-vault rules install'));
-      console.log();
+      const installed = readFileSync(rulesPath, 'utf-8');
+      if (installed.trim() === bundled.trim()) {
+        console.log(`\n  ${green('✓')} ${tool.name}: rules are up to date (${rulesPath})`);
+      } else {
+        console.log(`\n  ${yellow('!')} ${tool.name}: installed rules differ from bundled version.`);
+        console.log(`  ${dim(rulesPath)}\n`);
+        const installedLines = installed.split('\n');
+        const bundledLines = bundled.split('\n');
+        const maxLines = Math.max(installedLines.length, bundledLines.length);
+        for (let i = 0; i < maxLines; i++) {
+          const a = installedLines[i];
+          const b = bundledLines[i];
+          if (a === undefined) {
+            console.log(`  ${green('+')} ${b}`);
+          } else if (b === undefined) {
+            console.log(`  ${red('-')} ${a}`);
+          } else if (a !== b) {
+            console.log(`  ${red('-')} ${a}`);
+            console.log(`  ${green('+')} ${b}`);
+          }
+        }
+        console.log();
+        console.log(dim('  To upgrade: context-vault rules install'));
+      }
     }
+    console.log();
   } else {
     console.log(`
   ${bold('context-vault rules')} <command>
