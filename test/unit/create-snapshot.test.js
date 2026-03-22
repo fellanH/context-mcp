@@ -126,7 +126,7 @@ describe('create_snapshot handler — happy path', () => {
 
   it('filters by tags when provided', async () => {
     const result = await createSnapshotTool.handler(
-      { topic: 'Test Topic', tags: ['patterns'] },
+      { topic: 'ULID identifiers database', tags: ['patterns'] },
       ctx,
       shared
     );
