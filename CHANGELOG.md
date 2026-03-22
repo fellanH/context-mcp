@@ -2,6 +2,30 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.5.0] — 2026-03-22
+
+### Added
+
+- **Agent rules installation in `context-vault setup`**: Auto-installs vault-awareness rules for Claude Code, Cursor, and Windsurf during setup
+- **`context-vault rules show/diff/path` subcommands**: Inspect, compare, and locate installed agent rules
+- **Auto-memory integration in `session_start()`**: Uses Claude Code auto-memory files as additional search context for session briefs
+- **Dual-write to `.context/`**: `save_context` mirrors entries as markdown files to a local `.context/` directory in the caller's working directory
+- **Auto-insight extraction in session-end hook**: Automatically extracts and saves insights when a session ends
+- **Selective indexing**: New `indexed` parameter on `save_context` separates storage from retrieval. Config-driven exclude rules (`indexing` block) control which entries generate embeddings and FTS index entries. Event-category entries default to unindexed when `autoIndexEvents` is false
+- **`context-vault reindex` CLI**: New `--dry-run` and `--kind` flags, respects indexing config rules
+- **Recall frequency tracking**: New `recall_count`, `recall_sessions`, `last_recalled_at` columns track how often entries are retrieved. Co-retrieval tracking table stores entry pairs retrieved together (for vault-brain edge data)
+- **Recall boost in search ranking**: Logarithmic boost with 30-day half-life decay, capped at 2x. Discovery slots reserve positions for low-recall entries to prevent feedback loops
+- **`include_unindexed` parameter on `list_context`**: Opt-in to see entries excluded from search indexing
+- **Indexed vs total reporting in `context_status`**: Per-kind breakdown of indexed entry counts and recall distribution stats
+
+### Changed
+
+- Schema v16 to v18: v17 adds `indexed` column for selective indexing; v18 adds `recall_count`, `recall_sessions`, `last_recalled_at` columns and `co_retrievals` table
+
+### Fixed
+
+- **Snapshot tag filter test reliability**: Use FTS-matchable topic in `create_snapshot` tag filter test so it works without the embedding model loaded
+
 ## [3.4.5] — 2026-03-22
 
 ### Added
