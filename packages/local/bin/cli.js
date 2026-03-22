@@ -188,6 +188,7 @@ const args = process.argv.slice(2);
 const command = args[0];
 const flags = new Set(args.filter((a) => a.startsWith('--')));
 const isNonInteractive = flags.has('--yes') || !process.stdin.isTTY;
+const isDryRun = flags.has('--dry-run');
 
 function getFlag(name) {
   const idx = args.indexOf(name);
@@ -426,6 +427,7 @@ ${bold('Commands:')}
   --yes                 Non-interactive mode (accept all defaults)
   --force               Overwrite existing config without confirmation
   --skip-embeddings     Skip embedding model download (FTS-only mode)
+  --dry-run             Show what setup would do without writing anything
 `);
 }
 
@@ -437,11 +439,15 @@ async function runSetup() {
   console.log();
   console.log(`  ${bold('◇ context-vault')} ${dim(`v${VERSION}`)}`);
   console.log(dim('  Persistent memory for AI agents'));
+  if (isDryRun) {
+    console.log();
+    console.log(yellow('  [dry-run] No files will be written. Showing what setup would do.'));
+  }
   console.log();
 
   // Check for existing installation
   const existingConfig = join(HOME, '.context-mcp', 'config.json');
-  if (existsSync(existingConfig) && !isNonInteractive) {
+  if (existsSync(existingConfig) && !isNonInteractive && !isDryRun) {
     let existingVault = '(unknown)';
     try {
       const cfg = JSON.parse(readFileSync(existingConfig, 'utf-8'));
@@ -672,9 +678,9 @@ async function runSetup() {
   ${dim('}')}\n`);
     }
 
-    // In non-interactive mode, continue setup without tools (vault, config, etc.)
-    if (isNonInteractive) {
-      console.log(dim('  Continuing setup without tool configuration (--yes mode).\n'));
+    // In non-interactive/dry-run mode, continue setup without tools (vault, config, etc.)
+    if (isDryRun || isNonInteractive) {
+      console.log(dim(`  Continuing setup without tool configuration (${isDryRun ? '--dry-run' : '--yes'} mode).\n`));
     } else {
       return;
     }
@@ -682,7 +688,7 @@ async function runSetup() {
 
   // Select tools
   let selected;
-  if (isNonInteractive || detected.length === 1) {
+  if (isDryRun || isNonInteractive || detected.length === 1) {
     selected = detected;
     if (detected.length === 1) {
       console.log(`  ${dim('→')} Auto-selected ${detected[0].name}\n`);
@@ -710,7 +716,9 @@ async function runSetup() {
   let useRecommendedDefaults = false;
   const existingConfigForFastPath = join(HOME, '.context-mcp', 'config.json');
   const isNewInstall = !existsSync(existingConfigForFastPath);
-  if (isNewInstall && !isNonInteractive) {
+  if (isDryRun) {
+    useRecommendedDefaults = true;
+  } else if (isNewInstall && !isNonInteractive) {
     console.log(dim('  Install with recommended settings?'));
     console.log(dim('  Vault in default location, all hooks, skills, and rules installed.'));
     console.log();
@@ -781,7 +789,7 @@ async function runSetup() {
     }
   }
 
-  const vaultDir = (isNonInteractive || useRecommendedDefaults)
+  const vaultDir = (isNonInteractive || useRecommendedDefaults || isDryRun)
     ? defaultVaultDir
     : await prompt(`  Vault directory:`, defaultVaultDir);
   let resolvedVaultDir = resolve(vaultDir);
@@ -793,6 +801,8 @@ async function runSetup() {
       console.error(dim(`  Remove or rename the file, then run setup again.\n`));
       process.exit(1);
     }
+  } else if (isDryRun) {
+    console.log(`\n  ${yellow('[dry-run]')} Would create directory: ${resolvedVaultDir}`);
   } else if (isNonInteractive || useRecommendedDefaults) {
     mkdirSync(resolvedVaultDir, { recursive: true });
     console.log(`\n  ${green('+')} Created ${resolvedVaultDir}`);
@@ -808,11 +818,19 @@ async function runSetup() {
   }
 
   // Write marker file for vault auto-detection
-  writeMarkerFile(resolvedVaultDir);
+  if (isDryRun) {
+    console.log(`  ${yellow('[dry-run]')} Would write marker file: ${join(resolvedVaultDir, MARKER_FILE)}`);
+  } else {
+    writeMarkerFile(resolvedVaultDir);
+  }
 
   // Ensure data dir exists for DB storage
   const dataDir = join(HOME, '.context-mcp');
-  mkdirSync(dataDir, { recursive: true });
+  if (isDryRun) {
+    console.log(`  ${yellow('[dry-run]')} Would create directory: ${dataDir}`);
+  } else {
+    mkdirSync(dataDir, { recursive: true });
+  }
 
   // Write config.json to data dir (persistent, survives reinstalls)
   const configPath = join(dataDir, 'config.json');
@@ -848,18 +866,21 @@ async function runSetup() {
     );
     console.log(`  Setup would change vaultDir to: ${resolvedVaultDir}`);
 
-    if (isNonInteractive) {
+    if (isDryRun) {
+      console.log(`  ${yellow('[dry-run]')} Would change vaultDir from ${resolve(existingVaultDir)} to ${resolvedVaultDir}`);
+      resolvedVaultDir = resolve(existingVaultDir);
+    } else if (isNonInteractive) {
       console.log();
       console.log(red('  Refusing to overwrite vaultDir in non-interactive mode.'));
       console.log(dim('  Use --force to override, or --vault-dir to set explicitly.'));
       process.exit(1);
-    }
-
-    console.log();
-    const overwrite = await prompt('  Overwrite? (y/N):', 'N');
-    if (overwrite.toLowerCase() !== 'y' && overwrite.toLowerCase() !== 'yes') {
-      console.log(dim(`  Keeping existing vaultDir: ${resolve(existingVaultDir)}`));
-      resolvedVaultDir = resolve(existingVaultDir);
+    } else {
+      console.log();
+      const overwrite = await prompt('  Overwrite? (y/N):', 'N');
+      if (overwrite.toLowerCase() !== 'y' && overwrite.toLowerCase() !== 'yes') {
+        console.log(dim(`  Keeping existing vaultDir: ${resolve(existingVaultDir)}`));
+        resolvedVaultDir = resolve(existingVaultDir);
+      }
     }
   }
 
@@ -869,13 +890,21 @@ async function runSetup() {
   vaultConfig.devDir = join(HOME, 'dev');
   vaultConfig.mode = 'local';
 
-  assertNotTestMode(configPath);
-  writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + '\n');
-  console.log(`\n  ${green('+')} Wrote ${configPath}`);
+  if (isDryRun) {
+    console.log(`\n  ${yellow('[dry-run]')} Would write config: ${configPath}`);
+    console.log(dim(`  ${JSON.stringify(vaultConfig, null, 2)}`));
+  } else {
+    assertNotTestMode(configPath);
+    writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + '\n');
+    console.log(`\n  ${green('+')} Wrote ${configPath}`);
+  }
 
   // Pre-download embedding model with spinner (skip with --skip-embeddings)
-  const skipEmbeddings = flags.has('--skip-embeddings');
-  if (skipEmbeddings) {
+  const skipEmbeddings = flags.has('--skip-embeddings') || isDryRun;
+  if (isDryRun) {
+    console.log(`\n  ${dim('[3/7]')}${bold(' Embedding model')} ${yellow('(dry-run, skipped)')}`);
+    console.log(`  ${yellow('[dry-run]')} Would download embedding model (~22MB)`);
+  } else if (skipEmbeddings) {
     console.log(`\n  ${dim('[3/7]')}${bold(' Embedding model')} ${dim('(skipped)')}`);
     console.log(dim('  FTS-only mode — full-text search works, semantic search disabled.'));
     console.log(dim('  To enable later: context-vault setup (without --skip-embeddings)'));
@@ -956,10 +985,14 @@ async function runSetup() {
   // Clean up legacy project-root config.json if it exists
   const legacyConfigPath = join(ROOT, 'config.json');
   if (existsSync(legacyConfigPath)) {
-    try {
-      unlinkSync(legacyConfigPath);
-      console.log(`  ${dim('Removed legacy config at ' + legacyConfigPath)}`);
-    } catch {}
+    if (isDryRun) {
+      console.log(`  ${yellow('[dry-run]')} Would remove legacy config: ${legacyConfigPath}`);
+    } else {
+      try {
+        unlinkSync(legacyConfigPath);
+        console.log(`  ${dim('Removed legacy config at ' + legacyConfigPath)}`);
+      } catch {}
+    }
   }
 
   // Configure each tool — always pass vault dir explicitly to prevent config drift
@@ -969,19 +1002,24 @@ async function runSetup() {
   const customVaultDir = resolvedVaultDir;
 
   for (const tool of selected) {
-    try {
-      if (tool.configType === 'cli' && tool.id === 'codex') {
-        await configureCodex(tool, customVaultDir);
-      } else if (tool.configType === 'cli') {
-        await configureClaude(tool, customVaultDir);
-      } else {
-        configureJsonTool(tool, customVaultDir);
-      }
+    if (isDryRun) {
+      console.log(`  ${yellow('[dry-run]')} Would configure: ${tool.name} (${tool.configPath || tool.id})`);
       results.push({ tool, ok: true });
-      console.log(`  ${green('+')} ${tool.name} — configured`);
-    } catch (e) {
-      results.push({ tool, ok: false, error: e.message });
-      console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
+    } else {
+      try {
+        if (tool.configType === 'cli' && tool.id === 'codex') {
+          await configureCodex(tool, customVaultDir);
+        } else if (tool.configType === 'cli') {
+          await configureClaude(tool, customVaultDir);
+        } else {
+          configureJsonTool(tool, customVaultDir);
+        }
+        results.push({ tool, ok: true });
+        console.log(`  ${green('+')} ${tool.name} — configured`);
+      } catch (e) {
+        results.push({ tool, ok: false, error: e.message });
+        console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
+      }
     }
   }
 
@@ -993,188 +1031,218 @@ async function runSetup() {
   const installedRulesPaths = [];
 
   if (claudeConfigured) {
-    // Bundled hooks prompt: one Y/n for all three hooks
-    let installHooks = hookFlag || useRecommendedDefaults;
-    if (!hookFlag && !isNonInteractive && !useRecommendedDefaults) {
-      console.log(dim('  Install Claude Code hooks? (recommended)'));
-      console.log(dim('  Memory recall, session capture, and auto-capture.'));
-      console.log();
-      const answer = await prompt('  Install Claude Code hooks? (Y/n):', 'Y');
-      installHooks = answer.toLowerCase() !== 'n';
-    }
-    if (installHooks) {
-      try {
-        const hookInstalled = installClaudeHook();
-        if (hookInstalled) console.log(`  ${green('+')} Memory recall hook installed`);
-      } catch (e) {
-        console.log(`  ${red('x')} Memory hook failed: ${e.message}`);
-      }
-      try {
-        const captureInstalled = installSessionCaptureHook();
-        if (captureInstalled) console.log(`  ${green('+')} Session capture hook installed`);
-      } catch (e) {
-        console.log(`  ${red('x')} Session capture hook failed: ${e.message}`);
-      }
-      try {
-        const acInstalled = installPostToolCallHook();
-        if (acInstalled) console.log(`  ${green('+')} Auto-capture hook installed`);
-      } catch (e) {
-        console.log(`  ${red('x')} Auto-capture hook failed: ${e.message}`);
-      }
+    if (isDryRun) {
+      console.log(`  ${yellow('[dry-run]')} Would install Claude Code hooks (memory recall, session capture, auto-capture)`);
+      console.log(`  ${yellow('[dry-run]')} Would install Claude Code skills (compile-context, vault-setup)`);
     } else {
-      console.log(dim(`  Hooks skipped. Install later: context-vault hooks install`));
-    }
-
-    // Skills (bundled, no separate prompt unless not using fast path)
-    let installSkillsFlag = useRecommendedDefaults || isNonInteractive;
-    if (!isNonInteractive && !useRecommendedDefaults) {
-      console.log();
-      console.log(dim('  Install Claude Code skills? (recommended)'));
-      console.log(dim('  compile-context, vault-setup'));
-      console.log();
-      const skillAnswer = await prompt('  Install Claude Code skills? (Y/n):', 'Y');
-      installSkillsFlag = skillAnswer.toLowerCase() !== 'n';
-    }
-    if (installSkillsFlag) {
-      try {
-        const names = installSkills();
-        for (const name of names) {
-          console.log(`  ${green('+')} ${name} skill installed`);
+      // Bundled hooks prompt: one Y/n for all three hooks
+      let installHooks = hookFlag || useRecommendedDefaults;
+      if (!hookFlag && !isNonInteractive && !useRecommendedDefaults) {
+        console.log(dim('  Install Claude Code hooks? (recommended)'));
+        console.log(dim('  Memory recall, session capture, and auto-capture.'));
+        console.log();
+        const answer = await prompt('  Install Claude Code hooks? (Y/n):', 'Y');
+        installHooks = answer.toLowerCase() !== 'n';
+      }
+      if (installHooks) {
+        try {
+          const hookInstalled = installClaudeHook();
+          if (hookInstalled) console.log(`  ${green('+')} Memory recall hook installed`);
+        } catch (e) {
+          console.log(`  ${red('x')} Memory hook failed: ${e.message}`);
         }
-      } catch (e) {
-        console.log(`  ${red('x')} Skills install failed: ${e.message}`);
+        try {
+          const captureInstalled = installSessionCaptureHook();
+          if (captureInstalled) console.log(`  ${green('+')} Session capture hook installed`);
+        } catch (e) {
+          console.log(`  ${red('x')} Session capture hook failed: ${e.message}`);
+        }
+        try {
+          const acInstalled = installPostToolCallHook();
+          if (acInstalled) console.log(`  ${green('+')} Auto-capture hook installed`);
+        } catch (e) {
+          console.log(`  ${red('x')} Auto-capture hook failed: ${e.message}`);
+        }
+      } else {
+        console.log(dim(`  Hooks skipped. Install later: context-vault hooks install`));
       }
-    } else {
-      console.log(dim(`  Skills skipped. Install later: context-vault skills install`));
+
+      // Skills (bundled, no separate prompt unless not using fast path)
+      let installSkillsFlag = useRecommendedDefaults || isNonInteractive;
+      if (!isNonInteractive && !useRecommendedDefaults) {
+        console.log();
+        console.log(dim('  Install Claude Code skills? (recommended)'));
+        console.log(dim('  compile-context, vault-setup'));
+        console.log();
+        const skillAnswer = await prompt('  Install Claude Code skills? (Y/n):', 'Y');
+        installSkillsFlag = skillAnswer.toLowerCase() !== 'n';
+      }
+      if (installSkillsFlag) {
+        try {
+          const names = installSkills();
+          for (const name of names) {
+            console.log(`  ${green('+')} ${name} skill installed`);
+          }
+        } catch (e) {
+          console.log(`  ${red('x')} Skills install failed: ${e.message}`);
+        }
+      } else {
+        console.log(dim(`  Skills skipped. Install later: context-vault skills install`));
+      }
     }
   }
 
   // Agent rules installation
   if (configuredTools.length > 0 && !flags.has('--no-rules')) {
-    let installRules = isNonInteractive || useRecommendedDefaults;
-    if (!isNonInteractive && !useRecommendedDefaults) {
-      console.log();
-      console.log(dim('  Install agent rules? (recommended)'));
-      console.log(dim('  Teaches your AI agent when and how to save knowledge to the vault.'));
-      console.log();
-      const rulesAnswer = await prompt('  Install agent rules? (Y/n):', 'Y');
-      installRules = rulesAnswer.toLowerCase() !== 'n';
-    }
-    if (installRules) {
-      const rulesContent = loadAgentRules();
-      if (rulesContent) {
-        for (const tool of configuredTools) {
-          try {
-            const installed = installAgentRulesForTool(tool, rulesContent);
-            const rulesPath = getRulesPathForTool(tool);
-            if (installed) {
-              console.log(`  ${green('+')} ${tool.name} agent rules installed`);
-              if (rulesPath) {
-                console.log(`     ${dim(rulesPath)}`);
-                installedRulesPaths.push({ tool: tool.name, path: rulesPath });
-              }
-            }
-          } catch (e) {
-            console.log(`  ${red('x')} ${tool.name} rules: ${e.message}`);
-          }
-        }
-      } else {
-        console.log(dim('  Agent rules file not found in package.'));
+    if (isDryRun) {
+      for (const tool of configuredTools) {
+        const rulesPath = getRulesPathForTool(tool);
+        console.log(`  ${yellow('[dry-run]')} Would install agent rules for ${tool.name}${rulesPath ? ': ' + rulesPath : ''}`);
       }
     } else {
-      console.log(dim('  Rules skipped. Install later: context-vault rules install'));
+      let installRules = isNonInteractive || useRecommendedDefaults;
+      if (!isNonInteractive && !useRecommendedDefaults) {
+        console.log();
+        console.log(dim('  Install agent rules? (recommended)'));
+        console.log(dim('  Teaches your AI agent when and how to save knowledge to the vault.'));
+        console.log();
+        const rulesAnswer = await prompt('  Install agent rules? (Y/n):', 'Y');
+        installRules = rulesAnswer.toLowerCase() !== 'n';
+      }
+      if (installRules) {
+        const rulesContent = loadAgentRules();
+        if (rulesContent) {
+          for (const tool of configuredTools) {
+            try {
+              const installed = installAgentRulesForTool(tool, rulesContent);
+              const rulesPath = getRulesPathForTool(tool);
+              if (installed) {
+                console.log(`  ${green('+')} ${tool.name} agent rules installed`);
+                if (rulesPath) {
+                  console.log(`     ${dim(rulesPath)}`);
+                  installedRulesPaths.push({ tool: tool.name, path: rulesPath });
+                }
+              }
+            } catch (e) {
+              console.log(`  ${red('x')} ${tool.name} rules: ${e.message}`);
+            }
+          }
+        } else {
+          console.log(dim('  Agent rules file not found in package.'));
+        }
+      } else {
+        console.log(dim('  Rules skipped. Install later: context-vault rules install'));
+      }
     }
   } else if (flags.has('--no-rules')) {
     console.log(dim('  Agent rules skipped (--no-rules)'));
   }
 
   // Seed entry
-  const seeded = createSeedEntries(resolvedVaultDir);
-  if (seeded > 0) {
-    console.log(
-      `\n  ${green('+')} Created ${seeded} starter ${seeded === 1 ? 'entry' : 'entries'} in vault`
-    );
+  if (isDryRun) {
+    console.log(`\n  ${yellow('[dry-run]')} Would create seed entries in ${resolvedVaultDir}`);
+  } else {
+    const seeded = createSeedEntries(resolvedVaultDir);
+    if (seeded > 0) {
+      console.log(
+        `\n  ${green('+')} Created ${seeded} starter ${seeded === 1 ? 'entry' : 'entries'} in vault`
+      );
+    }
   }
 
   // Telemetry opt-in (moved to end, after user has seen value)
   console.log(`\n  ${dim('[6/7]')}${bold(' Anonymous error reporting\n')}`);
-  verbose(userLevel, 'Entirely optional. Works identically either way.\n');
-  console.log(dim('  When enabled, unhandled errors send a minimal event (type, tool name,'));
-  console.log(dim('  version, platform) to help diagnose issues. No vault content,'));
-  console.log(dim('  file paths, or personal data is ever sent. Off by default.'));
-  console.log(dim(`  Full schema: ${MARKETING_URL}/telemetry`));
-  console.log();
+  if (isDryRun) {
+    console.log(`  ${yellow('[dry-run]')} Would prompt for telemetry preference`);
+    console.log(`  ${yellow('[dry-run]')} Would update config: ${configPath}`);
+  } else {
+    verbose(userLevel, 'Entirely optional. Works identically either way.\n');
+    console.log(dim('  When enabled, unhandled errors send a minimal event (type, tool name,'));
+    console.log(dim('  version, platform) to help diagnose issues. No vault content,'));
+    console.log(dim('  file paths, or personal data is ever sent. Off by default.'));
+    console.log(dim(`  Full schema: ${MARKETING_URL}/telemetry`));
+    console.log();
 
-  let telemetryEnabled = vaultConfig.telemetry === true;
-  if (!isNonInteractive && !useRecommendedDefaults) {
-    const defaultChoice = telemetryEnabled ? 'Y' : 'n';
-    const telemetryAnswer = await prompt(
-      `  Enable anonymous error reporting? (y/N):`,
-      defaultChoice
+    let telemetryEnabled = vaultConfig.telemetry === true;
+    if (!isNonInteractive && !useRecommendedDefaults) {
+      const defaultChoice = telemetryEnabled ? 'Y' : 'n';
+      const telemetryAnswer = await prompt(
+        `  Enable anonymous error reporting? (y/N):`,
+        defaultChoice
+      );
+      telemetryEnabled =
+        telemetryAnswer.toLowerCase() === 'y' || telemetryAnswer.toLowerCase() === 'yes';
+    }
+    vaultConfig.telemetry = telemetryEnabled;
+    console.log(
+      `  ${telemetryEnabled ? green('+') : dim('-')} Telemetry: ${telemetryEnabled ? 'enabled' : 'disabled'}`
     );
-    telemetryEnabled =
-      telemetryAnswer.toLowerCase() === 'y' || telemetryAnswer.toLowerCase() === 'yes';
-  }
-  vaultConfig.telemetry = telemetryEnabled;
-  console.log(
-    `  ${telemetryEnabled ? green('+') : dim('-')} Telemetry: ${telemetryEnabled ? 'enabled' : 'disabled'}`
-  );
 
-  // Re-write config with telemetry setting
-  assertNotTestMode(configPath);
-  writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + '\n');
+    // Re-write config with telemetry setting
+    assertNotTestMode(configPath);
+    writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + '\n');
+  }
 
   // Health check
   console.log(`\n  ${dim('[7/7]')}${bold(' Health check...')}\n`);
-  verbose(userLevel, 'Verifying vault, config, and database are accessible.\n');
   const okResults = results.filter((r) => r.ok);
+  let passed = 0;
+  let checksTotal = 0;
 
-  // Verify DB is accessible
-  let dbAccessible = false;
-  let dbError = null;
-  try {
-    const { initDatabase } = await import('@context-vault/core/db');
-    const db = await initDatabase(vaultConfig.dbPath);
-    db.prepare('SELECT 1').get();
-    db.close();
-    dbAccessible = true;
-  } catch (e) {
-    dbError = e;
-  }
+  if (isDryRun) {
+    console.log(`  ${yellow('[dry-run]')} Skipping health check (no files were written)`);
+    console.log(`  ${yellow('[dry-run]')} Skipping smoke test`);
+  } else {
+    verbose(userLevel, 'Verifying vault, config, and database are accessible.\n');
 
-  const checks = [
-    { label: 'Vault directory exists', pass: existsSync(resolvedVaultDir) },
-    { label: 'Config file written', pass: existsSync(configPath) },
-    { label: 'Database accessible', pass: dbAccessible, error: dbError },
-    { label: 'At least one tool configured', pass: okResults.length > 0 },
-  ];
-  const passed = checks.filter((c) => c.pass).length;
-  for (const c of checks) {
-    console.log(`  ${c.pass ? green('✓') : red('✗')} ${c.label}`);
-    if (!c.pass && c.error) {
-      console.log(`    ${dim(c.error.message)}`);
-      if (c.error.message.includes('EACCES') || c.error.message.includes('permission')) {
-        console.log(`    ${dim('Fix: check file permissions on ' + vaultConfig.dbPath)}`);
+    // Verify DB is accessible
+    let dbAccessible = false;
+    let dbError = null;
+    try {
+      const { initDatabase } = await import('@context-vault/core/db');
+      const db = await initDatabase(vaultConfig.dbPath);
+      db.prepare('SELECT 1').get();
+      db.close();
+      dbAccessible = true;
+    } catch (e) {
+      dbError = e;
+    }
+
+    const checks = [
+      { label: 'Vault directory exists', pass: existsSync(resolvedVaultDir) },
+      { label: 'Config file written', pass: existsSync(configPath) },
+      { label: 'Database accessible', pass: dbAccessible, error: dbError },
+      { label: 'At least one tool configured', pass: okResults.length > 0 },
+    ];
+    passed = checks.filter((c) => c.pass).length;
+    checksTotal = checks.length;
+    for (const c of checks) {
+      console.log(`  ${c.pass ? green('✓') : red('✗')} ${c.label}`);
+      if (!c.pass && c.error) {
+        console.log(`    ${dim(c.error.message)}`);
+        if (c.error.message.includes('EACCES') || c.error.message.includes('permission')) {
+          console.log(`    ${dim('Fix: check file permissions on ' + vaultConfig.dbPath)}`);
+        }
       }
     }
-  }
 
-  // Smoke test — write and read a test file to verify vault I/O
-  {
-    const testFile = join(resolvedVaultDir, '.smoke-test-' + Date.now() + '.md');
-    try {
-      writeFileSync(testFile, '# Smoke test\n');
-      const content = readFileSync(testFile, 'utf-8');
-      unlinkSync(testFile);
-      if (content.includes('Smoke test')) {
-        console.log(`  ${green('✓')} Smoke test: vault read/write verified`);
-      } else {
-        console.log(`  ${red('✗')} Smoke test: file written but content mismatch`);
+    // Smoke test — write and read a test file to verify vault I/O
+    {
+      const testFile = join(resolvedVaultDir, '.smoke-test-' + Date.now() + '.md');
+      try {
+        writeFileSync(testFile, '# Smoke test\n');
+        const content = readFileSync(testFile, 'utf-8');
+        unlinkSync(testFile);
+        if (content.includes('Smoke test')) {
+          console.log(`  ${green('✓')} Smoke test: vault read/write verified`);
+        } else {
+          console.log(`  ${red('✗')} Smoke test: file written but content mismatch`);
+        }
+      } catch (e) {
+        try { unlinkSync(testFile); } catch {}
+        console.log(`  ${red('✗')} Smoke test failed: ${e.message}`);
+        console.log(`    ${dim('Check permissions on ' + resolvedVaultDir)}`);
       }
-    } catch (e) {
-      try { unlinkSync(testFile); } catch {}
-      console.log(`  ${red('✗')} Smoke test failed: ${e.message}`);
-      console.log(`    ${dim('Check permissions on ' + resolvedVaultDir)}`);
     }
   }
 
@@ -1184,9 +1252,26 @@ async function runSetup() {
   const cli = isNpx() ? 'npx context-vault' : 'context-vault';
 
   let boxLines;
+  if (isDryRun) {
+    boxLines = [
+      `  ${yellow('Dry run complete')} (${elapsed}s)`,
+      ``,
+      `  No files were written. Run without --dry-run to apply.`,
+    ];
+    const innerWidth = Math.max(...boxLines.map((l) => l.length)) + 2;
+    const pad = (s) => s + ' '.repeat(Math.max(0, innerWidth - s.length));
+    console.log();
+    console.log(`  ${dim('┌' + '─'.repeat(innerWidth) + '┐')}`);
+    for (const line of boxLines) {
+      console.log(`  ${dim('│')}${pad(line)}${dim('│')}`);
+    }
+    console.log(`  ${dim('└' + '─'.repeat(innerWidth) + '┘')}`);
+    console.log();
+    return;
+  }
   if (userLevel === 'beginner') {
     boxLines = [
-      `  ✓ Setup complete — ${passed}/${checks.length} checks passed (${elapsed}s)`,
+      `  ✓ Setup complete — ${passed}/${checksTotal} checks passed (${elapsed}s)`,
       ``,
       `  ${bold('What to do next:')}`,
       ``,
@@ -1204,7 +1289,7 @@ async function runSetup() {
     ];
   } else {
     boxLines = [
-      `  ✓ Setup complete — ${passed}/${checks.length} checks passed (${elapsed}s)`,
+      `  ✓ Setup complete — ${passed}/${checksTotal} checks passed (${elapsed}s)`,
       ``,
       `  ${bold('Next:')} restart ${toolName} to activate the vault`,
       ``,
