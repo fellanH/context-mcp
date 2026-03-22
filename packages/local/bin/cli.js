@@ -428,6 +428,8 @@ ${bold('Commands:')}
   --force               Overwrite existing config without confirmation
   --skip-embeddings     Skip embedding model download (FTS-only mode)
   --dry-run             Show what setup would do without writing anything
+  --upgrade             Upgrade installed agent rules to the latest bundled version
+  --no-rules            Skip agent rules installation during setup
 `);
 }
 
@@ -444,6 +446,106 @@ async function runSetup() {
     console.log(yellow('  [dry-run] No files will be written. Showing what setup would do.'));
   }
   console.log();
+
+  // --upgrade: only upgrade agent rules, then exit
+  if (flags.has('--upgrade')) {
+    console.log(dim('  Checking agent rules for updates...\n'));
+    const bundled = loadAgentRules();
+    if (!bundled) {
+      console.log(`  ${yellow('!')} Agent rules file not found in package.\n`);
+      return;
+    }
+    const bundledVersion = extractRulesVersion(bundled);
+
+    // Check all known tool paths (not just detected tools, since a tool may have been
+    // uninstalled but its rules file still exists)
+    const allToolsWithRules = TOOLS.filter((t) => t.rulesPath);
+    let found = 0;
+    let upgraded = 0;
+    const upgradeable = [];
+
+    for (const tool of allToolsWithRules) {
+      const installed = getInstalledRulesForTool(tool);
+      if (!installed) continue;
+      found++;
+
+      const installedVersion = extractRulesVersion(installed);
+      if (installed.trim() === bundled.trim()) {
+        console.log(`  ${green('✓')} ${tool.name}: up to date${bundledVersion ? ` (v${bundledVersion})` : ''}`);
+        continue;
+      }
+
+      upgradeable.push({ tool, installed, installedVersion });
+      console.log(
+        `  ${yellow('!')} ${tool.name}: ${installedVersion ? `v${installedVersion}` : 'unknown version'} → ${bundledVersion ? `v${bundledVersion}` : 'bundled'}`
+      );
+
+      // Show a compact diff
+      const installedLines = installed.split('\n');
+      const bundledLines = bundled.split('\n');
+      const maxLines = Math.max(installedLines.length, bundledLines.length);
+      let diffLines = 0;
+      for (let i = 0; i < maxLines; i++) {
+        const a = installedLines[i];
+        const b = bundledLines[i];
+        if (a === b) continue;
+        if (diffLines === 0) console.log();
+        if (diffLines >= 20) {
+          console.log(dim(`    ... and more changes`));
+          break;
+        }
+        if (a === undefined) {
+          console.log(`    ${green('+')} ${b}`);
+        } else if (b === undefined) {
+          console.log(`    ${red('-')} ${a}`);
+        } else {
+          console.log(`    ${red('-')} ${a}`);
+          console.log(`    ${green('+')} ${b}`);
+        }
+        diffLines++;
+      }
+      console.log();
+    }
+
+    if (found === 0) {
+      console.log(`  ${yellow('!')} No installed rules found. Run ${cyan('context-vault rules install')} first.\n`);
+      return;
+    }
+
+    if (upgradeable.length === 0) {
+      console.log(`\n  ${green('✓')} All rules are up to date.\n`);
+      return;
+    }
+
+    if (!isDryRun) {
+      const answer = isNonInteractive
+        ? 'Y'
+        : await prompt(`  Upgrade ${upgradeable.length} rules file(s)? (Y/n):`, 'Y');
+      if (answer.toLowerCase() === 'n') {
+        console.log(dim('  Skipped.\n'));
+        return;
+      }
+
+      for (const { tool } of upgradeable) {
+        try {
+          installAgentRulesForTool(tool, bundled);
+          console.log(`  ${green('+')} ${tool.name} — upgraded`);
+          upgraded++;
+        } catch (e) {
+          console.log(`  ${red('x')} ${tool.name} — ${e.message}`);
+        }
+      }
+    } else {
+      console.log(dim(`  [dry-run] Would upgrade ${upgradeable.length} rules file(s).`));
+    }
+
+    console.log();
+    if (upgraded > 0) {
+      console.log(dim('  Restart your AI tools to apply the updated rules.'));
+      console.log();
+    }
+    return;
+  }
 
   // Check for existing installation
   const existingConfig = join(HOME, '.context-mcp', 'config.json');
@@ -4278,6 +4380,35 @@ function loadAgentRules() {
   const rulesPath = join(ROOT, 'assets', 'agent-rules.md');
   if (!existsSync(rulesPath)) return null;
   return readFileSync(rulesPath, 'utf-8');
+}
+
+/**
+ * Extract the version string from a rules file content.
+ * Looks for <!-- context-vault-rules vX.Y --> comment on the first line.
+ * Returns the version string (e.g. "1.0") or null if not found.
+ */
+function extractRulesVersion(content) {
+  if (!content) return null;
+  const match = content.match(/<!--\s*context-vault-rules\s+v([\d.]+)\s*-->/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Get the installed rules content for a tool, handling both write and append methods.
+ * For append-based tools (Windsurf), extracts only the delimited section.
+ * Returns the rules content or null if not installed.
+ */
+function getInstalledRulesForTool(tool) {
+  const rulesPath = tool.rulesPath;
+  if (!rulesPath || !existsSync(rulesPath)) return null;
+  const content = readFileSync(rulesPath, 'utf-8');
+  if (tool.rulesMethod === 'append') {
+    const match = content.match(
+      new RegExp(`${RULES_DELIMITER_START}\\n([\\s\\S]*?)\\n${RULES_DELIMITER_END}`)
+    );
+    return match ? match[1] : null;
+  }
+  return content;
 }
 
 /**
