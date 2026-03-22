@@ -2,6 +2,13 @@
 
 All notable changes to context-vault are documented here.
 
+
+## [3.5.1] — 2026-03-22
+
+### Added
+
+- **`context-vault setup --dry-run`**: Preview all setup actions without writing any files
+
 ## [3.5.0] — 2026-03-22
 
 ### Added
