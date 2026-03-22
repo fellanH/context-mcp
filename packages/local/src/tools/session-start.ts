@@ -143,6 +143,12 @@ export const inputSchema = {
     .describe(
       "Bucket names to scope the session brief. Each name expands to a 'bucket:<name>' tag filter. When provided, the brief only includes entries from these buckets."
     ),
+  auto_memory_path: z
+    .string()
+    .optional()
+    .describe(
+      "Explicit path to the Claude Code auto-memory directory. Overrides auto-detection. If not provided, session_start attempts to detect ~/.claude/projects/-<project-key>/memory/ from cwd."
+    ),
 };
 
 function detectProject() {
@@ -191,7 +197,7 @@ function formatEntry(entry: any): string {
 }
 
 export async function handler(
-  { project, max_tokens, buckets }: Record<string, any>,
+  { project, max_tokens, buckets, auto_memory_path }: Record<string, any>,
   ctx: LocalCtx,
   { ensureIndexed }: SharedCtx
 ): Promise<ToolResult> {
@@ -234,12 +240,17 @@ export async function handler(
 
   const sinceDate = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString();
 
-  // Auto-detect Claude Code auto-memory
-  const autoMemoryPath = detectAutoMemoryPath();
-  const autoMemory: AutoMemoryResult = autoMemoryPath
-    ? readAutoMemory(autoMemoryPath)
+  // Auto-detect Claude Code auto-memory (explicit path overrides auto-detection)
+  const resolvedMemoryPath = auto_memory_path?.trim()
+    ? (existsSync(join(auto_memory_path.trim(), 'MEMORY.md')) ? auto_memory_path.trim() : null)
+    : detectAutoMemoryPath();
+  const autoMemory: AutoMemoryResult = resolvedMemoryPath
+    ? readAutoMemory(resolvedMemoryPath)
     : { detected: false, path: null, entries: [], linesUsed: 0 };
   const autoMemoryContext = buildAutoMemoryContext(autoMemory.entries);
+  const topicsExtracted = autoMemory.entries.length > 0
+    ? extractKeywords(autoMemoryContext).slice(0, 20)
+    : [];
 
   const sections = [];
   let tokensUsed = 0;
@@ -346,8 +357,10 @@ export async function handler(
     },
     auto_memory: {
       detected: autoMemory.detected,
+      path: autoMemory.path,
       entries: autoMemory.entries.length,
       lines_used: autoMemory.linesUsed,
+      topics_extracted: topicsExtracted,
     },
   };
   return result;
