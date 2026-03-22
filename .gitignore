@@ -17,3 +17,4 @@ config.json
 skills/
 skills-lock.json
 !packages/local/assets/skills/
+.context/
