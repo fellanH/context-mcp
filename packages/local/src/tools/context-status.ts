@@ -55,13 +55,31 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
       lines.push(`| **Expired** | ${status.expiredCount} pending prune |`);
     }
 
+    // Selective indexing stats
+    if (status.indexingStats) {
+      const ix = status.indexingStats;
+      const pct = ix.total > 0 ? Math.round((ix.indexed / ix.total) * 100) : 100;
+      lines.push(`| **Indexed entries** | ${ix.indexed}/${ix.total} (${pct}%) |`);
+    }
+
     // Indexed kinds as compact table
-    lines.push(``, `### Indexed`);
+    lines.push(``, `### Entries by Kind`);
     if (status.kindCounts.length) {
-      lines.push('| Kind | Count |');
-      lines.push('|---|---|');
-      for (const { kind, c } of status.kindCounts) {
-        lines.push(`| ${kindIcon(kind)} \`${kind}\` | ${c} |`);
+      if (status.indexingStats?.byKind?.length) {
+        lines.push('| Kind | Total | Indexed |');
+        lines.push('|---|---|---|');
+        const byKindMap = new Map(status.indexingStats.byKind.map((k: any) => [k.kind, k]));
+        for (const { kind, c } of status.kindCounts) {
+          const kStats = byKindMap.get(kind) as { indexed?: number } | undefined;
+          const idxCount = kStats?.indexed ?? c;
+          lines.push(`| ${kindIcon(kind)} \`${kind}\` | ${c} | ${idxCount} |`);
+        }
+      } else {
+        lines.push('| Kind | Count |');
+        lines.push('|---|---|');
+        for (const { kind, c } of status.kindCounts) {
+          lines.push(`| ${kindIcon(kind)} \`${kind}\` | ${c} |`);
+        }
       }
     } else {
       lines.push(`_(empty vault)_`);

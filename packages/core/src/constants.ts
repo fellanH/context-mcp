@@ -31,3 +31,10 @@ export const DEFAULT_AUTO_INSIGHTS = {
   maxPerSession: 5,
   tier: 'working',
 };
+
+export const DEFAULT_INDEXING = {
+  excludeKinds: [] as string[],
+  excludeCategories: [] as string[],
+  maxBodySize: 0,
+  autoIndexEvents: true,
+};

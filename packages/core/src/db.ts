@@ -143,7 +143,8 @@ export const SCHEMA_DDL = `
     last_accessed_at TEXT,
     source_files    TEXT,
     tier            TEXT DEFAULT 'working' CHECK(tier IN ('ephemeral', 'working', 'durable')),
-    related_to      TEXT
+    related_to      TEXT,
+    indexed         INTEGER DEFAULT 1
   );
 
   CREATE INDEX IF NOT EXISTS idx_vault_kind ON vault(kind);
@@ -153,25 +154,26 @@ export const SCHEMA_DDL = `
   CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_identity ON vault(kind, identity_key) WHERE identity_key IS NOT NULL AND category = 'entity';
   CREATE INDEX IF NOT EXISTS idx_vault_superseded ON vault(superseded_by) WHERE superseded_by IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_vault_tier ON vault(tier);
+  CREATE INDEX IF NOT EXISTS idx_vault_indexed ON vault(indexed);
 
   CREATE VIRTUAL TABLE IF NOT EXISTS vault_fts USING fts5(
     title, body, tags, kind,
     content='vault', content_rowid='rowid'
   );
 
-  CREATE TRIGGER IF NOT EXISTS vault_ai AFTER INSERT ON vault BEGIN
+  CREATE TRIGGER IF NOT EXISTS vault_ai AFTER INSERT ON vault WHEN new.indexed = 1 BEGIN
     INSERT INTO vault_fts(rowid, title, body, tags, kind)
       VALUES (new.rowid, new.title, new.body, new.tags, new.kind);
   END;
-  CREATE TRIGGER IF NOT EXISTS vault_ad AFTER DELETE ON vault BEGIN
+  CREATE TRIGGER IF NOT EXISTS vault_ad AFTER DELETE ON vault WHEN old.indexed = 1 BEGIN
     INSERT INTO vault_fts(vault_fts, rowid, title, body, tags, kind)
       VALUES ('delete', old.rowid, old.title, old.body, old.tags, old.kind);
   END;
-  CREATE TRIGGER IF NOT EXISTS vault_au AFTER UPDATE ON vault BEGIN
+  CREATE TRIGGER IF NOT EXISTS vault_au AFTER UPDATE ON vault WHEN old.indexed = 1 OR new.indexed = 1 BEGIN
     INSERT INTO vault_fts(vault_fts, rowid, title, body, tags, kind)
       VALUES ('delete', old.rowid, old.title, old.body, old.tags, old.kind);
     INSERT INTO vault_fts(rowid, title, body, tags, kind)
-      VALUES (new.rowid, new.title, new.body, new.tags, new.kind);
+      SELECT new.rowid, new.title, new.body, new.tags, new.kind WHERE new.indexed = 1;
   END;
 
   CREATE VIRTUAL TABLE IF NOT EXISTS vault_vec USING vec0(embedding float[384]);
@@ -179,7 +181,7 @@ export const SCHEMA_DDL = `
   CREATE VIRTUAL TABLE IF NOT EXISTS vault_ctx_vec USING vec0(embedding float[384]);
 `;
 
-const CURRENT_VERSION = 16;
+const CURRENT_VERSION = 17;
 
 export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
   const sqliteVec = await loadSqliteVec();
@@ -208,9 +210,40 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
     if (version === 15) {
       try {
         db.exec('CREATE VIRTUAL TABLE IF NOT EXISTS vault_ctx_vec USING vec0(embedding float[384])');
-        db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+        db.exec('PRAGMA user_version = 16');
       } catch (e) {
         console.error(`[context-vault] v15->v16 migration failed: ${(e as Error).message}`);
+        return db;
+      }
+      // Fall through to v16->v17 migration
+    }
+
+    // v16 -> v17: add indexed column for selective indexing
+    if (version === 16 || version === 15) {
+      try {
+        db.exec('ALTER TABLE vault ADD COLUMN indexed INTEGER DEFAULT 1');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_vault_indexed ON vault(indexed)');
+        // Recreate FTS triggers to respect indexed flag
+        db.exec('DROP TRIGGER IF EXISTS vault_ai');
+        db.exec('DROP TRIGGER IF EXISTS vault_ad');
+        db.exec('DROP TRIGGER IF EXISTS vault_au');
+        db.exec(`CREATE TRIGGER vault_ai AFTER INSERT ON vault WHEN new.indexed = 1 BEGIN
+          INSERT INTO vault_fts(rowid, title, body, tags, kind)
+            VALUES (new.rowid, new.title, new.body, new.tags, new.kind);
+        END`);
+        db.exec(`CREATE TRIGGER vault_ad AFTER DELETE ON vault WHEN old.indexed = 1 BEGIN
+          INSERT INTO vault_fts(vault_fts, rowid, title, body, tags, kind)
+            VALUES ('delete', old.rowid, old.title, old.body, old.tags, old.kind);
+        END`);
+        db.exec(`CREATE TRIGGER vault_au AFTER UPDATE ON vault WHEN old.indexed = 1 OR new.indexed = 1 BEGIN
+          INSERT INTO vault_fts(vault_fts, rowid, title, body, tags, kind)
+            VALUES ('delete', old.rowid, old.title, old.body, old.tags, old.kind);
+          INSERT INTO vault_fts(rowid, title, body, tags, kind)
+            SELECT new.rowid, new.title, new.body, new.tags, new.kind WHERE new.indexed = 1;
+        END`);
+        db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+      } catch (e) {
+        console.error(`[context-vault] v16->v17 migration failed: ${(e as Error).message}`);
       }
       return db;
     }
@@ -256,7 +289,7 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
       return freshDb;
     }
 
-    if (version < 16) {
+    if (version < 17) {
       db.exec(SCHEMA_DDL);
       db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
     }
@@ -271,7 +304,7 @@ export function prepareStatements(db: DatabaseSync): PreparedStatements {
   try {
     return {
       insertEntry: db.prepare(
-        `INSERT INTO vault (id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, source_files, tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO vault (id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, source_files, tier, indexed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ),
       updateEntry: db.prepare(
         `UPDATE vault SET title = ?, body = ?, meta = ?, tags = ?, source = ?, category = ?, identity_key = ?, expires_at = ?, updated_at = datetime('now') WHERE file_path = ?`

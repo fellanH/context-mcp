@@ -7,6 +7,7 @@ import { indexEntry } from '@context-vault/core/index';
 import { categoryFor, defaultTierFor } from '@context-vault/core/categories';
 import { normalizeKind, kindToPath } from '@context-vault/core/files';
 import { parseContextParam } from '@context-vault/core/context';
+import { shouldIndex } from '@context-vault/core/indexing';
 import { ok, err, errWithHint, ensureVaultExists, ensureValidKind, kindIcon } from '../helpers.js';
 import { maybeShowFeedbackPrompt } from '../telemetry.js';
 import { validateRelatedTo } from '../linking.js';
@@ -347,6 +348,12 @@ export const inputSchema = {
     .describe(
       'Encoding context for contextual reinstatement. Captures the situation when this entry was created, enabling context-aware retrieval boosting. Pass a structured object (e.g. { project: "myapp", arc: "auth-rewrite", task: "implementing JWT" }) or a free-text string describing the current context.'
     ),
+  indexed: z
+    .boolean()
+    .optional()
+    .describe(
+      'Whether to index this entry for search (generate embeddings + FTS). Default: auto-determined by indexing config. Set to false to store file + metadata only, skipping embedding generation. Set to true to force indexing regardless of config rules.'
+    ),
 };
 
 export async function handler(
@@ -369,6 +376,7 @@ export async function handler(
     tier,
     conflict_resolution,
     encoding_context,
+    indexed,
   }: Record<string, any>,
   ctx: LocalCtx,
   { ensureIndexed }: SharedCtx
@@ -583,7 +591,17 @@ export async function handler(
 
   const effectiveTier = tier ?? defaultTierFor(normalizedKind);
 
-  const embeddingToReuse = category === 'knowledge' ? queryEmbedding : null;
+  const effectiveIndexed = shouldIndex(
+    {
+      kind: normalizedKind,
+      category,
+      bodyLength: body?.length ?? 0,
+      explicitIndexed: indexed,
+    },
+    config.indexing
+  );
+
+  const embeddingToReuse = category === 'knowledge' && effectiveIndexed ? queryEmbedding : null;
 
   let entry;
   try {
@@ -602,8 +620,8 @@ export async function handler(
         supersedes,
         related_to,
         source_files,
-
         tier: effectiveTier,
+        indexed: effectiveIndexed,
       },
       embeddingToReuse
     );
@@ -616,7 +634,7 @@ export async function handler(
   }
 
   // Store context embedding in vault_ctx_vec for contextual reinstatement
-  if (parsedCtx?.text && entry) {
+  if (parsedCtx?.text && entry && effectiveIndexed) {
     try {
       const ctxEmbedding = await ctx.embed(parsedCtx.text);
       if (ctxEmbedding) {
@@ -651,6 +669,12 @@ export async function handler(
     `\`${normalizedKind}\` · **${effectiveTier}**${tags?.length ? ` · ${tags.join(', ')}` : ''}`,
     `\`${entry.id}\` → ${relPath}`,
   ];
+  if (!effectiveIndexed) {
+    parts.push(
+      '',
+      '_Note: this entry is stored but not indexed (no embeddings/FTS). It will not appear in search results. Use `include_unindexed: true` in list_context to browse unindexed entries._'
+    );
+  }
   if (effectiveTier === 'ephemeral') {
     parts.push(
       '',

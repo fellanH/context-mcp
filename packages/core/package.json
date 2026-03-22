@@ -65,6 +65,10 @@
     "./context": {
       "types": "./dist/context.d.ts",
       "import": "./dist/context.js"
+    },
+    "./indexing": {
+      "types": "./dist/indexing.d.ts",
+      "import": "./dist/indexing.js"
     }
   },
   "files": [

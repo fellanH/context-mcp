@@ -4,7 +4,9 @@ import { dirToKind, walkDir, ulid } from './files.js';
 import { categoryFor, defaultTierFor, CATEGORY_DIRS } from './categories.js';
 import { parseFrontmatter, parseEntryFromMarkdown } from './frontmatter.js';
 import { embedBatch } from './embed.js';
-import type { BaseCtx, IndexEntryInput, ReindexStats } from './types.js';
+import type { BaseCtx, IndexEntryInput, IndexingConfig, ReindexStats } from './types.js';
+import { shouldIndex } from './indexing.js';
+import { DEFAULT_INDEXING } from './constants.js';
 
 const EXCLUDED_DIRS = new Set(['projects', '_archive']);
 const EXCLUDED_FILES = new Set(['context.md', 'memory.md', 'README.md']);
@@ -33,6 +35,7 @@ export async function indexEntry(
     expires_at,
     source_files,
     tier,
+    indexed = true,
   } = entry;
 
   if (expires_at && new Date(expires_at) <= new Date()) return;
@@ -84,7 +87,8 @@ export async function indexEntry(
         createdAt,
         createdAt,
         sourceFilesJson,
-        effectiveTier
+        effectiveTier,
+        indexed ? 1 : 0
       );
     } catch (e) {
       if ((e as Error).message.includes('UNIQUE constraint')) {
@@ -132,7 +136,7 @@ export async function indexEntry(
     );
   }
 
-  if (cat !== 'event') {
+  if (indexed && cat !== 'event') {
     let embedding: Float32Array | null = null;
     if (precomputedEmbedding !== undefined) {
       embedding = precomputedEmbedding;
@@ -184,14 +188,17 @@ export async function pruneExpired(ctx: BaseCtx): Promise<number> {
 
 export async function reindex(
   ctx: BaseCtx,
-  opts: { fullSync?: boolean } = {}
+  opts: { fullSync?: boolean; indexingConfig?: IndexingConfig; dryRun?: boolean; kindFilter?: string } = {}
 ): Promise<ReindexStats> {
-  const { fullSync = true } = opts;
+  const { fullSync = true, indexingConfig, dryRun = false, kindFilter: reindexKindFilter } = opts;
+  const ixConfig = indexingConfig ?? (ctx.config as any)?.indexing ?? DEFAULT_INDEXING;
   const stats: ReindexStats = {
     added: 0,
     updated: 0,
     removed: 0,
     unchanged: 0,
+    skippedIndexing: 0,
+    embeddingsCleared: 0,
   };
 
   if (!existsSync(ctx.config.vaultDir)) return stats;
@@ -225,17 +232,44 @@ export async function reindex(
     }
   }
 
+  const filteredKindEntries = reindexKindFilter
+    ? kindEntries.filter((ke) => ke.kind === reindexKindFilter)
+    : kindEntries;
+
   const pendingEmbeds: { rowid: number; text: string }[] = [];
+
+  if (dryRun) {
+    for (const { kind, dir } of filteredKindEntries) {
+      const category = categoryFor(kind);
+      const mdFiles = walkDir(dir).filter((f) => !EXCLUDED_FILES.has(basename(f.filePath)));
+      for (const { filePath } of mdFiles) {
+        const raw = readFileSync(filePath, 'utf-8');
+        if (!raw.startsWith('---\n')) continue;
+        const { meta: fmMeta, body: rawBody } = parseFrontmatter(raw);
+        const parsed = parseEntryFromMarkdown(kind, rawBody, fmMeta);
+        const entryIndexed = shouldIndex(
+          { kind, category, bodyLength: parsed.body.length },
+          ixConfig
+        );
+        if (entryIndexed) {
+          stats.added++;
+        } else {
+          stats.skippedIndexing!++;
+        }
+      }
+    }
+    return stats;
+  }
 
   ctx.db.exec('BEGIN');
   try {
-    for (const { kind, dir } of kindEntries) {
+    for (const { kind, dir } of filteredKindEntries) {
       const category = categoryFor(kind);
       const mdFiles = walkDir(dir).filter((f) => !EXCLUDED_FILES.has(basename(f.filePath)));
 
       const dbRows = ctx.db
         .prepare(
-          'SELECT id, file_path, body, title, tags, meta, related_to FROM vault WHERE kind = ?'
+          'SELECT id, file_path, body, title, tags, meta, related_to, indexed FROM vault WHERE kind = ?'
         )
         .all(kind) as Record<string, unknown>[];
       const dbByPath = new Map(dbRows.map((r) => [r.file_path as string, r]));
@@ -269,6 +303,11 @@ export async function reindex(
         else delete meta.folder;
         const metaJson = Object.keys(meta).length ? JSON.stringify(meta) : null;
 
+        const entryIndexed = shouldIndex(
+          { kind, category, bodyLength: parsed.body.length },
+          ixConfig
+        );
+
         if (!existing) {
           const id = (fmMeta.id as string) || ulid();
           const tagsJson = fmMeta.tags ? JSON.stringify(fmMeta.tags) : null;
@@ -290,10 +329,11 @@ export async function reindex(
             (fmMeta.updated as string) || created
           );
           if ((result as { changes: number }).changes > 0) {
+            ctx.db.prepare('UPDATE vault SET indexed = ? WHERE id = ?').run(entryIndexed ? 1 : 0, id);
             if (relatedToJson && ctx.stmts.updateRelatedTo) {
               ctx.stmts.updateRelatedTo.run(relatedToJson, id);
             }
-            if (category !== 'event') {
+            if (entryIndexed && category !== 'event') {
               const rowidResult = ctx.stmts.getRowid.get(id) as { rowid: number } | undefined;
               if (rowidResult?.rowid) {
                 const embeddingText = [parsed.title, parsed.body].filter(Boolean).join(' ');
@@ -303,6 +343,7 @@ export async function reindex(
                 });
               }
             }
+            if (!entryIndexed) stats.skippedIndexing!++;
             stats.added++;
           } else {
             stats.unchanged++;
@@ -315,7 +356,10 @@ export async function reindex(
           const metaChanged = metaJson !== ((existing.meta as string) || null);
           const relatedToChanged = relatedToJson !== ((existing.related_to as string) || null);
 
-          if (bodyChanged || titleChanged || tagsChanged || metaChanged || relatedToChanged) {
+          const existingIndexed = (existing as any).indexed;
+          const indexedChanged = (entryIndexed ? 1 : 0) !== (existingIndexed ?? 1);
+
+          if (bodyChanged || titleChanged || tagsChanged || metaChanged || relatedToChanged || indexedChanged) {
             ctx.stmts.updateEntry.run(
               parsed.title || null,
               parsed.body,
@@ -327,11 +371,20 @@ export async function reindex(
               expires_at,
               filePath
             );
-            if (relatedToChanged && ctx.stmts.updateRelatedTo) {
+            ctx.db.prepare('UPDATE vault SET indexed = ? WHERE file_path = ?').run(entryIndexed ? 1 : 0, filePath);
+            if (relatedToJson && ctx.stmts.updateRelatedTo) {
               ctx.stmts.updateRelatedTo.run(relatedToJson, existing.id as string);
             }
 
-            if ((bodyChanged || titleChanged) && category !== 'event') {
+            if (!entryIndexed) {
+              const rowid = (
+                ctx.stmts.getRowid.get(existing.id as string) as { rowid: number } | undefined
+              )?.rowid;
+              if (rowid) {
+                try { ctx.deleteVec(rowid); stats.embeddingsCleared!++; } catch {}
+              }
+              stats.skippedIndexing!++;
+            } else if ((bodyChanged || titleChanged) && category !== 'event') {
               const rowid = (
                 ctx.stmts.getRowid.get(existing.id as string) as { rowid: number } | undefined
               )?.rowid;
@@ -435,6 +488,7 @@ export async function reindex(
       .prepare(
         `SELECT v.rowid, v.title, v.body FROM vault v
          WHERE v.category != 'event'
+           AND v.indexed = 1
            AND v.rowid NOT IN (SELECT rowid FROM vault_vec)`
       )
       .all() as { rowid: number; title: string | null; body: string }[];

@@ -73,6 +73,7 @@ export function buildFilterClauses({
   if (!includeEphemeral) {
     clauses.push("e.tier != 'ephemeral'");
   }
+  clauses.push('e.indexed = 1');
   return { clauses, params };
 }
 
@@ -191,6 +192,7 @@ export async function hybridSearch(
             if (since && row.created_at < since) continue;
             if (until && row.created_at > until) continue;
             if (row.expires_at && new Date(row.expires_at) <= new Date()) continue;
+            if (!row.indexed) continue;
 
             const { rowid: _rowid, ...cleanRow } = row;
             idToRowid.set(cleanRow.id, Number(row.rowid));
@@ -243,6 +245,7 @@ export async function hybridSearch(
             if (since && row.created_at < since) continue;
             if (until && row.created_at > until) continue;
             if (row.expires_at && new Date(row.expires_at) <= new Date()) continue;
+            if (!row.indexed) continue;
 
             const { rowid: _rowid, ...cleanRow } = row;
             ctxRankedIds.push(cleanRow.id);

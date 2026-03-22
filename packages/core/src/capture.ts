@@ -176,6 +176,7 @@ export function writeEntry(ctx: BaseCtx, data: CaptureInput): CaptureResult {
     related_to: data.related_to || null,
     source_files: data.source_files || null,
     tier: data.tier || null,
+    indexed: data.indexed !== false,
   };
 }
 
@@ -275,6 +276,7 @@ export function updateEntryFile(
     related_to: related_to || null,
     source_files: source_files || null,
     tier: (existing.tier as string) || null,
+    indexed: (existing.indexed as number) !== 0,
   };
 }
 

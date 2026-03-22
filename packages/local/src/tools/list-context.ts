@@ -18,10 +18,11 @@ export const inputSchema = {
   until: z.string().optional().describe('ISO date, return entries created before this'),
   limit: z.number().optional().describe('Max results to return (default 20, max 100)'),
   offset: z.number().optional().describe('Skip first N results for pagination'),
+  include_unindexed: z.boolean().optional().describe('If true, include entries that are stored but not indexed for search. Default: false.'),
 };
 
 export async function handler(
-  { kind, category, tags, since, until, limit, offset }: Record<string, any>,
+  { kind, category, tags, since, until, limit, offset, include_unindexed }: Record<string, any>,
   ctx: LocalCtx,
   { ensureIndexed, reindexFailed }: SharedCtx
 ): Promise<ToolResult> {
@@ -63,6 +64,9 @@ export async function handler(
     params.push(until);
   }
   clauses.push("(expires_at IS NULL OR expires_at > datetime('now'))");
+  if (!include_unindexed) {
+    clauses.push('indexed = 1');
+  }
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const effectiveLimit = Math.min(limit || 20, 100);
@@ -81,7 +85,7 @@ export async function handler(
     params.push(fetchLimit, effectiveOffset);
     rows = ctx.db
       .prepare(
-        `SELECT id, title, kind, category, tags, created_at, updated_at, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+        `SELECT id, title, kind, category, tags, created_at, updated_at, indexed, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
       )
       .all(...params) as any[];
   } catch (e) {
@@ -124,15 +128,25 @@ export async function handler(
       `> ℹ Event search limited to last ${days} days. Use \`since\` parameter for older results.\n`
     );
   }
-  lines.push('| | Title | Kind | Tags | Date | ID |');
-  lines.push('|---|---|---|---|---|---|');
+  if (include_unindexed) {
+    lines.push('| | Title | Kind | Tags | Idx | Date | ID |');
+    lines.push('|---|---|---|---|---|---|---|');
+  } else {
+    lines.push('| | Title | Kind | Tags | Date | ID |');
+    lines.push('|---|---|---|---|---|---|');
+  }
   for (const r of filtered) {
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
     const tagStr = entryTags.length ? entryTags.join(', ') : '';
     const date = fmtDate(r.updated_at && r.updated_at !== r.created_at ? r.updated_at : r.created_at);
     const icon = kindIcon(r.kind);
     const title = (r.title || '(untitled)').replace(/\|/g, '\\|');
-    lines.push(`| ${icon} | **${title}** | \`${r.kind}\` | ${tagStr} | ${date} | \`${r.id}\` |`);
+    if (include_unindexed) {
+      const idxStr = r.indexed ? 'Y' : 'N';
+      lines.push(`| ${icon} | **${title}** | \`${r.kind}\` | ${tagStr} | ${idxStr} | ${date} | \`${r.id}\` |`);
+    } else {
+      lines.push(`| ${icon} | **${title}** | \`${r.kind}\` | ${tagStr} | ${date} | \`${r.id}\` |`);
+    }
   }
 
   if (effectiveOffset + effectiveLimit < total) {

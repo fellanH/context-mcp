@@ -526,6 +526,7 @@ export async function handler(
     if (!include_superseded) {
       clauses.push('superseded_by IS NULL');
     }
+    clauses.push('indexed = 1');
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     params.push(fetchLimit);
     let rows;

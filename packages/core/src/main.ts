@@ -4,6 +4,7 @@ export type {
   RecallConfig,
   ConsolidationConfig,
   GrowthThresholds,
+  IndexingConfig,
   PreparedStatements,
   VaultEntry,
   SearchResult,
@@ -31,6 +32,7 @@ export {
   MAX_IDENTITY_KEY_LENGTH,
   DEFAULT_GROWTH_THRESHOLDS,
   DEFAULT_LIFECYCLE,
+  DEFAULT_INDEXING,
 } from './constants.js';
 
 // Categories
@@ -98,6 +100,9 @@ export {
 
 // Capture
 export { writeEntry, updateEntryFile, captureAndIndex } from './capture.js';
+
+// Indexing
+export { shouldIndex } from './indexing.js';
 
 // Ingest URL
 export { htmlToMarkdown, extractHtmlContent, ingestUrl } from './ingest-url.js';

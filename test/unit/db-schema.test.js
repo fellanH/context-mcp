@@ -163,8 +163,8 @@ describe('initDatabase', () => {
     }
   });
 
-  it('sets version to CURRENT_VERSION (16)', () => {
-    expect(getVersion(db)).toBe(16);
+  it('sets version to CURRENT_VERSION (17)', () => {
+    expect(getVersion(db)).toBe(17);
   });
 
   it('does not create user or team indexes', () => {
@@ -191,9 +191,9 @@ describe('initDatabase', () => {
       oldDb.exec('PRAGMA user_version = 13');
       oldDb.close();
 
-      // Re-open — migration should rebuild to v16
+      // Re-open — migration should rebuild to v17
       const newDb = await initDatabase(tmp2.dbPath);
-      expect(getVersion(newDb)).toBe(16);
+      expect(getVersion(newDb)).toBe(17);
       const cols = getColumns(newDb);
       expect(cols).toContain('id');
       expect(cols).toContain('kind');

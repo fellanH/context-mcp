@@ -249,7 +249,7 @@ describe('reindex', () => {
     rmSync(emptyCtx.config.vaultDir, { recursive: true, force: true });
 
     const stats = await reindex(emptyCtx);
-    expect(stats).toEqual({ added: 0, updated: 0, removed: 0, unchanged: 0 });
+    expect(stats).toEqual({ added: 0, updated: 0, removed: 0, unchanged: 0, skippedIndexing: 0, embeddingsCleared: 0 });
 
     emptyCleanup();
   }, 30000);

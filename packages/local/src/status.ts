@@ -148,6 +148,20 @@ export function gatherVaultStatus(ctx: LocalCtx, opts: Record<string, unknown> =
     errors.push(`Archived count failed: ${(e as Error).message}`);
   }
 
+  let indexingStats: { indexed: number; unindexed: number; total: number; byKind: Array<{ kind: string; indexed: number; total: number }> } | null = null;
+  try {
+    const totalRow = db.prepare('SELECT COUNT(*) as c FROM vault').get() as { c: number } | undefined;
+    const indexedRow = db.prepare('SELECT COUNT(*) as c FROM vault WHERE indexed = 1').get() as { c: number } | undefined;
+    const total = totalRow?.c ?? 0;
+    const indexed = indexedRow?.c ?? 0;
+    const byKind = db.prepare(
+      'SELECT kind, COUNT(*) as total, SUM(CASE WHEN indexed = 1 THEN 1 ELSE 0 END) as indexed FROM vault GROUP BY kind'
+    ).all() as Array<{ kind: string; total: number; indexed: number }>;
+    indexingStats = { indexed, unindexed: total - indexed, total, byKind };
+  } catch (e) {
+    errors.push(`Indexing stats failed: ${(e as Error).message}`);
+  }
+
   let staleKnowledge: unknown[] = [];
   try {
     const stalenessKinds = Object.entries(KIND_STALENESS_DAYS);
@@ -185,6 +199,7 @@ export function gatherVaultStatus(ctx: LocalCtx, opts: Record<string, unknown> =
     autoCapturedFeedbackCount,
     archivedCount,
     staleKnowledge,
+    indexingStats,
     resolvedFrom: config.resolvedFrom,
     errors,
   };

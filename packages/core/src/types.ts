@@ -8,6 +8,13 @@ export interface AutoInsightsConfig {
   tier: string;
 }
 
+export interface IndexingConfig {
+  excludeKinds: string[];
+  excludeCategories: string[];
+  maxBodySize: number;
+  autoIndexEvents: boolean;
+}
+
 export interface VaultConfig {
   vaultDir: string;
   dataDir: string;
@@ -23,6 +30,7 @@ export interface VaultConfig {
   consolidation: ConsolidationConfig;
   lifecycle: Record<string, { archiveAfterDays?: number }>;
   autoInsights: AutoInsightsConfig;
+  indexing: IndexingConfig;
 }
 
 export interface RecallConfig {
@@ -86,6 +94,7 @@ export interface VaultEntry {
   source_files: string | null;
   tier: string;
   related_to: string | null;
+  indexed: number;
   rowid?: number;
 }
 
@@ -109,6 +118,7 @@ export interface CaptureInput {
   related_to?: string[] | null;
   source_files?: Array<{ path: string; hash: string }> | null;
   tier?: string | null;
+  indexed?: boolean;
 }
 
 export interface CaptureResult {
@@ -129,6 +139,7 @@ export interface CaptureResult {
   related_to: string[] | null;
   source_files: Array<{ path: string; hash: string }> | null;
   tier: string | null;
+  indexed: boolean;
 }
 
 export interface IndexEntryInput {
@@ -146,6 +157,7 @@ export interface IndexEntryInput {
   expires_at: string | null;
   source_files: Array<{ path: string; hash: string }> | null;
   tier: string | null;
+  indexed?: boolean;
 }
 
 export interface ReindexStats {
@@ -153,6 +165,8 @@ export interface ReindexStats {
   updated: number;
   removed: number;
   unchanged: number;
+  skippedIndexing?: number;
+  embeddingsCleared?: number;
 }
 
 export interface BaseCtx {

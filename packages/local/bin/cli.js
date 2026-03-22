@@ -1910,7 +1910,11 @@ async function runSwitch() {
 }
 
 async function runReindex() {
-  console.log(dim('Loading vault...'));
+  const dryRun = flags.has('--dry-run');
+  const kindIdx = args.indexOf('--kind');
+  const kindFilter = kindIdx !== -1 && args[kindIdx + 1] ? args[kindIdx + 1] : null;
+
+  console.log(dim(dryRun ? 'Analyzing vault (dry run)...' : 'Loading vault...'));
 
   const { resolveConfig } = await import('@context-vault/core/config');
   const { initDatabase, prepareStatements, insertVec, deleteVec } =
@@ -1936,14 +1940,34 @@ async function runReindex() {
     deleteVec: (r) => deleteVec(stmts, r),
   };
 
-  const stats = await reindex(ctx, { fullSync: true });
+  const reindexOpts = {
+    fullSync: true,
+    indexingConfig: config.indexing,
+    dryRun,
+    kindFilter,
+  };
+
+  const stats = await reindex(ctx, reindexOpts);
 
   db.close();
-  console.log(green('✓ Reindex complete'));
-  console.log(`  ${green('+')} ${stats.added} added`);
-  console.log(`  ${yellow('~')} ${stats.updated} updated`);
-  console.log(`  ${red('-')} ${stats.removed} removed`);
-  console.log(`  ${dim('·')} ${stats.unchanged} unchanged`);
+
+  if (dryRun) {
+    console.log(yellow('Dry run results (no changes made):'));
+    console.log(`  Would index:  ${stats.added}`);
+    console.log(`  Would skip:   ${stats.skippedIndexing ?? 0}`);
+  } else {
+    console.log(green('✓ Reindex complete'));
+    console.log(`  ${green('+')} ${stats.added} added`);
+    console.log(`  ${yellow('~')} ${stats.updated} updated`);
+    console.log(`  ${red('-')} ${stats.removed} removed`);
+    console.log(`  ${dim('·')} ${stats.unchanged} unchanged`);
+    if (stats.skippedIndexing) {
+      console.log(`  ${dim('○')} ${stats.skippedIndexing} skipped indexing`);
+    }
+    if (stats.embeddingsCleared) {
+      console.log(`  ${dim('⊘')} ${stats.embeddingsCleared} embeddings cleared`);
+    }
+  }
 }
 
 async function runMigrateDirs() {

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import { DEFAULT_GROWTH_THRESHOLDS, DEFAULT_LIFECYCLE, DEFAULT_AUTO_INSIGHTS } from './constants.js';
+import { DEFAULT_GROWTH_THRESHOLDS, DEFAULT_LIFECYCLE, DEFAULT_AUTO_INSIGHTS, DEFAULT_INDEXING } from './constants.js';
 import type { VaultConfig } from './types.js';
 
 /**
@@ -72,6 +72,7 @@ export function resolveConfig(): VaultConfig {
     },
     lifecycle: structuredClone(DEFAULT_LIFECYCLE),
     autoInsights: { ...DEFAULT_AUTO_INSIGHTS },
+    indexing: { ...DEFAULT_INDEXING },
   };
 
   const configPath = join(dataDir, 'config.json');
@@ -153,6 +154,13 @@ export function resolveConfig(): VaultConfig {
         if (ai.minChars != null) config.autoInsights.minChars = Number(ai.minChars);
         if (ai.maxPerSession != null) config.autoInsights.maxPerSession = Number(ai.maxPerSession);
         if (ai.tier) config.autoInsights.tier = String(ai.tier);
+      }
+      if (fc.indexing && typeof fc.indexing === 'object') {
+        const ix = fc.indexing;
+        if (Array.isArray(ix.excludeKinds)) config.indexing.excludeKinds = ix.excludeKinds;
+        if (Array.isArray(ix.excludeCategories)) config.indexing.excludeCategories = ix.excludeCategories;
+        if (ix.maxBodySize != null) config.indexing.maxBodySize = Number(ix.maxBodySize);
+        if (ix.autoIndexEvents != null) config.indexing.autoIndexEvents = ix.autoIndexEvents === true;
       }
       config.resolvedFrom = 'config file';
     } catch (e) {
