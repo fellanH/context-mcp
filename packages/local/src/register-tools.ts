@@ -22,6 +22,7 @@ import * as sessionStart from './tools/session-start.js';
 import * as listBuckets from './tools/list-buckets.js';
 import * as ingestProject from './tools/ingest-project.js';
 import * as sessionEnd from './tools/session-end.js';
+import * as recall from './tools/recall.js';
 
 const toolModules = [
   getContext,
@@ -36,6 +37,7 @@ const toolModules = [
   sessionStart,
   sessionEnd,
   listBuckets,
+  recall,
 ];
 
 const TOOL_TIMEOUT_MS = 120_000;
