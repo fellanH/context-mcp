@@ -58,4 +58,29 @@ export function ensureValidKind(kind: string): ToolResult | null {
   return null;
 }
 
+const KIND_ICONS: Record<string, string> = {
+  insight: '◆',
+  decision: '◇',
+  pattern: '◈',
+  reference: '▸',
+  event: '○',
+  session: '◎',
+  brief: '▪',
+  bucket: '▫',
+  contact: '●',
+  project: '■',
+  tool: '▹',
+  source: '►',
+  feedback: '◉',
+};
+
+export function kindIcon(kind: string): string {
+  return KIND_ICONS[kind] || '·';
+}
+
+export function fmtDate(date: string | null | undefined): string {
+  if (!date) return '';
+  return date.split('T')[0];
+}
+
 export { pkg };

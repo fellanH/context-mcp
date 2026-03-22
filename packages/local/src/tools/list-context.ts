@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { normalizeKind } from '@context-vault/core/files';
 import { categoryFor } from '@context-vault/core/categories';
-import { ok, err, errWithHint } from '../helpers.js';
+import { ok, err, errWithHint, kindIcon, fmtDate } from '../helpers.js';
 import { resolveTemporalParams } from '../temporal.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
@@ -124,18 +124,15 @@ export async function handler(
       `> ℹ Event search limited to last ${days} days. Use \`since\` parameter for older results.\n`
     );
   }
+  lines.push('| | Title | Kind | Tags | Date | ID |');
+  lines.push('|---|---|---|---|---|---|');
   for (const r of filtered) {
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
-    const tagStr = entryTags.length ? entryTags.join(', ') : 'none';
-    const dateStr =
-      r.updated_at && r.updated_at !== r.created_at
-        ? `${r.created_at} (updated ${r.updated_at})`
-        : r.created_at;
-    lines.push(
-      `- **${r.title || '(untitled)'}** [${r.kind}/${r.category}] — ${tagStr} — ${dateStr} — \`${r.id}\``
-    );
-    if (r.preview)
-      lines.push(`  ${r.preview.replace(/\n+/g, ' ').trim()}${r.preview.length >= 120 ? '…' : ''}`);
+    const tagStr = entryTags.length ? entryTags.join(', ') : '';
+    const date = fmtDate(r.updated_at && r.updated_at !== r.created_at ? r.updated_at : r.created_at);
+    const icon = kindIcon(r.kind);
+    const title = (r.title || '(untitled)').replace(/\|/g, '\\|');
+    lines.push(`| ${icon} | **${title}** | \`${r.kind}\` | ${tagStr} | ${date} | \`${r.id}\` |`);
   }
 
   if (effectiveOffset + effectiveLimit < total) {

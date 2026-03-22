@@ -8,7 +8,7 @@ import { normalizeKind } from '@context-vault/core/files';
 import { parseContextParam } from '@context-vault/core/context';
 import { resolveTemporalParams } from '../temporal.js';
 import { collectLinkedEntries } from '../linking.js';
-import { ok, err, errWithHint } from '../helpers.js';
+import { ok, err, errWithHint, kindIcon, fmtDate } from '../helpers.js';
 import { isEmbedAvailable } from '@context-vault/core/embed';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
@@ -633,23 +633,24 @@ export async function handler(
     const r = filtered[i];
     const isSkeleton = i >= effectivePivot;
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
-    const tagStr = entryTags.length ? entryTags.join(', ') : 'none';
-    const relPath =
-      r.file_path && config.vaultDir
-        ? r.file_path.replace(config.vaultDir + '/', '')
-        : r.file_path || 'n/a';
-    const skeletonLabel = isSkeleton ? ' ⊘ skeleton' : '';
+    const tagStr = entryTags.length ? entryTags.join(', ') : '';
+    const icon = kindIcon(r.kind);
+    const skeletonLabel = isSkeleton ? ' `skeleton`' : '';
+    const tierLabel = r.tier ? `**${r.tier}**` : '';
+    const dateStr = r.updated_at && r.updated_at !== r.created_at
+      ? `${fmtDate(r.created_at)} (upd ${fmtDate(r.updated_at)})`
+      : fmtDate(r.created_at);
     lines.push(
-      `### [${i + 1}/${filtered.length}] ${r.title || '(untitled)'} [${r.kind}/${r.category}]${skeletonLabel}`
+      `### ${icon} ${r.title || '(untitled)'}${skeletonLabel}`
     );
-    const dateStr =
-      r.updated_at && r.updated_at !== r.created_at
-        ? `${r.created_at} (updated ${r.updated_at})`
-        : r.created_at || '';
-    const tierStr = r.tier ? ` · tier: ${r.tier}` : '';
-    lines.push(
-      `${r.score.toFixed(3)} · ${tagStr} · ${relPath} · ${dateStr} · skeleton: ${isSkeleton}${tierStr} · id: \`${r.id}\``
-    );
+    const meta = [
+      `\`${r.score.toFixed(2)}\``,
+      `\`${r.kind}\``,
+      tierLabel,
+      tagStr,
+      dateStr,
+    ].filter(Boolean).join(' · ');
+    lines.push(`${meta}  \nid: \`${r.id}\``);
     const stalenessResult = checkStaleness(r);
     if (stalenessResult) {
       r.stale = true;
@@ -691,15 +692,13 @@ export async function handler(
     if (uniqueLinked.length > 0) {
       lines.push(`## Linked Entries (${uniqueLinked.length} via related_to)\n`);
       for (const r of uniqueLinked) {
-        const direction = forward.some((f: any) => f.id === r.id) ? '→ forward' : '← backlink';
+        const direction = forward.some((f: any) => f.id === r.id) ? '→' : '←';
         const entryTags = r.tags ? JSON.parse(r.tags) : [];
-        const tagStr = entryTags.length ? entryTags.join(', ') : 'none';
-        const relPath =
-          r.file_path && config.vaultDir
-            ? r.file_path.replace(config.vaultDir + '/', '')
-            : r.file_path || 'n/a';
-        lines.push(`### ${r.title || '(untitled)'} [${r.kind}/${r.category}] ${direction}`);
-        lines.push(`${tagStr} · ${relPath} · id: \`${r.id}\``);
+        const tagStr = entryTags.length ? entryTags.join(', ') : '';
+        const icon = kindIcon(r.kind);
+        lines.push(`### ${icon} ${r.title || '(untitled)'} ${direction}`);
+        const meta = [`\`${r.kind}\``, tagStr].filter(Boolean).join(' · ');
+        lines.push(`${meta}  \nid: \`${r.id}\``);
         lines.push(truncateBody(r.body, body_limit ?? 300));
         lines.push('');
       }

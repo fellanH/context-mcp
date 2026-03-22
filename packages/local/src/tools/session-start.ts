@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { execSync } from 'node:child_process';
-import { ok, err, ensureVaultExists } from '../helpers.js';
+import { ok, err, ensureVaultExists, kindIcon, fmtDate } from '../helpers.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const DEFAULT_MAX_TOKENS = 4000;
@@ -67,11 +67,13 @@ function estimateTokens(text: string | null | undefined): number {
 
 function formatEntry(entry: any): string {
   const tags = entry.tags ? JSON.parse(entry.tags) : [];
-  const tagStr = tags.length ? tags.join(', ') : 'none';
-  const date = entry.updated_at || entry.created_at || 'unknown';
+  const tagStr = tags.length ? tags.join(', ') : '';
+  const date = fmtDate(entry.updated_at || entry.created_at);
+  const icon = kindIcon(entry.kind);
+  const meta = [`\`${entry.kind}\``, tagStr, date].filter(Boolean).join(' · ');
   return [
-    `- **${entry.title || '(untitled)'}** [${entry.kind}]`,
-    `  tags: ${tagStr} | ${date} | id: \`${entry.id}\``,
+    `- ${icon} **${entry.title || '(untitled)'}**`,
+    `  ${meta} · \`${entry.id}\``,
     `  ${truncateBody(entry.body).replace(/\n+/g, ' ').trim()}`,
   ].join('\n');
 }

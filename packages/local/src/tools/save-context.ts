@@ -4,7 +4,7 @@ import { indexEntry } from '@context-vault/core/index';
 import { categoryFor, defaultTierFor } from '@context-vault/core/categories';
 import { normalizeKind } from '@context-vault/core/files';
 import { parseContextParam } from '@context-vault/core/context';
-import { ok, err, errWithHint, ensureVaultExists, ensureValidKind } from '../helpers.js';
+import { ok, err, errWithHint, ensureVaultExists, ensureValidKind, kindIcon } from '../helpers.js';
 import { maybeShowFeedbackPrompt } from '../telemetry.js';
 import { validateRelatedTo } from '../linking.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
@@ -82,13 +82,13 @@ async function findSimilar(
 }
 
 function formatSimilarWarning(similar: any[]): string {
-  const lines = ['', '⚠ Similar entries already exist:'];
+  const lines = ['', '### ⚠ Similar entries'];
   for (const e of similar) {
-    const score = e.score.toFixed(2);
-    const title = e.title ? `"${e.title}"` : '(no title)';
-    lines.push(`  - ${title} (${score}) — id: ${e.id}`);
+    const score = (e.score * 100).toFixed(0);
+    const title = e.title ? `**${e.title}**` : '(no title)';
+    lines.push(`- ${title} \`${score}%\` · \`${e.id}\``);
   }
-  lines.push('  Consider using `id: <existing>` in save_context to update instead.');
+  lines.push('_Use `id` param to update instead of creating a duplicate._');
   return lines.join('\n');
 }
 
@@ -142,13 +142,12 @@ export function buildConflictCandidates(similarEntries: any[]): any[] {
 }
 
 function formatConflictSuggestions(candidates: any[]): string {
-  const lines = ['', '── Conflict Resolution Suggestions ──'];
+  const lines = ['', '### Conflict Resolution'];
   for (const c of candidates) {
-    const titleDisplay = c.title ? `"${c.title}"` : '(no title)';
-    lines.push(
-      `  [${c.suggested_action}] ${titleDisplay} (${(c.score * 100).toFixed(0)}%) — id: ${c.id}`
-    );
-    lines.push(`    ${c.reasoning_context}`);
+    const titleDisplay = c.title ? `**${c.title}**` : '(no title)';
+    const actionIcon = c.suggested_action === 'SKIP' ? '⊘' : c.suggested_action === 'UPDATE' ? '↻' : '＋';
+    lines.push(`${actionIcon} **${c.suggested_action}** ${titleDisplay} \`${(c.score * 100).toFixed(0)}%\` · \`${c.id}\``);
+    lines.push(`  ${c.reasoning_context}`);
   }
   return lines.join('\n');
 }
@@ -606,11 +605,13 @@ export async function handler(
   const relPath = entry.filePath
     ? entry.filePath.replace(config.vaultDir + '/', '')
     : entry.filePath;
-  const parts = [`✓ Saved ${normalizedKind} → ${relPath}`, `  id: ${entry.id}`];
-  if (title) parts.push(`  title: ${title}`);
-  if (tags?.length) parts.push(`  tags: ${tags.join(', ')}`);
-  parts.push(`  tier: ${effectiveTier}`);
-  parts.push('', '_Use this id to update or delete later._');
+  const icon = kindIcon(normalizedKind);
+  const parts = [
+    `## ✓ Saved`,
+    `${icon} **${title || '(untitled)'}**`,
+    `\`${normalizedKind}\` · **${effectiveTier}**${tags?.length ? ` · ${tags.join(', ')}` : ''}`,
+    `\`${entry.id}\` → ${relPath}`,
+  ];
   if (effectiveTier === 'ephemeral') {
     parts.push(
       '',

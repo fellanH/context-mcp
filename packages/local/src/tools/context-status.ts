@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gatherVaultStatus, computeGrowthWarnings } from '../status.js';
 import { errorLogPath, errorLogCount } from '../error-log.js';
-import { ok, err } from '../helpers.js';
+import { ok, err, kindIcon } from '../helpers.js';
 import type { LocalCtx, ToolResult } from '../types.js';
 
 function relativeTime(ts: number): string {
@@ -30,56 +30,53 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
     const hasIssues = status.stalePaths || (status.embeddingStatus?.missing ?? 0) > 0;
     const healthIcon = hasIssues ? '⚠' : '✓';
 
+    const schemaVersion = (ctx.db.prepare('PRAGMA user_version').get() as any)?.user_version ?? 'unknown';
+    const embedPct = status.embeddingStatus
+      ? (status.embeddingStatus.total > 0 ? Math.round((status.embeddingStatus.indexed / status.embeddingStatus.total) * 100) : 100)
+      : null;
+    const embedStr = status.embeddingStatus
+      ? `${status.embeddingStatus.indexed}/${status.embeddingStatus.total} (${embedPct}%)`
+      : 'n/a';
+    const modelStr = status.embedModelAvailable === false ? '⚠ unavailable' : status.embedModelAvailable === true ? '✓ loaded' : 'unknown';
+
     const lines = [
-      `## ${healthIcon} Vault Status (connected)`,
+      `## ${healthIcon} Vault Dashboard`,
       ``,
-      `Vault:     ${config.vaultDir} (${config.vaultDirExists ? status.fileCount + ' files' : 'missing'})`,
-      `Database:  ${config.dbPath} (${status.dbSize})`,
-      `Dev dir:   ${config.devDir}`,
-      `Data dir:  ${config.dataDir}`,
-      `Config:    ${config.configPath}`,
-      `Resolved via: ${status.resolvedFrom}`,
-      `Schema:    v${(ctx.db.prepare('PRAGMA user_version').get() as any)?.user_version ?? 'unknown'}`,
+      `| | |`,
+      `|---|---|`,
+      `| **Vault** | ${config.vaultDir} (${config.vaultDirExists ? status.fileCount + ' files' : '⚠ missing'}) |`,
+      `| **Database** | ${config.dbPath} (${status.dbSize}) |`,
+      `| **Schema** | v${schemaVersion} |`,
+      `| **Embeddings** | ${embedStr} |`,
+      `| **Model** | ${modelStr} |`,
+      `| **Event decay** | ${config.eventDecayDays} days |`,
     ];
-
-    if (status.embeddingStatus) {
-      const { indexed, total, missing } = status.embeddingStatus;
-      const pct = total > 0 ? Math.round((indexed / total) * 100) : 100;
-      lines.push(`Embeddings: ${indexed}/${total} (${pct}%)`);
-    }
-    if (status.embedModelAvailable === false) {
-      lines.push(`Embed model: unavailable (semantic search disabled, FTS still works)`);
-    } else if (status.embedModelAvailable === true) {
-      lines.push(`Embed model: loaded`);
-    }
-    lines.push(`Decay:     ${config.eventDecayDays} days (event recency window)`);
     if (status.expiredCount > 0) {
-      lines.push(
-        `Expired:   ${status.expiredCount} entries pending prune (run \`context-vault prune\` to remove now)`
-      );
+      lines.push(`| **Expired** | ${status.expiredCount} pending prune |`);
     }
 
+    // Indexed kinds as compact table
     lines.push(``, `### Indexed`);
-
     if (status.kindCounts.length) {
+      lines.push('| Kind | Count |');
+      lines.push('|---|---|');
       for (const { kind, c } of status.kindCounts) {
-        const plural = kind.endsWith('s') ? kind : kind + 's';
-        lines.push(`- ${c} ${plural}`);
+        lines.push(`| ${kindIcon(kind)} \`${kind}\` | ${c} |`);
       }
     } else {
-      lines.push(`- (empty)`);
+      lines.push(`_(empty vault)_`);
     }
 
     if (status.categoryCounts.length) {
       lines.push(``);
       lines.push(`### Categories`);
-      for (const { category, c } of status.categoryCounts) lines.push(`- ${category}: ${c}`);
+      for (const { category, c } of status.categoryCounts) lines.push(`- **${category}**: ${c}`);
     }
 
     if (status.subdirs.length) {
       lines.push(``);
-      lines.push(`### Disk Directories`);
-      for (const { name, count } of status.subdirs) lines.push(`- ${name}/: ${count} files`);
+      lines.push(`### Disk`);
+      for (const { name, count } of status.subdirs) lines.push(`- \`${name}/\` ${count} files`);
     }
 
     if (status.stalePaths) {
