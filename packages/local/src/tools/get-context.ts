@@ -695,7 +695,7 @@ export async function handler(
     }
   }
 
-  // Graph traversal: follow related_to links bidirectionally
+  // Graph traversal: follow related_to links bidirectionally + co-retrieval edges
   if (follow_links) {
     const { forward, backward } = collectLinkedEntries(ctx.db, filtered as any);
     const allLinked: any[] = [...(forward as any[]), ...(backward as any[])];
@@ -721,6 +721,69 @@ export async function handler(
       }
     } else {
       lines.push(`## Linked Entries\n\nNo related entries found.\n`);
+    }
+
+    // Co-retrieval graph traversal: edges with count > 3
+    const primaryIds = filtered.map((e: any) => e.id);
+    const primaryIdSet = new Set([...primaryIds, ...Array.from(seen)]);
+    const coRetrieved: any[] = [];
+
+    try {
+      const CO_RETRIEVAL_THRESHOLD = 3;
+      const placeholders = primaryIds.map(() => '?').join(',');
+      const coRows = ctx.db
+        .prepare(
+          `SELECT entry_a, entry_b, count FROM co_retrievals
+           WHERE count > ? AND (entry_a IN (${placeholders}) OR entry_b IN (${placeholders}))`
+        )
+        .all(CO_RETRIEVAL_THRESHOLD, ...primaryIds, ...primaryIds) as {
+        entry_a: string;
+        entry_b: string;
+        count: number;
+      }[];
+
+      const linkedIds = new Map<string, number>();
+      for (const row of coRows) {
+        for (const candidate of [row.entry_a, row.entry_b]) {
+          if (!primaryIdSet.has(candidate)) {
+            const existing = linkedIds.get(candidate) ?? 0;
+            if (row.count > existing) linkedIds.set(candidate, row.count);
+          }
+        }
+      }
+
+      if (linkedIds.size > 0) {
+        const coIds = Array.from(linkedIds.keys());
+        const coPlaceholders = coIds.map(() => '?').join(',');
+        const coEntries = ctx.db
+          .prepare(
+            `SELECT * FROM vault WHERE id IN (${coPlaceholders}) AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL`
+          )
+          .all(...coIds) as any[];
+
+        for (const entry of coEntries) {
+          coRetrieved.push({ ...entry, co_retrieval_weight: linkedIds.get(entry.id) ?? 0 });
+        }
+      }
+    } catch {
+      // Non-fatal: co-retrieval traversal is best-effort
+    }
+
+    if (coRetrieved.length > 0) {
+      coRetrieved.sort((a: any, b: any) => b.co_retrieval_weight - a.co_retrieval_weight);
+      lines.push(
+        `## Co-Retrieved Entries (${coRetrieved.length} via usage patterns)\n`
+      );
+      for (const r of coRetrieved) {
+        const entryTags = r.tags ? JSON.parse(r.tags) : [];
+        const tagStr = entryTags.length ? entryTags.join(', ') : '';
+        const icon = kindIcon(r.kind);
+        lines.push(`### ${icon} ${r.title || '(untitled)'} (weight: ${r.co_retrieval_weight})`);
+        const meta = [`\`${r.kind}\``, tagStr].filter(Boolean).join(' · ');
+        lines.push(`${meta}  \nid: \`${r.id}\``);
+        lines.push(truncateBody(r.body, body_limit ?? 300));
+        lines.push('');
+      }
     }
   }
 

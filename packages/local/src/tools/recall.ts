@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { ok } from '../helpers.js';
+import { isEmbedAvailable } from '@context-vault/core/embed';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
+
+const SEMANTIC_SIMILARITY_THRESHOLD = 0.6;
+const CO_RETRIEVAL_WEIGHT_CAP = 50;
 
 const STOPWORDS = new Set([
   'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
@@ -169,7 +173,80 @@ export async function handler(
     if (sessionSet) sessionSet.add(row.id);
   }
 
-  const method = hints.length > 0 ? 'tag_match' : 'none';
+  let method: 'tag_match' | 'semantic' | 'none' = hints.length > 0 ? 'tag_match' : 'none';
+
+  // Semantic fallback: when fast-path returns 0 results and signal is not file-based
+  if (hints.length === 0 && signal_type !== 'file' && isEmbedAvailable()) {
+    try {
+      const vecCount = (
+        ctx.db.prepare('SELECT COUNT(*) as c FROM vault_vec').get() as { c: number }
+      ).c;
+
+      if (vecCount > 0) {
+        const queryVec = await ctx.embed(signal);
+        if (queryVec) {
+          const vecRows = ctx.db
+            .prepare(
+              'SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT 5'
+            )
+            .all(queryVec) as { rowid: number; distance: number }[];
+
+          if (vecRows.length) {
+            const rowids = vecRows.map((vr) => vr.rowid);
+            const placeholders = rowids.map(() => '?').join(',');
+
+            let bucketFilter = '';
+            const hydrateParams: any[] = [...rowids];
+            if (bucket) {
+              bucketFilter = ' AND tags LIKE ?';
+              hydrateParams.push(`%"bucket:${bucket}"%`);
+            }
+
+            const hydrated = ctx.db
+              .prepare(
+                `SELECT rowid, id, title, substr(body, 1, 100) as summary, kind, tags FROM vault WHERE rowid IN (${placeholders}) AND indexed = 1 AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL${bucketFilter}`
+              )
+              .all(...hydrateParams) as any[];
+
+            const byRowid = new Map<number, any>();
+            for (const row of hydrated) byRowid.set(row.rowid, row);
+
+            for (const vr of vecRows) {
+              if (hints.length >= limit) break;
+              const row = byRowid.get(vr.rowid);
+              if (!row) continue;
+
+              const similarity = Math.max(0, 1 - vr.distance / 2);
+              if (similarity < SEMANTIC_SIMILARITY_THRESHOLD) continue;
+
+              // Session dedup
+              if (sessionSet && !bypassDedup && sessionSet.has(row.id)) {
+                suppressed++;
+                continue;
+              }
+
+              const entryTags: string[] = row.tags ? JSON.parse(row.tags) : [];
+              hints.push({
+                id: row.id,
+                title: row.title || '(untitled)',
+                summary: row.summary || '',
+                relevance: similarity >= 0.8 ? 'high' : 'medium',
+                kind: row.kind || 'knowledge',
+                tags: entryTags,
+              });
+
+              if (sessionSet) sessionSet.add(row.id);
+            }
+
+            if (hints.length > 0) method = 'semantic';
+          }
+        }
+      }
+    } catch {
+      // Semantic fallback is best-effort; fast path already ran
+    }
+  }
+
   const latency = Date.now() - start;
 
   if (hints.length === 0) {
@@ -181,6 +258,11 @@ export async function handler(
       suppressed,
     };
     return result;
+  }
+
+  // Record co-retrieval pairs (fire and forget, non-blocking)
+  if (hints.length >= 2) {
+    recordCoRetrieval(ctx, hints.map((h) => h.id));
   }
 
   // Format output
@@ -199,6 +281,24 @@ export async function handler(
     hints,
   };
   return result;
+}
+
+function recordCoRetrieval(ctx: LocalCtx, ids: string[]): void {
+  try {
+    const now = new Date().toISOString();
+    const upsert = ctx.db.prepare(
+      `INSERT INTO co_retrievals (entry_a, entry_b, count, last_at) VALUES (?, ?, 1, ?)
+       ON CONFLICT(entry_a, entry_b) DO UPDATE SET count = MIN(count + 1, ?), last_at = ?`
+    );
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const [a, b] = ids[i] < ids[j] ? [ids[i], ids[j]] : [ids[j], ids[i]];
+        upsert.run(a, b, now, CO_RETRIEVAL_WEIGHT_CAP, now);
+      }
+    }
+  } catch {
+    // Non-fatal: co-retrieval recording is best-effort
+  }
 }
 
 /** Reset session dedup state (for testing) */
