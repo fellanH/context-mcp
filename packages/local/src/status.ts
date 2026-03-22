@@ -182,6 +182,25 @@ export function gatherVaultStatus(ctx: LocalCtx, opts: Record<string, unknown> =
     errors.push(`Stale knowledge check failed: ${(e as Error).message}`);
   }
 
+  let recallStats: { totalRecalls: number; entriesRecalled: number; avgRecallCount: number; maxRecallCount: number; topRecalled: Array<{ title: string; kind: string; recall_count: number; recall_sessions: number }> } | null = null;
+  try {
+    const totals = db.prepare(
+      `SELECT SUM(recall_count) as total_recalls, COUNT(CASE WHEN recall_count > 0 THEN 1 END) as entries_recalled, AVG(CASE WHEN recall_count > 0 THEN recall_count END) as avg_recall, MAX(recall_count) as max_recall FROM vault`
+    ).get() as any;
+    const topRecalled = db.prepare(
+      `SELECT title, kind, recall_count, recall_sessions FROM vault WHERE recall_count > 0 ORDER BY recall_count DESC LIMIT 5`
+    ).all() as any[];
+    recallStats = {
+      totalRecalls: totals?.total_recalls ?? 0,
+      entriesRecalled: totals?.entries_recalled ?? 0,
+      avgRecallCount: Math.round((totals?.avg_recall ?? 0) * 10) / 10,
+      maxRecallCount: totals?.max_recall ?? 0,
+      topRecalled,
+    };
+  } catch (e) {
+    errors.push(`Recall stats failed: ${(e as Error).message}`);
+  }
+
   return {
     fileCount,
     subdirs,
@@ -200,6 +219,7 @@ export function gatherVaultStatus(ctx: LocalCtx, opts: Record<string, unknown> =
     archivedCount,
     staleKnowledge,
     indexingStats,
+    recallStats,
     resolvedFrom: config.resolvedFrom,
     errors,
   };

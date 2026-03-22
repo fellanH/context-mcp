@@ -85,7 +85,7 @@ export async function handler(
     params.push(fetchLimit, effectiveOffset);
     rows = ctx.db
       .prepare(
-        `SELECT id, title, kind, category, tags, created_at, updated_at, indexed, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+        `SELECT id, title, kind, category, tags, created_at, updated_at, indexed, recall_count, SUBSTR(body, 1, 120) as preview FROM vault ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
       )
       .all(...params) as any[];
   } catch (e) {
@@ -129,11 +129,11 @@ export async function handler(
     );
   }
   if (include_unindexed) {
-    lines.push('| | Title | Kind | Tags | Idx | Date | ID |');
-    lines.push('|---|---|---|---|---|---|---|');
+    lines.push('| | Title | Kind | Tags | Recalls | Idx | Date | ID |');
+    lines.push('|---|---|---|---|---|---|---|---|');
   } else {
-    lines.push('| | Title | Kind | Tags | Date | ID |');
-    lines.push('|---|---|---|---|---|---|');
+    lines.push('| | Title | Kind | Tags | Recalls | Date | ID |');
+    lines.push('|---|---|---|---|---|---|---|');
   }
   for (const r of filtered) {
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
@@ -141,11 +141,12 @@ export async function handler(
     const date = fmtDate(r.updated_at && r.updated_at !== r.created_at ? r.updated_at : r.created_at);
     const icon = kindIcon(r.kind);
     const title = (r.title || '(untitled)').replace(/\|/g, '\\|');
+    const recalls = r.recall_count ?? 0;
     if (include_unindexed) {
       const idxStr = r.indexed ? 'Y' : 'N';
-      lines.push(`| ${icon} | **${title}** | \`${r.kind}\` | ${tagStr} | ${idxStr} | ${date} | \`${r.id}\` |`);
+      lines.push(`| ${icon} | **${title}** | \`${r.kind}\` | ${tagStr} | ${recalls} | ${idxStr} | ${date} | \`${r.id}\` |`);
     } else {
-      lines.push(`| ${icon} | **${title}** | \`${r.kind}\` | ${tagStr} | ${date} | \`${r.id}\` |`);
+      lines.push(`| ${icon} | **${title}** | \`${r.kind}\` | ${tagStr} | ${recalls} | ${date} | \`${r.id}\` |`);
     }
   }
 

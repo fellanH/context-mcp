@@ -2,6 +2,9 @@ import type { BaseCtx, SearchResult, SearchOptions, VaultEntry } from './types.j
 
 const NEAR_DUP_THRESHOLD = 0.92;
 const RRF_K = 60;
+const RECALL_BOOST_CAP = 2.0;
+const RECALL_HALF_LIFE_DAYS = 30;
+const DISCOVERY_SLOTS = 2;
 
 export function recencyDecayScore(updatedAt: string | null | undefined, decayRate = 0.05): number {
   if (updatedAt == null) return 0.5;
@@ -32,6 +35,18 @@ export function recencyBoost(createdAt: string, category: string, decayDays = 30
   if (category !== 'event') return 1.0;
   const ageDays = (Date.now() - new Date(createdAt).getTime()) / 86400000;
   return 1 / (1 + ageDays / decayDays);
+}
+
+export function recallBoost(recallCount: number, lastRecalledAt: string | null): number {
+  if (recallCount <= 0) return 1.0;
+  const logBoost = Math.log(recallCount + 1);
+  let recencyWeight = 1.0;
+  if (lastRecalledAt) {
+    const ageDays = (Date.now() - new Date(lastRecalledAt).getTime()) / 86400000;
+    recencyWeight = Math.pow(0.5, ageDays / RECALL_HALF_LIFE_DAYS);
+  }
+  const boost = 1 + logBoost * recencyWeight;
+  return Math.min(boost, RECALL_BOOST_CAP);
 }
 
 export function buildFilterClauses({
@@ -270,7 +285,11 @@ export async function hybridSearch(
 
   for (const [id, entry] of rowMap) {
     const boost = recencyBoost(entry.created_at, entry.category, decayDays);
-    rrfScores.set(id, (rrfScores.get(id) ?? 0) * boost);
+    const recall = recallBoost(
+      entry.recall_count ?? 0,
+      entry.last_recalled_at ?? null
+    );
+    rrfScores.set(id, (rrfScores.get(id) ?? 0) * boost * recall);
   }
 
   const candidates: SearchResult[] = [...rowMap.values()].map((entry) => ({
@@ -319,26 +338,94 @@ export async function hybridSearch(
       selected.push(candidate);
       if (vec) selectedVecs.push(vec);
     }
-    const dedupedPage = selected.slice(offset, offset + limit);
+    const dedupedPage = injectDiscoverySlots(selected.slice(offset, offset + limit), candidates);
     trackAccess(ctx, dedupedPage);
     return dedupedPage;
   }
 
-  const finalPage = candidates.slice(offset, offset + limit);
+  const page = candidates.slice(offset, offset + limit);
+  const finalPage = injectDiscoverySlots(page, candidates);
   trackAccess(ctx, finalPage);
   return finalPage;
 }
 
+function injectDiscoverySlots(
+  page: SearchResult[],
+  allCandidates: SearchResult[]
+): SearchResult[] {
+  if (page.length < 4) return page;
+  const pageIds = new Set(page.map((e) => e.id));
+  const discoveries = allCandidates
+    .filter(
+      (c) =>
+        !pageIds.has(c.id) &&
+        (c.recall_count ?? 0) <= 2 &&
+        c.score > 0
+    )
+    .slice(0, DISCOVERY_SLOTS);
+  if (!discoveries.length) return page;
+  const result = [...page];
+  for (let i = 0; i < discoveries.length && result.length > 2; i++) {
+    result.splice(result.length - 1 - i, 1, discoveries[i]);
+  }
+  return result;
+}
+
+let _sessionId: string | null = null;
+const _seenSessionIds = new Set<string>();
+
+export function setSessionId(id: string): void {
+  _sessionId = id;
+}
+
 export function trackAccess(ctx: BaseCtx, entries: SearchResult[]): void {
   if (!entries.length) return;
+
+  const ids = entries.map((e) => e.id);
+  const now = new Date().toISOString();
+
   try {
-    const placeholders = entries.map(() => '?').join(',');
+    const placeholders = ids.map(() => '?').join(',');
     ctx.db
       .prepare(
-        `UPDATE vault SET hit_count = hit_count + 1, last_accessed_at = datetime('now') WHERE id IN (${placeholders})`
+        `UPDATE vault SET hit_count = hit_count + 1, last_accessed_at = datetime('now'), recall_count = recall_count + 1, last_recalled_at = ? WHERE id IN (${placeholders})`
       )
-      .run(...entries.map((e) => e.id));
+      .run(now, ...ids);
   } catch {
     // Non-fatal
+  }
+
+  const sessionId = _sessionId || 'default';
+  const sessionKey = `${sessionId}:${ids.sort().join(',')}`;
+  const isNewSession = !_seenSessionIds.has(sessionKey);
+  if (isNewSession) {
+    _seenSessionIds.add(sessionKey);
+    try {
+      const placeholders = ids.map(() => '?').join(',');
+      ctx.db
+        .prepare(
+          `UPDATE vault SET recall_sessions = recall_sessions + 1 WHERE id IN (${placeholders})`
+        )
+        .run(...ids);
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  if (ids.length >= 2) {
+    try {
+      const upsert = ctx.db.prepare(
+        `INSERT INTO co_retrievals (entry_a, entry_b, count, last_at) VALUES (?, ?, 1, ?)
+         ON CONFLICT(entry_a, entry_b) DO UPDATE SET count = count + 1, last_at = ?`
+      );
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          const [a, b] = ids[i] < ids[j] ? [ids[i], ids[j]] : [ids[j], ids[i]];
+          upsert.run(a, b, now, now);
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
   }
 }

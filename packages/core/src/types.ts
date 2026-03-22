@@ -95,6 +95,9 @@ export interface VaultEntry {
   tier: string;
   related_to: string | null;
   indexed: number;
+  recall_count: number;
+  recall_sessions: number;
+  last_recalled_at: string | null;
   rowid?: number;
 }
 

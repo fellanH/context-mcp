@@ -144,7 +144,10 @@ export const SCHEMA_DDL = `
     source_files    TEXT,
     tier            TEXT DEFAULT 'working' CHECK(tier IN ('ephemeral', 'working', 'durable')),
     related_to      TEXT,
-    indexed         INTEGER DEFAULT 1
+    indexed         INTEGER DEFAULT 1,
+    recall_count    INTEGER DEFAULT 0,
+    recall_sessions INTEGER DEFAULT 0,
+    last_recalled_at TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_vault_kind ON vault(kind);
@@ -179,9 +182,17 @@ export const SCHEMA_DDL = `
   CREATE VIRTUAL TABLE IF NOT EXISTS vault_vec USING vec0(embedding float[384]);
 
   CREATE VIRTUAL TABLE IF NOT EXISTS vault_ctx_vec USING vec0(embedding float[384]);
+
+  CREATE TABLE IF NOT EXISTS co_retrievals (
+    entry_a TEXT NOT NULL,
+    entry_b TEXT NOT NULL,
+    count INTEGER DEFAULT 1,
+    last_at TEXT NOT NULL,
+    PRIMARY KEY (entry_a, entry_b)
+  );
 `;
 
-const CURRENT_VERSION = 17;
+const CURRENT_VERSION = 18;
 
 export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
   const sqliteVec = await loadSqliteVec();
@@ -223,7 +234,6 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
       try {
         db.exec('ALTER TABLE vault ADD COLUMN indexed INTEGER DEFAULT 1');
         db.exec('CREATE INDEX IF NOT EXISTS idx_vault_indexed ON vault(indexed)');
-        // Recreate FTS triggers to respect indexed flag
         db.exec('DROP TRIGGER IF EXISTS vault_ai');
         db.exec('DROP TRIGGER IF EXISTS vault_ad');
         db.exec('DROP TRIGGER IF EXISTS vault_au');
@@ -241,9 +251,30 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
           INSERT INTO vault_fts(rowid, title, body, tags, kind)
             SELECT new.rowid, new.title, new.body, new.tags, new.kind WHERE new.indexed = 1;
         END`);
-        db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+        db.exec('PRAGMA user_version = 17');
       } catch (e) {
         console.error(`[context-vault] v16->v17 migration failed: ${(e as Error).message}`);
+        return db;
+      }
+      // Fall through to v17->v18 migration
+    }
+
+    // v17 -> v18: add recall frequency tracking columns and co_retrievals table
+    if (version === 17 || version === 16 || version === 15) {
+      try {
+        db.exec('ALTER TABLE vault ADD COLUMN recall_count INTEGER DEFAULT 0');
+        db.exec('ALTER TABLE vault ADD COLUMN recall_sessions INTEGER DEFAULT 0');
+        db.exec('ALTER TABLE vault ADD COLUMN last_recalled_at TEXT');
+        db.exec(`CREATE TABLE IF NOT EXISTS co_retrievals (
+          entry_a TEXT NOT NULL,
+          entry_b TEXT NOT NULL,
+          count INTEGER DEFAULT 1,
+          last_at TEXT NOT NULL,
+          PRIMARY KEY (entry_a, entry_b)
+        )`);
+        db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+      } catch (e) {
+        console.error(`[context-vault] v17->v18 migration failed: ${(e as Error).message}`);
       }
       return db;
     }
@@ -289,7 +320,7 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
       return freshDb;
     }
 
-    if (version < 17) {
+    if (version < 18) {
       db.exec(SCHEMA_DDL);
       db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
     }

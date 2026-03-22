@@ -31,6 +31,7 @@ import {
 } from '@context-vault/core/db';
 import { registerTools } from './register-tools.js';
 import { pruneExpired } from '@context-vault/core/index';
+import { setSessionId } from '@context-vault/core/search';
 
 const DAEMON_PORT = 3377;
 const PID_PATH = join(homedir(), '.context-mcp', 'daemon.pid');
@@ -358,6 +359,8 @@ async function main(): Promise<void> {
       activeOps: { count: 0 },
       toolStats: { ok: 0, errors: 0, lastError: null },
     };
+
+    setSessionId(randomUUID());
 
     try {
       const pruned = await pruneExpired(ctx);

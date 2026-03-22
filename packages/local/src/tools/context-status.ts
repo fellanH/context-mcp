@@ -97,6 +97,23 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
       for (const { name, count } of status.subdirs) lines.push(`- \`${name}/\` ${count} files`);
     }
 
+    if (status.recallStats && status.recallStats.totalRecalls > 0) {
+      const rs = status.recallStats;
+      lines.push(``, `### Recall Frequency`);
+      lines.push(`| Metric | Value |`);
+      lines.push(`|---|---|`);
+      lines.push(`| **Total recalls** | ${rs.totalRecalls} |`);
+      lines.push(`| **Entries recalled** | ${rs.entriesRecalled} |`);
+      lines.push(`| **Avg recalls/entry** | ${rs.avgRecallCount} |`);
+      lines.push(`| **Max recalls** | ${rs.maxRecallCount} |`);
+      if (rs.topRecalled?.length) {
+        lines.push(``, `**Top recalled:**`);
+        for (const t of rs.topRecalled) {
+          lines.push(`- "${t.title || '(untitled)'}" (\`${t.kind}\`): ${t.recall_count} recalls, ${t.recall_sessions} sessions`);
+        }
+      }
+    }
+
     if (status.stalePaths) {
       lines.push(``);
       lines.push(`### ⚠ Stale Paths`);
