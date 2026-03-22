@@ -1,5 +1,13 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 
+export interface AutoInsightsConfig {
+  enabled: boolean;
+  patterns: string[];
+  minChars: number;
+  maxPerSession: number;
+  tier: string;
+}
+
 export interface VaultConfig {
   vaultDir: string;
   dataDir: string;
@@ -14,6 +22,7 @@ export interface VaultConfig {
   recall: RecallConfig;
   consolidation: ConsolidationConfig;
   lifecycle: Record<string, { archiveAfterDays?: number }>;
+  autoInsights: AutoInsightsConfig;
 }
 
 export interface RecallConfig {

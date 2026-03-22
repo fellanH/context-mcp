@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import { DEFAULT_GROWTH_THRESHOLDS, DEFAULT_LIFECYCLE } from './constants.js';
+import { DEFAULT_GROWTH_THRESHOLDS, DEFAULT_LIFECYCLE, DEFAULT_AUTO_INSIGHTS } from './constants.js';
 import type { VaultConfig } from './types.js';
 
 /**
@@ -71,6 +71,7 @@ export function resolveConfig(): VaultConfig {
       autoConsolidate: false,
     },
     lifecycle: structuredClone(DEFAULT_LIFECYCLE),
+    autoInsights: { ...DEFAULT_AUTO_INSIGHTS },
   };
 
   const configPath = join(dataDir, 'config.json');
@@ -144,6 +145,14 @@ export function resolveConfig(): VaultConfig {
               );
           }
         }
+      }
+      if (fc.autoInsights && typeof fc.autoInsights === 'object') {
+        const ai = fc.autoInsights;
+        if (ai.enabled != null) config.autoInsights.enabled = ai.enabled === true;
+        if (Array.isArray(ai.patterns)) config.autoInsights.patterns = ai.patterns;
+        if (ai.minChars != null) config.autoInsights.minChars = Number(ai.minChars);
+        if (ai.maxPerSession != null) config.autoInsights.maxPerSession = Number(ai.maxPerSession);
+        if (ai.tier) config.autoInsights.tier = String(ai.tier);
       }
       config.resolvedFrom = 'config file';
     } catch (e) {

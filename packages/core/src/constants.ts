@@ -23,3 +23,11 @@ export const DEFAULT_LIFECYCLE: Record<string, { archiveAfterDays?: number }> = 
   event: { archiveAfterDays: 90 },
   ephemeral: { archiveAfterDays: 30 },
 };
+
+export const DEFAULT_AUTO_INSIGHTS = {
+  enabled: true,
+  patterns: ['★ Insight'],
+  minChars: 50,
+  maxPerSession: 5,
+  tier: 'working',
+};

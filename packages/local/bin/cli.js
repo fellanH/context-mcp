@@ -252,12 +252,16 @@ const TOOLS = [
     name: 'Claude Code',
     detect: () => commandExistsAsync('claude'),
     configType: 'cli',
+    rulesPath: join(HOME, '.claude', 'rules', 'context-vault.md'),
+    rulesMethod: 'write',
   },
   {
     id: 'codex',
     name: 'Codex',
     detect: () => commandExistsAsync('codex'),
     configType: 'cli',
+    rulesPath: null,
+    rulesMethod: null,
   },
   {
     id: 'claude-desktop',
@@ -266,6 +270,8 @@ const TOOLS = [
     configType: 'json',
     configPath: join(appDataDir(), 'Claude', 'claude_desktop_config.json'),
     configKey: 'mcpServers',
+    rulesPath: null,
+    rulesMethod: null,
   },
   {
     id: 'cursor',
@@ -274,6 +280,8 @@ const TOOLS = [
     configType: 'json',
     configPath: join(HOME, '.cursor', 'mcp.json'),
     configKey: 'mcpServers',
+    rulesPath: join(HOME, '.cursor', 'rules', 'context-vault.mdc'),
+    rulesMethod: 'write',
   },
   {
     id: 'windsurf',
@@ -286,6 +294,8 @@ const TOOLS = [
         : join(HOME, '.codeium', 'windsurf', 'mcp_config.json');
     },
     configKey: 'mcpServers',
+    rulesPath: join(HOME, '.windsurfrules'),
+    rulesMethod: 'append',
   },
   {
     id: 'antigravity',
@@ -294,6 +304,8 @@ const TOOLS = [
     configType: 'json',
     configPath: join(HOME, '.gemini', 'antigravity', 'mcp_config.json'),
     configKey: 'mcpServers',
+    rulesPath: null,
+    rulesMethod: null,
   },
   {
     id: 'cline',
@@ -307,6 +319,8 @@ const TOOLS = [
       'cline_mcp_settings.json'
     ),
     configKey: 'mcpServers',
+    rulesPath: null,
+    rulesMethod: null,
   },
   {
     id: 'roo-code',
@@ -320,6 +334,8 @@ const TOOLS = [
       'cline_mcp_settings.json'
     ),
     configKey: 'mcpServers',
+    rulesPath: null,
+    rulesMethod: null,
   },
 ];
 
@@ -3796,6 +3812,78 @@ async function runSessionEnd() {
       meta: { session_id: session_id ?? null, cwd, message_count },
     });
     console.log(`context-vault session captured — id: ${entry.id}`);
+
+    // ── Auto-insight extraction ──────────────────────────────────────────────
+    const aiConfig = config.autoInsights ?? { enabled: true, patterns: ['★ Insight'], minChars: 50, maxPerSession: 5, tier: 'working' };
+    if (aiConfig.enabled !== false) {
+      try {
+        const patterns = aiConfig.patterns ?? ['★ Insight'];
+        const minChars = aiConfig.minChars ?? 50;
+        const maxInsights = aiConfig.maxPerSession ?? 5;
+        const defaultTier = aiConfig.tier ?? 'working';
+
+        // Build regex for all configured patterns
+        const escapedPatterns = patterns.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        const patternRe = new RegExp(
+          `(?:${escapedPatterns.join('|')})[─\\s]*\`?\\n([\\s\\S]*?)\\n\`?─{10,}`,
+          'g'
+        );
+
+        const insightBlocks = [];
+        for (const turn of turns) {
+          if (turn.role !== 'assistant') continue;
+          const text = extractText(turn);
+          if (!text) continue;
+          for (const m of text.matchAll(patternRe)) {
+            const insightBody = m[1].trim();
+            if (insightBody.length >= minChars && insightBlocks.length < maxInsights) {
+              insightBlocks.push(insightBody);
+            }
+          }
+        }
+
+        if (insightBlocks.length > 0) {
+          // Check existing auto-insight entries for dedup (by title, lightweight)
+          const existingTitles = new Set();
+          try {
+            const rows = db.prepare(
+              `SELECT title FROM entries WHERE tags LIKE '%auto-insight%' ORDER BY created_at DESC LIMIT 100`
+            ).all();
+            for (const r of rows) {
+              if (r.title) existingTitles.add(r.title.toLowerCase());
+            }
+          } catch {}
+
+          let savedCount = 0;
+          for (const insightBody of insightBlocks) {
+            const boldMatch = insightBody.match(/\*\*(.+?)\*\*/);
+            const firstLine = insightBody.split('\n')[0].replace(/\*\*/g, '').trim();
+            const insightTitle = boldMatch ? boldMatch[1].slice(0, 80) : firstLine.slice(0, 80);
+
+            // Skip near-duplicates by title
+            if (existingTitles.has(insightTitle.toLowerCase())) continue;
+
+            const insightTags = ['auto-insight', 'session-insight', `bucket:${project}`];
+            await captureAndIndex(ctx, {
+              kind: 'insight',
+              title: insightTitle,
+              body: insightBody,
+              tags: insightTags,
+              source: `claude-code session ${new Date().toISOString().slice(0, 10)}`,
+              tier: defaultTier,
+              meta: { auto_extracted: true, session_id: session_id ?? null },
+            });
+            existingTitles.add(insightTitle.toLowerCase());
+            savedCount++;
+          }
+          if (savedCount > 0) {
+            console.log(`context-vault auto-insights — ${savedCount} insight${savedCount === 1 ? '' : 's'} saved`);
+          }
+        }
+      } catch {
+        // Auto-insight extraction is best-effort
+      }
+    }
   } catch {
     // fail silently — never block session end
   } finally {
@@ -4102,48 +4190,45 @@ function loadAgentRules() {
  * Returns null for tools with no rules install path.
  */
 function getRulesPathForTool(tool) {
-  if (tool.id === 'claude-code') return join(HOME, '.claude', 'rules', 'context-vault.md');
-  if (tool.id === 'cursor') return join(HOME, '.cursor', 'rules', 'context-vault.mdc');
-  if (tool.id === 'windsurf') return join(HOME, '.windsurfrules');
-  return null;
+  return tool.rulesPath || null;
 }
 
 /**
  * Install agent rules for a specific tool.
- * - Claude Code: writes ~/.claude/rules/context-vault.md
- * - Cursor: appends to .cursorrules in cwd (with delimiters)
- * - Windsurf: appends to .windsurfrules in cwd (with delimiters)
- * - Other tools: skipped
- * Returns true if installed, false if skipped or already present.
+ * Uses tool.rulesPath and tool.rulesMethod from the TOOLS array.
+ * - 'write' method: writes the file directly (Claude Code, Cursor)
+ * - 'append' method: appends with delimiter markers (Windsurf)
+ * Returns true if installed/updated, false if already up to date or skipped.
  */
 function installAgentRulesForTool(tool, rulesContent) {
-  if (tool.id === 'claude-code') {
-    const rulesDir = join(HOME, '.claude', 'rules');
-    const rulesPath = join(rulesDir, 'context-vault.md');
+  const rulesPath = tool.rulesPath;
+  if (!rulesPath) return false;
+
+  if (tool.rulesMethod === 'write') {
     if (existsSync(rulesPath)) {
       const existing = readFileSync(rulesPath, 'utf-8');
       if (existing.trim() === rulesContent.trim()) return false;
     }
-    mkdirSync(rulesDir, { recursive: true });
+    mkdirSync(dirname(rulesPath), { recursive: true });
     writeFileSync(rulesPath, rulesContent);
     return true;
   }
 
-  if (tool.id === 'cursor') {
-    const rulesPath = join(HOME, '.cursor', 'rules', 'context-vault.mdc');
-    // Cursor supports project rules in .cursor/rules/ directory
-    if (existsSync(rulesPath)) return false;
-    mkdirSync(join(HOME, '.cursor', 'rules'), { recursive: true });
-    writeFileSync(rulesPath, rulesContent);
-    return true;
-  }
-
-  if (tool.id === 'windsurf') {
-    const rulesPath = join(HOME, '.windsurfrules');
+  if (tool.rulesMethod === 'append') {
     const delimited = `\n${RULES_DELIMITER_START}\n${rulesContent}\n${RULES_DELIMITER_END}\n`;
     if (existsSync(rulesPath)) {
       const existing = readFileSync(rulesPath, 'utf-8');
-      if (existing.includes(RULES_DELIMITER_START)) return false;
+      if (existing.includes(RULES_DELIMITER_START)) {
+        const delimiterRegex = new RegExp(
+          `\n?${RULES_DELIMITER_START}[\\s\\S]*?${RULES_DELIMITER_END}\n?`,
+          'g'
+        );
+        const existingSection = existing.match(delimiterRegex)?.[0] || '';
+        if (existingSection.includes(rulesContent.trim())) return false;
+        const cleaned = existing.replace(delimiterRegex, '');
+        writeFileSync(rulesPath, cleaned + delimited);
+        return true;
+      }
       writeFileSync(rulesPath, existing + delimited);
     } else {
       writeFileSync(rulesPath, delimited.trimStart());
@@ -4151,7 +4236,6 @@ function installAgentRulesForTool(tool, rulesContent) {
     return true;
   }
 
-  // Other tools: no rules installation path yet
   return false;
 }
 
