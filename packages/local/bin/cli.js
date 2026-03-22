@@ -396,6 +396,7 @@ ${bold('Commands:')}
   ${cyan('ingest')} <url>               Fetch URL and save as vault entry
   ${cyan('ingest-project')} <path>      Scan project directory and register as project entity
   ${cyan('reindex')}                    Rebuild search index from knowledge files
+  ${cyan('sync')} [dir]                  Index .context/ files into vault DB (use --dry-run to preview)
   ${cyan('migrate-dirs')} [--dry-run]   Rename plural vault dirs to singular (post-2.18.0)
   ${cyan('archive')}                    Archive old ephemeral/event entries (use --dry-run to preview)
   ${cyan('restore')} <id>               Restore an archived entry back into the vault
@@ -2139,6 +2140,269 @@ async function runReindex() {
     if (stats.embeddingsCleared) {
       console.log(`  ${dim('⊘')} ${stats.embeddingsCleared} embeddings cleared`);
     }
+  }
+}
+
+async function runSync() {
+  const dryRun = flags.has('--dry-run');
+  const positional = args.slice(1).find((a) => !a.startsWith('--'));
+  const scanDir = positional ? resolve(positional) : process.cwd();
+
+  const contextDir = join(scanDir, '.context');
+  if (!existsSync(contextDir)) {
+    console.error(red(`No .context/ directory found in ${scanDir}`));
+    console.error(dim('The .context/ directory is created automatically when save_context is called from a workspace.'));
+    process.exit(1);
+  }
+
+  console.log(dim(dryRun ? 'Scanning .context/ (dry run)...' : 'Syncing .context/ to vault...'));
+
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const { initDatabase, prepareStatements, insertVec, deleteVec } =
+    await import('@context-vault/core/db');
+  const { embed } = await import('@context-vault/core/embed');
+  const { parseFrontmatter, parseEntryFromMarkdown } = await import('@context-vault/core/frontmatter');
+  const { categoryFor, defaultTierFor } = await import('@context-vault/core/categories');
+  const { dirToKind, walkDir } = await import('@context-vault/core/files');
+  const { shouldIndex } = await import('@context-vault/core/indexing');
+  const { DEFAULT_INDEXING } = await import('@context-vault/core/constants');
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red(`Vault directory not found: ${config.vaultDir}`));
+    console.error('Run ' + cyan('context-vault setup') + ' to configure.');
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+  const stmts = prepareStatements(db);
+  const ixConfig = config.indexing ?? DEFAULT_INDEXING;
+
+  let synced = 0;
+  let alreadyIndexed = 0;
+  let updated = 0;
+  let errors = 0;
+  let skippedIndexing = 0;
+
+  // Discover kind directories inside .context/
+  let kindDirs;
+  try {
+    kindDirs = readdirSync(contextDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith('.') && !d.name.startsWith('_'));
+  } catch (e) {
+    console.error(red(`Failed to read .context/: ${e.message}`));
+    db.close();
+    process.exit(1);
+  }
+
+  const pendingEmbeds = [];
+
+  if (!dryRun) db.exec('BEGIN');
+  try {
+    for (const kindEntry of kindDirs) {
+      const kind = dirToKind(kindEntry.name);
+      const kindDir = join(contextDir, kindEntry.name);
+      const mdFiles = walkDir(kindDir).filter((f) => f.filePath.endsWith('.md'));
+
+      for (const { filePath, relDir } of mdFiles) {
+        let raw;
+        try {
+          raw = readFileSync(filePath, 'utf-8');
+        } catch (e) {
+          console.error(dim(`  skip: could not read ${filePath}: ${e.message}`));
+          errors++;
+          continue;
+        }
+
+        if (!raw.startsWith('---\n')) {
+          console.error(dim(`  skip (no frontmatter): ${filePath}`));
+          errors++;
+          continue;
+        }
+
+        const { meta: fmMeta, body: rawBody } = parseFrontmatter(raw);
+        const entryId = fmMeta.id;
+        if (!entryId) {
+          console.error(dim(`  skip (no id in frontmatter): ${filePath}`));
+          errors++;
+          continue;
+        }
+
+        const parsed = parseEntryFromMarkdown(kind, rawBody, fmMeta);
+        const category = categoryFor(kind);
+
+        // Check if entry exists in DB
+        const existing = stmts.getEntryById.get(entryId);
+
+        if (existing) {
+          // Check if content differs
+          const bodyChanged = existing.body !== parsed.body;
+          const titleChanged = (parsed.title || null) !== (existing.title || null);
+
+          if (!bodyChanged && !titleChanged) {
+            alreadyIndexed++;
+            continue;
+          }
+
+          if (dryRun) {
+            console.log(`  ${yellow('~')} would update: ${entryId} (${parsed.title || '(untitled)'})`);
+            updated++;
+            continue;
+          }
+
+          // Update existing entry
+          const tagsJson = fmMeta.tags ? JSON.stringify(fmMeta.tags) : null;
+          const meta = { ...(parsed.meta || {}) };
+          if (relDir) meta.folder = relDir;
+          const metaJson = Object.keys(meta).length ? JSON.stringify(meta) : null;
+          const identity_key = fmMeta.identity_key || null;
+          const expires_at = fmMeta.expires_at || null;
+
+          stmts.updateEntry.run(
+            parsed.title || null,
+            parsed.body,
+            metaJson,
+            tagsJson,
+            fmMeta.source || 'file',
+            category,
+            identity_key,
+            expires_at,
+            existing.file_path
+          );
+
+          const entryIndexed = shouldIndex(
+            { kind, category, bodyLength: parsed.body.length },
+            ixConfig
+          );
+
+          if (entryIndexed && category !== 'event') {
+            const rowidResult = stmts.getRowid.get(entryId);
+            if (rowidResult?.rowid) {
+              const embeddingText = [parsed.title, parsed.body].filter(Boolean).join(' ');
+              pendingEmbeds.push({ rowid: rowidResult.rowid, text: embeddingText });
+            }
+          }
+
+          updated++;
+          continue;
+        }
+
+        // Entry not in DB: index it
+        const entryIndexed = shouldIndex(
+          { kind, category, bodyLength: parsed.body.length },
+          ixConfig
+        );
+
+        if (dryRun) {
+          if (entryIndexed) {
+            console.log(`  ${green('+')} would sync: ${entryId} (${parsed.title || '(untitled)'})`);
+            synced++;
+          } else {
+            console.log(`  ${dim('o')} would skip indexing: ${entryId}`);
+            skippedIndexing++;
+          }
+          continue;
+        }
+
+        const tagsJson = fmMeta.tags ? JSON.stringify(fmMeta.tags) : null;
+        const meta = { ...(parsed.meta || {}) };
+        if (relDir) meta.folder = relDir;
+        const metaJson = Object.keys(meta).length ? JSON.stringify(meta) : null;
+        const created = fmMeta.created || new Date().toISOString();
+        const identity_key = fmMeta.identity_key || null;
+        const expires_at = fmMeta.expires_at || null;
+        const effectiveTier = fmMeta.tier || defaultTierFor(kind);
+
+        // The entry should point to the vault file path (if it exists there), else use the .context path
+        const vaultFilePath = existing?.file_path || fmMeta.file_path || filePath;
+
+        try {
+          const upsertEntry = db.prepare(
+            `INSERT OR IGNORE INTO vault (id, kind, category, title, body, meta, tags, source, file_path, identity_key, expires_at, created_at, updated_at, tier, indexed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          );
+          const result = upsertEntry.run(
+            entryId,
+            kind,
+            category,
+            parsed.title || null,
+            parsed.body,
+            metaJson,
+            tagsJson,
+            fmMeta.source || 'file',
+            vaultFilePath,
+            identity_key,
+            expires_at,
+            created,
+            fmMeta.updated || created,
+            effectiveTier,
+            entryIndexed ? 1 : 0
+          );
+
+          if (result.changes > 0) {
+            if (entryIndexed && category !== 'event') {
+              const rowidResult = stmts.getRowid.get(entryId);
+              if (rowidResult?.rowid) {
+                const embeddingText = [parsed.title, parsed.body].filter(Boolean).join(' ');
+                pendingEmbeds.push({ rowid: rowidResult.rowid, text: embeddingText });
+              }
+            }
+            if (!entryIndexed) skippedIndexing++;
+            synced++;
+          } else {
+            alreadyIndexed++;
+          }
+        } catch (e) {
+          console.error(dim(`  error indexing ${entryId}: ${e.message}`));
+          errors++;
+        }
+      }
+    }
+
+    // Generate embeddings in batch
+    if (!dryRun && pendingEmbeds.length > 0) {
+      const { embedBatch: batchEmbed } = await import('@context-vault/core/embed');
+      const BATCH_SIZE = 32;
+      for (let i = 0; i < pendingEmbeds.length; i += BATCH_SIZE) {
+        const batch = pendingEmbeds.slice(i, i + BATCH_SIZE);
+        const texts = batch.map((b) => b.text);
+        try {
+          const embeddings = await batchEmbed(texts);
+          for (let j = 0; j < batch.length; j++) {
+            if (embeddings[j]) {
+              try { deleteVec(stmts, batch[j].rowid); } catch {}
+              insertVec(stmts, batch[j].rowid, embeddings[j]);
+            }
+          }
+        } catch (e) {
+          console.warn(dim(`  embedding batch failed: ${e.message}`));
+        }
+      }
+    }
+
+    if (!dryRun) db.exec('COMMIT');
+  } catch (e) {
+    if (!dryRun) {
+      try { db.exec('ROLLBACK'); } catch {}
+    }
+    throw e;
+  }
+
+  db.close();
+
+  if (dryRun) {
+    console.log(yellow('Dry run results (no changes made):'));
+    console.log(`  Would sync:     ${synced}`);
+    console.log(`  Would update:   ${updated}`);
+    console.log(`  Already indexed: ${alreadyIndexed}`);
+    if (skippedIndexing) console.log(`  Would skip indexing: ${skippedIndexing}`);
+    if (errors) console.log(`  ${red('Errors:')}        ${errors}`);
+  } else {
+    console.log(green('Sync complete'));
+    console.log(`  ${green('+')} ${synced} synced`);
+    if (updated) console.log(`  ${yellow('~')} ${updated} updated`);
+    console.log(`  ${dim('.')} ${alreadyIndexed} already indexed`);
+    if (skippedIndexing) console.log(`  ${dim('o')} ${skippedIndexing} skipped indexing`);
+    if (errors) console.log(`  ${red('!')} ${errors} errors`);
   }
 }
 
@@ -6532,6 +6796,9 @@ async function main() {
       break;
     case 'reindex':
       await runReindex();
+      break;
+    case 'sync':
+      await runSync();
       break;
     case 'migrate-dirs':
       await runMigrateDirs();
