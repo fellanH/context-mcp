@@ -401,6 +401,7 @@ ${bold('Commands:')}
   ${cyan('archive')}                    Archive old ephemeral/event entries (use --dry-run to preview)
   ${cyan('restore')} <id>               Restore an archived entry back into the vault
   ${cyan('prune')}                      Remove expired entries (use --dry-run to preview)
+  ${cyan('stats')} recall|co-retrieval  Measure recall ratio and co-retrieval graph
   ${cyan('update')}                     Check for and install updates
   ${cyan('uninstall')}                  Remove MCP configs and optionally data
 `);
@@ -6915,6 +6916,113 @@ ${progArgs.map(a => `    <string>${a}</string>`).join('\n')}
   }
 }
 
+async function runStats() {
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const { initDatabase } = await import('@context-vault/core/db');
+  const { gatherRecallSummary, gatherCoRetrievalSummary } = await import('../dist/stats/recall.js');
+
+  const sub = args[1];
+  if (!sub || sub === 'recall') {
+    await runStatsRecall({ resolveConfig, initDatabase, gatherRecallSummary });
+  } else if (sub === 'co-retrieval') {
+    await runStatsCoRetrieval({ resolveConfig, initDatabase, gatherCoRetrievalSummary });
+  } else {
+    console.error(red(`  Unknown stats subcommand: ${sub}`));
+    console.error(`  Available: recall, co-retrieval`);
+    process.exit(1);
+  }
+}
+
+async function runStatsRecall({ resolveConfig, initDatabase, gatherRecallSummary }) {
+  const config = resolveConfig();
+  let db;
+  try {
+    db = await initDatabase(config.dbPath);
+  } catch (e) {
+    console.error(red(`  Database not accessible: ${e.message}`));
+    process.exit(1);
+  }
+
+  let s;
+  try {
+    s = gatherRecallSummary({ db, config });
+  } finally {
+    db.close();
+  }
+
+  const ratioPct = Math.round(s.ratio * 100);
+  const targetPct = Math.round(s.target * 100);
+  const statusIcon = s.ratio >= s.target ? green('✓') : yellow('·');
+  console.log();
+  console.log(`  ${bold('◇ context-vault stats recall')}`);
+  console.log();
+  console.log(`  ${statusIcon} Recall ratio:     ${bold(s.ratio.toFixed(2))} (target: ${s.target.toFixed(2)})`);
+  console.log(`    Total entries:    ${s.total_entries}`);
+  console.log(`    Recalled (1+):    ${s.recalled_entries} (${ratioPct}%)`);
+  console.log(`    Never recalled:   ${s.never_recalled} (${100 - ratioPct}%)`);
+  console.log(`    Avg recall count: ${s.avg_recall_count} (among recalled entries)`);
+
+  if (s.top_recalled.length) {
+    console.log();
+    console.log(`  ${bold('Top recalled:')}`);
+    for (let i = 0; i < s.top_recalled.length; i++) {
+      const e = s.top_recalled[i];
+      const title = (e.title || '(untitled)').slice(0, 50);
+      console.log(`    ${i + 1}. "${title}" (recall: ${e.recall_count}, sessions: ${e.recall_sessions})`);
+    }
+  }
+
+  if (s.dead_entry_count > 0) {
+    console.log();
+    console.log(`  ${bold('Dead entries')} ${dim('(saved >30 days ago, never recalled):')}`);
+    console.log(`    - ${s.dead_entry_count} entries across ${s.dead_bucket_count} buckets`);
+    if (s.top_dead_buckets.length) {
+      const bucketStr = s.top_dead_buckets.map((b) => `${b.bucket} (${b.count})`).join(', ');
+      console.log(`    - Top dead buckets: ${bucketStr}`);
+    }
+  }
+
+  console.log();
+}
+
+async function runStatsCoRetrieval({ resolveConfig, initDatabase, gatherCoRetrievalSummary }) {
+  const config = resolveConfig();
+  let db;
+  try {
+    db = await initDatabase(config.dbPath);
+  } catch (e) {
+    console.error(red(`  Database not accessible: ${e.message}`));
+    process.exit(1);
+  }
+
+  let s;
+  try {
+    s = gatherCoRetrievalSummary({ db, config });
+  } finally {
+    db.close();
+  }
+
+  console.log();
+  console.log(`  ${bold('◇ context-vault stats co-retrieval')}`);
+  console.log();
+  console.log(`  Co-retrieval pairs: ${bold(String(s.total_pairs))}`);
+
+  if (s.top_pairs.length) {
+    console.log();
+    console.log(`  ${bold('Strongest pairs:')}`);
+    for (let i = 0; i < s.top_pairs.length; i++) {
+      const p = s.top_pairs[i];
+      const titleA = (p.title_a || '(untitled)').slice(0, 40);
+      const titleB = (p.title_b || '(untitled)').slice(0, 40);
+      console.log(`    ${i + 1}. "${titleA}" <-> "${titleB}" (weight: ${p.weight})`);
+    }
+  }
+
+  console.log();
+  console.log(`  Graph density: ${s.graph_density.toFixed(4)} ${dim('(sparse, expected for early usage)')}`);
+  console.log();
+}
+
 async function runServe() {
   await import('../dist/server.js');
 }
@@ -7048,6 +7156,9 @@ async function main() {
       break;
     case 'debug':
       await runDebug();
+      break;
+    case 'stats':
+      await runStats();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));

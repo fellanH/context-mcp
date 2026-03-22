@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gatherVaultStatus, computeGrowthWarnings } from '../status.js';
+import { gatherRecallSummary } from '../stats/recall.js';
 import { errorLogPath, errorLogCount } from '../error-log.js';
 import { ok, err, kindIcon } from '../helpers.js';
 import type { LocalCtx, ToolResult } from '../types.js';
@@ -270,6 +271,26 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
 
     if (actions.length) {
       lines.push('', '### Suggested Actions', ...actions);
+    }
+
+    // Recall ratio structured summary
+    let recallSection: Record<string, unknown> | null = null;
+    try {
+      const rs = gatherRecallSummary(ctx);
+      recallSection = {
+        ratio: rs.ratio,
+        target: rs.target,
+        total_entries: rs.total_entries,
+        recalled_entries: rs.recalled_entries,
+        avg_recall_count: rs.avg_recall_count,
+        co_retrieval_pairs: rs.co_retrieval_pairs,
+      };
+      lines.push('', '### Recall Ratio');
+      lines.push('```json');
+      lines.push(JSON.stringify({ recall: recallSection }, null, 2));
+      lines.push('```');
+    } catch {
+      // non-fatal: skip recall section if unavailable
     }
 
     return ok(lines.join('\n'));
