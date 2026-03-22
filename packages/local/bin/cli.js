@@ -57,6 +57,7 @@ import { homedir, platform } from 'node:os';
 import { execSync, execFile, execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { APP_URL, API_URL, MARKETING_URL } from '@context-vault/core/constants';
+import { assertNotTestMode } from '@context-vault/core/config';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -370,6 +371,7 @@ ${bold('Commands:')}
   ${cyan('debug')}                      Generate AI-pasteable debug report
   ${cyan('daemon')} start|stop|status    Run vault as a shared HTTP daemon (one process, all sessions)
   ${cyan('restart')}                    Stop running MCP server processes (client auto-restarts)
+  ${cyan('reconnect')}                  Fix vault path, kill stale servers, re-register MCP, reindex
   ${cyan('search')}                     Search vault entries from CLI
   ${cyan('save')}                       Save an entry to the vault from CLI
   ${cyan('import')} <path>              Import entries from file, directory, or .zip archive
@@ -855,6 +857,7 @@ async function runSetup() {
     `  ${telemetryEnabled ? green('+') : dim('-')} Telemetry: ${telemetryEnabled ? 'enabled' : 'disabled'}`
   );
 
+  assertNotTestMode(configPath);
   writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + '\n');
   console.log(`\n  ${green('+')} Wrote ${configPath}`);
 
@@ -947,12 +950,11 @@ async function runSetup() {
     } catch {}
   }
 
-  // Configure each tool — pass vault dir as arg if non-default
+  // Configure each tool — always pass vault dir explicitly to prevent config drift
   console.log(`\n  ${dim('[5/6]')}${bold(' Configuring tools...\n')}`);
   verbose(userLevel, 'Writing config so your AI tool can find your vault.\n');
   const results = [];
-  const defaultVDir = join(HOME, 'vault');
-  const customVaultDir = resolvedVaultDir !== resolve(defaultVDir) ? resolvedVaultDir : null;
+  const customVaultDir = resolvedVaultDir;
 
   for (const tool of selected) {
     try {
@@ -1693,6 +1695,7 @@ async function runConnect() {
   modeConfig.mode = 'hosted';
   modeConfig.hostedUrl = hostedUrl;
   mkdirSync(join(HOME, '.context-mcp'), { recursive: true });
+  assertNotTestMode(modeConfigPath);
   writeFileSync(modeConfigPath, JSON.stringify(modeConfig, null, 2) + '\n');
 
   console.log();
@@ -1805,6 +1808,7 @@ async function runSwitch() {
   if (target === 'local') {
     vaultConfig.mode = 'local';
     mkdirSync(dataDir, { recursive: true });
+    assertNotTestMode(configPath);
     writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + '\n');
 
     console.log();
@@ -1865,6 +1869,7 @@ async function runSwitch() {
     vaultConfig.hostedUrl = hostedUrl;
     vaultConfig.apiKey = apiKey;
     mkdirSync(dataDir, { recursive: true });
+    assertNotTestMode(configPath);
     writeFileSync(configPath, JSON.stringify(vaultConfig, null, 2) + '\n');
 
     for (const tool of detected) {
@@ -5462,6 +5467,160 @@ async function runRestart() {
   console.log();
 }
 
+async function runReconnect() {
+  console.log();
+  console.log(`  ${bold('◇ context-vault reconnect')}`);
+  console.log();
+
+  // 1. Read current config to get the correct vault dir
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const config = resolveConfig();
+  const vaultDir = config.vaultDir;
+
+  console.log(`  Vault dir: ${cyan(vaultDir)}`);
+  if (!existsSync(vaultDir)) {
+    console.error(red(`  Vault directory does not exist: ${vaultDir}`));
+    console.error(dim(`  Run context-vault setup to configure.`));
+    process.exit(1);
+  }
+
+  // Count entries to confirm it's a real vault
+  const mdFiles = readdirSync(vaultDir, { recursive: true })
+    .filter(f => String(f).endsWith('.md'));
+  console.log(`  Found ${mdFiles.length} markdown files`);
+  console.log();
+
+  // 2. Kill all running context-vault serve processes (they have stale --vault-dir)
+  const isWin = platform() === 'win32';
+  let psOutput;
+  try {
+    const psCmd = isWin
+      ? 'wmic process where "CommandLine like \'%context-vault%\'" get ProcessId,CommandLine /format:list'
+      : 'ps aux';
+    psOutput = execSync(psCmd, { encoding: 'utf-8', timeout: 5000 });
+  } catch (e) {
+    console.error(red(`  Failed to list processes: ${e.message}`));
+    process.exit(1);
+  }
+
+  const currentPid = process.pid;
+  const serverPids = [];
+
+  if (isWin) {
+    const pidMatches = psOutput.matchAll(/ProcessId=(\d+)/g);
+    for (const m of pidMatches) {
+      const pid = parseInt(m[1], 10);
+      if (pid !== currentPid) serverPids.push(pid);
+    }
+  } else {
+    const lines = psOutput.split('\n');
+    for (const line of lines) {
+      const match = line.match(/^\S+\s+(\d+)\s/);
+      if (!match) continue;
+      const pid = parseInt(match[1], 10);
+      if (pid === currentPid) continue;
+      if (
+        /context-vault.*(serve|stdio|server\/index)/.test(line) ||
+        /server\/index\.js.*context-vault/.test(line)
+      ) {
+        serverPids.push(pid);
+      }
+    }
+  }
+
+  if (serverPids.length > 0) {
+    console.log(`  Stopping ${serverPids.length} stale server process${serverPids.length === 1 ? '' : 'es'}...`);
+    for (const pid of serverPids) {
+      try {
+        process.kill(pid, 'SIGTERM');
+        console.log(`  ${green('✓')} Stopped PID ${pid}`);
+      } catch (e) {
+        if (e.code !== 'ESRCH') {
+          console.log(`  ${yellow('!')} Could not stop PID ${pid}: ${e.message}`);
+        }
+      }
+    }
+    // Wait for graceful shutdown
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // Force-kill any survivors
+    for (const pid of serverPids) {
+      try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch {}
+    }
+    console.log();
+  } else {
+    console.log(dim('  No running server processes found.'));
+    console.log();
+  }
+
+  // 3. Re-register MCP server with correct vault-dir for each detected tool
+  const env = { ...process.env };
+  delete env.CLAUDECODE;
+
+  const tools = [];
+  try { execSync('which claude', { stdio: 'pipe' }); tools.push('claude'); } catch {}
+  try { execSync('which codex', { stdio: 'pipe' }); tools.push('codex'); } catch {}
+
+  for (const tool of tools) {
+    try {
+      execFileSync(tool, ['mcp', 'remove', 'context-vault', '-s', 'user'], { stdio: 'pipe', env });
+    } catch {}
+
+    try {
+      if (isInstalledPackage()) {
+        execFileSync(
+          tool,
+          ['mcp', 'add', '-s', 'user', 'context-vault', '--', 'context-vault', 'serve', '--vault-dir', vaultDir],
+          { stdio: 'pipe', env }
+        );
+      } else if (isNpx()) {
+        execFileSync(
+          tool,
+          ['mcp', 'add', '-s', 'user', 'context-vault', '-e', 'NODE_OPTIONS=--no-warnings=ExperimentalWarning',
+           '--', 'npx', '-y', 'context-vault', 'serve', '--vault-dir', vaultDir],
+          { stdio: 'pipe', env }
+        );
+      } else {
+        execFileSync(
+          tool,
+          ['mcp', 'add', '-s', 'user', 'context-vault', '-e', 'NODE_OPTIONS=--no-warnings=ExperimentalWarning',
+           '--', process.execPath, SERVER_PATH, '--vault-dir', vaultDir],
+          { stdio: 'pipe', env }
+        );
+      }
+      console.log(`  ${green('✓')} ${tool} MCP re-registered with vault-dir: ${vaultDir}`);
+    } catch (e) {
+      console.log(`  ${red('✘')} Failed to register ${tool}: ${e.stderr?.toString().trim() || e.message}`);
+    }
+  }
+
+  // 4. Reindex to ensure DB matches vault dir
+  console.log();
+  console.log(`  Reindexing...`);
+  try {
+    const { initDatabase, prepareStatements, insertVec, deleteVec } =
+      await import('@context-vault/core/db');
+    const { embed } = await import('@context-vault/core/embed');
+    const { reindex } = await import('@context-vault/core/index');
+    const db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+    const ctx = {
+      db, config, stmts, embed,
+      insertVec: (r, e) => insertVec(stmts, r, e),
+      deleteVec: (r) => deleteVec(stmts, r),
+    };
+    const stats = await reindex(ctx, { fullSync: true });
+    db.close();
+    console.log(`  ${green('✓')} Reindex: +${stats.added} added, ~${stats.updated} updated, -${stats.removed} removed`);
+  } catch (e) {
+    console.log(`  ${yellow('!')} Reindex failed: ${e.message}`);
+    console.log(dim(`    Run 'context-vault reindex --vault-dir ${vaultDir}' manually.`));
+  }
+
+  console.log();
+  console.log(green('  Reconnected.') + dim(' Start a new Claude session to use the updated vault.'));
+  console.log();
+}
+
 async function runConsolidate() {
   const dryRun = flags.has('--dry-run');
   const tagArg = getFlag('--tag');
@@ -6085,6 +6244,9 @@ async function main() {
       break;
     case 'restart':
       await runRestart();
+      break;
+    case 'reconnect':
+      await runReconnect();
       break;
     case 'consolidate':
       await runConsolidate();

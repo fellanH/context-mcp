@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { execSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import { ok, err, ensureVaultExists, kindIcon, fmtDate } from '../helpers.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
@@ -90,6 +91,30 @@ export async function handler(
 
   await ensureIndexed();
 
+  // Sanity check: compare DB entries vs disk files
+  let indexWarning = '';
+  try {
+    const dbCount = (ctx.db.prepare('SELECT COUNT(*) as cnt FROM vault').get() as any)?.cnt ?? 0;
+    let diskCount = 0;
+    const walk = (dir: string, depth = 0) => {
+      if (depth > 3 || diskCount >= 100) return;
+      try {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (diskCount >= 100) return;
+          if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== '_archive') {
+            walk(`${dir}/${entry.name}`, depth + 1);
+          } else if (entry.name.endsWith('.md')) {
+            diskCount++;
+          }
+        }
+      } catch {}
+    };
+    walk(config.vaultDir);
+    if (diskCount >= 100 && dbCount < diskCount / 10) {
+      indexWarning = `\n> **WARNING:** Vault has significantly more files on disk (~${diskCount}+) than indexed entries (${dbCount}). The search index may be out of sync. Run \`context-vault reconnect\` to fix.\n`;
+    }
+  } catch {}
+
   const effectiveProject = project?.trim() || detectProject();
   const tokenBudget = max_tokens || DEFAULT_MAX_TOKENS;
 
@@ -176,6 +201,10 @@ export async function handler(
     deduped.filter((_d: any) => {
       return true;
     }).length;
+
+  if (indexWarning) {
+    sections.push(indexWarning);
+  }
 
   sections.push('---');
   sections.push(

@@ -1,8 +1,29 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { DEFAULT_GROWTH_THRESHOLDS, DEFAULT_LIFECYCLE } from './constants.js';
 import type { VaultConfig } from './types.js';
+
+/**
+ * Guard against writes to the real config file during test runs.
+ * Set CONTEXT_VAULT_TEST=1 in test helpers to activate.
+ *
+ * Allows writes if the target path is under a temp directory (tests with
+ * HOME overridden to a temp dir). Blocks writes to non-temp paths.
+ */
+export function assertNotTestMode(targetPath: string): void {
+  if (process.env.CONTEXT_VAULT_TEST !== '1') return;
+  const resolved = resolve(targetPath);
+  const tmp = tmpdir();
+  // Allow writes to temp directories (tests with HOME isolation)
+  if (resolved.startsWith(tmp) || resolved.startsWith('/tmp/') || resolved.startsWith('/var/folders/')) {
+    return;
+  }
+  throw new Error(
+    `[context-vault] Refusing to write to real config in test mode (${targetPath}). ` +
+      'Set HOME or CONTEXT_VAULT_DATA_DIR to a temp directory.'
+  );
+}
 
 export function parseArgs(argv: string[]): Record<string, string | number> {
   const args: Record<string, string | number> = {};

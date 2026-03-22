@@ -19,7 +19,7 @@ function runCli(args, { env = {}, timeout = 30000 } = {}) {
     const stdout = execSync(`node ${CLI_PATH} ${args}`, {
       encoding: 'utf-8',
       timeout,
-      env: { ...process.env, ...env, NO_COLOR: '1' },
+      env: { ...process.env, ...env, NO_COLOR: '1', CONTEXT_VAULT_TEST: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     return { stdout, stderr: '', exitCode: 0 };
@@ -137,11 +137,20 @@ describe('CLI porcelain/plumbing help split', () => {
 describe('TOOLS array validation', () => {
   // Dynamic import the CLI module to inspect the TOOLS array indirectly
   // We validate tool structure through the setup --yes output
+  let tmpHome;
+
+  beforeAll(() => {
+    tmpHome = mkdtempSync(join(tmpdir(), 'cv-test-tools-'));
+  });
+
+  afterAll(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
 
   it('detects tool structure in setup output', () => {
     // Run setup in non-interactive mode — it will detect tools and show them
     // We just need to confirm it doesn't crash and shows the detection phase
-    const { stdout } = runCli('setup --yes', { timeout: 60000 });
+    const { stdout } = runCli('setup --yes', { env: { HOME: tmpHome }, timeout: 60000 });
     expect(stdout).toContain('Detecting tools');
   });
 });
@@ -241,8 +250,19 @@ describe('configureJsonTool', () => {
 });
 
 describe('setup --skip-embeddings', () => {
+  let tmpHome;
+
+  beforeAll(() => {
+    tmpHome = mkdtempSync(join(tmpdir(), 'cv-test-skip-embed-'));
+  });
+
+  afterAll(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
   it('includes skip-embeddings messaging in non-interactive setup', () => {
     const { stdout } = runCli('setup --yes --skip-embeddings', {
+      env: { HOME: tmpHome },
       timeout: 60000,
     });
     // --yes mode now always continues through the full setup flow,

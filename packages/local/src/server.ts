@@ -7,9 +7,9 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -311,6 +311,29 @@ async function main(): Promise<void> {
     }
 
     config.vaultDirExists = existsSync(config.vaultDir);
+
+    // Validate vaultDir sanity
+    const osTmp = tmpdir();
+    const isTempPath = config.vaultDir.startsWith(osTmp) ||
+      config.vaultDir.startsWith('/tmp/') ||
+      config.vaultDir.startsWith('/var/folders/');
+    if (isTempPath) {
+      console.error(`[context-vault] WARNING: vaultDir points to a temp directory: ${config.vaultDir}`);
+      console.error(`[context-vault] This is likely from a test run that overwrote ~/.context-mcp/config.json`);
+      console.error(`[context-vault] Fix: run 'context-vault reconnect' or 'context-vault setup'`);
+    }
+
+    if (config.vaultDirExists) {
+      try {
+        const entries = readdirSync(config.vaultDir);
+        const hasMdFiles = entries.some(f => f.endsWith('.md'));
+        const hasMarker = entries.includes('.context-mcp');
+        if (!hasMdFiles && hasMarker) {
+          console.error(`[context-vault] WARNING: vaultDir has no markdown files but has a marker file`);
+          console.error(`[context-vault] The vault may be misconfigured. Run 'context-vault reconnect'`);
+        }
+      } catch {}
+    }
 
     console.error(`[context-vault] Vault: ${config.vaultDir}`);
     console.error(`[context-vault] Database: ${config.dbPath}`);

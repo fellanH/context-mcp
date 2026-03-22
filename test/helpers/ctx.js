@@ -2,6 +2,9 @@
  * Test context helper — creates isolated temp vaults with real DB + embeddings.
  */
 
+// Prevent tests from accidentally writing to the real ~/.context-mcp/config.json
+process.env.CONTEXT_VAULT_TEST = '1';
+
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
