@@ -1,8 +1,11 @@
 import { z } from 'zod';
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { resolve, basename, join } from 'node:path';
+import { homedir } from 'node:os';
 import { captureAndIndex, updateEntryFile } from '@context-vault/core/capture';
 import { indexEntry } from '@context-vault/core/index';
 import { categoryFor, defaultTierFor } from '@context-vault/core/categories';
-import { normalizeKind } from '@context-vault/core/files';
+import { normalizeKind, kindToPath } from '@context-vault/core/files';
 import { parseContextParam } from '@context-vault/core/context';
 import { ok, err, errWithHint, ensureVaultExists, ensureValidKind, kindIcon } from '../helpers.js';
 import { maybeShowFeedbackPrompt } from '../telemetry.js';
@@ -22,6 +25,34 @@ import {
 const DEFAULT_SIMILARITY_THRESHOLD = 0.85;
 const SKIP_THRESHOLD = 0.95;
 const UPDATE_THRESHOLD = 0.85;
+
+function isDualWriteEnabled(config: { dataDir: string }): boolean {
+  try {
+    const configPath = join(config.dataDir, 'config.json');
+    if (!existsSync(configPath)) return true;
+    const fc = JSON.parse(readFileSync(configPath, 'utf-8'));
+    if (fc.dualWrite && fc.dualWrite.enabled === false) return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function dualWriteLocal(entryFilePath: string, kind: string): void {
+  const cwd = process.cwd();
+  const home = homedir();
+  if (!cwd || cwd === '/' || cwd === home) return;
+
+  try {
+    const content = readFileSync(entryFilePath, 'utf-8');
+    const localDir = resolve(cwd, '.context', kindToPath(kind));
+    mkdirSync(localDir, { recursive: true });
+    const filename = basename(entryFilePath);
+    writeFileSync(join(localDir, filename), content);
+  } catch (e) {
+    console.warn(`[context-vault] Dual-write to .context/ failed: ${(e as Error).message}`);
+  }
+}
 
 async function findSimilar(
   ctx: LocalCtx,
@@ -447,6 +478,10 @@ export async function handler(
     } else if (entry.related_to === null && ctx.stmts.updateRelatedTo) {
       ctx.stmts.updateRelatedTo.run(null, entry.id);
     }
+    if (isDualWriteEnabled(config) && entry.filePath) {
+      dualWriteLocal(entry.filePath, entry.kind);
+    }
+
     const relPath = entry.filePath
       ? entry.filePath.replace(config.vaultDir + '/', '')
       : entry.filePath;
@@ -596,6 +631,10 @@ export async function handler(
       // Non-fatal: context embedding failure should not block the save
       console.warn(`[context-vault] Context embedding failed: ${(e as Error).message}`);
     }
+  }
+
+  if (isDualWriteEnabled(config) && entry.filePath) {
+    dualWriteLocal(entry.filePath, normalizedKind);
   }
 
   if (ctx.config?.dataDir) {
