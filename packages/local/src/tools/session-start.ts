@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { execSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { ok, err, ensureVaultExists, kindIcon, fmtDate } from '../helpers.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
@@ -9,6 +11,115 @@ const RECENT_DAYS = 7;
 const MAX_BODY_PER_ENTRY = 400;
 const PRIORITY_KINDS = ['decision', 'insight', 'pattern'];
 const SESSION_SUMMARY_KIND = 'session';
+
+interface AutoMemoryEntry {
+  file: string;
+  name: string;
+  description: string;
+  type: string;
+  body: string;
+}
+
+interface AutoMemoryResult {
+  detected: boolean;
+  path: string | null;
+  entries: AutoMemoryEntry[];
+  linesUsed: number;
+}
+
+/**
+ * Detect the Claude Code auto-memory directory for the current project.
+ * Convention: ~/.claude/projects/-<cwd-with-slashes-replaced-by-dashes>/memory/
+ */
+function detectAutoMemoryPath(): string | null {
+  try {
+    const cwd = process.cwd();
+    // Claude Code project key: absolute path with / replaced by -, leading - kept
+    const projectKey = cwd.replace(/\//g, '-');
+    const memoryDir = join(homedir(), '.claude', 'projects', projectKey, 'memory');
+    const memoryIndex = join(memoryDir, 'MEMORY.md');
+    if (existsSync(memoryIndex)) return memoryDir;
+  } catch {}
+  return null;
+}
+
+/**
+ * Parse YAML-ish frontmatter from a memory file.
+ * Returns { name, description, type } and the body after frontmatter.
+ */
+function parseMemoryFile(content: string): { name: string; description: string; type: string; body: string } {
+  const result = { name: '', description: '', type: '', body: content };
+  const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
+  if (!fmMatch) return result;
+
+  const frontmatter = fmMatch[1];
+  result.body = fmMatch[2].trim();
+
+  for (const line of frontmatter.split('\n')) {
+    const kv = line.match(/^(\w+)\s*:\s*(.+)$/);
+    if (!kv) continue;
+    const [, key, val] = kv;
+    if (key === 'name') result.name = val.trim();
+    else if (key === 'description') result.description = val.trim();
+    else if (key === 'type') result.type = val.trim();
+  }
+  return result;
+}
+
+/**
+ * Read and parse all auto-memory entries from a memory directory.
+ */
+function readAutoMemory(memoryDir: string): AutoMemoryResult {
+  const indexPath = join(memoryDir, 'MEMORY.md');
+  let linesUsed = 0;
+
+  try {
+    const indexContent = readFileSync(indexPath, 'utf-8');
+    linesUsed = indexContent.split('\n').length;
+  } catch {
+    return { detected: true, path: memoryDir, entries: [], linesUsed: 0 };
+  }
+
+  const entries: AutoMemoryEntry[] = [];
+
+  try {
+    const files = readdirSync(memoryDir).filter(
+      (f) => f.endsWith('.md') && f !== 'MEMORY.md'
+    );
+
+    for (const file of files) {
+      try {
+        const content = readFileSync(join(memoryDir, file), 'utf-8');
+        const parsed = parseMemoryFile(content);
+        entries.push({
+          file,
+          name: parsed.name || file.replace('.md', ''),
+          description: parsed.description,
+          type: parsed.type,
+          body: parsed.body,
+        });
+      } catch {}
+    }
+  } catch {}
+
+  return { detected: true, path: memoryDir, entries, linesUsed };
+}
+
+/**
+ * Build a search context string from auto-memory entries.
+ * Used to boost vault retrieval relevance.
+ */
+function buildAutoMemoryContext(entries: AutoMemoryEntry[]): string {
+  if (entries.length === 0) return '';
+  const parts = entries
+    .map((e) => {
+      const desc = e.description ? `: ${e.description}` : '';
+      // Include a snippet of the body for richer context
+      const bodySnippet = e.body ? ` -- ${e.body.slice(0, 200)}` : '';
+      return `${e.name}${desc}${bodySnippet}`;
+    });
+  return parts.join('. ');
+}
 
 export const name = 'session_start';
 
@@ -123,13 +234,23 @@ export async function handler(
 
   const sinceDate = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString();
 
+  // Auto-detect Claude Code auto-memory
+  const autoMemoryPath = detectAutoMemoryPath();
+  const autoMemory: AutoMemoryResult = autoMemoryPath
+    ? readAutoMemory(autoMemoryPath)
+    : { detected: false, path: null, entries: [], linesUsed: 0 };
+  const autoMemoryContext = buildAutoMemoryContext(autoMemory.entries);
+
   const sections = [];
   let tokensUsed = 0;
 
-  sections.push(`# Session Brief${effectiveProject ? ` — ${effectiveProject}` : ''}`);
+  sections.push(`# Session Brief${effectiveProject ? ` -- ${effectiveProject}` : ''}`);
   const bucketsLabel = buckets?.length ? ` | buckets: ${buckets.join(', ')}` : '';
+  const autoMemoryLabel = autoMemory.detected
+    ? ` | auto-memory: ${autoMemory.entries.length} entries detected, used as search context`
+    : '';
   sections.push(
-    `_Generated ${new Date().toISOString().slice(0, 10)} | budget: ${tokenBudget} tokens${bucketsLabel}_\n`
+    `_Generated ${new Date().toISOString().slice(0, 10)} | budget: ${tokenBudget} tokens${bucketsLabel}${autoMemoryLabel}_\n`
   );
   tokensUsed += estimateTokens(sections.join('\n'));
 
@@ -145,12 +266,13 @@ export async function handler(
     }
   }
 
+  // When auto-memory context is available, boost decisions query with FTS
   const decisions = queryByKinds(
     ctx,
     PRIORITY_KINDS,
     sinceDate,
-
-    effectiveTags
+    effectiveTags,
+    autoMemoryContext
   );
   if (decisions.length > 0) {
     const header = '## Active Decisions, Insights & Patterns\n';
@@ -222,6 +344,11 @@ export async function handler(
       decisions: decisions.length,
       recent: deduped.length,
     },
+    auto_memory: {
+      detected: autoMemory.detected,
+      entries: autoMemory.entries.length,
+      lines_used: autoMemory.linesUsed,
+    },
   };
   return result;
 }
@@ -254,7 +381,8 @@ function queryByKinds(
   ctx: LocalCtx,
   kinds: string[],
   since: string,
-  effectiveTags: string[]
+  effectiveTags: string[],
+  autoMemoryContext = ''
 ): any[] {
   const kindPlaceholders = kinds.map(() => '?').join(',');
   const clauses = [`kind IN (${kindPlaceholders})`];
@@ -269,18 +397,103 @@ function queryByKinds(
   clauses.push('superseded_by IS NULL');
 
   const where = `WHERE ${clauses.join(' AND ')}`;
-  const rows = ctx.db
+  let rows = ctx.db
     .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 50`)
-    .all(...params);
+    .all(...params) as any[];
 
   if (effectiveTags.length) {
     const tagged = rows.filter((r: any) => {
       const tags = r.tags ? JSON.parse(r.tags) : [];
       return effectiveTags.some((t: string) => tags.includes(t));
     });
-    if (tagged.length > 0) return tagged;
+    if (tagged.length > 0) rows = tagged;
   }
+
+  // When auto-memory context is available, boost results by FTS relevance
+  // to surface vault entries that match what the user's auto-memory says they care about
+  if (autoMemoryContext && rows.length > 1) {
+    rows = boostByAutoMemory(ctx, rows, autoMemoryContext);
+  }
+
   return rows;
+}
+
+/**
+ * Re-rank vault entries by FTS relevance to auto-memory context.
+ * Entries matching auto-memory topics float to the top while preserving
+ * all original entries (non-matching ones keep their original order at the end).
+ */
+function boostByAutoMemory(ctx: LocalCtx, rows: any[], context: string): any[] {
+  // Extract meaningful keywords from auto-memory context for FTS
+  const keywords = extractKeywords(context);
+  if (keywords.length === 0) return rows;
+
+  // Build FTS query from auto-memory keywords
+  const ftsTerms = keywords.slice(0, 10).map((k) => `"${k}"`).join(' OR ');
+  const rowIds = new Set(rows.map((r: any) => r.id));
+
+  try {
+    const ftsRows = ctx.db
+      .prepare(
+        `SELECT e.id, rank FROM vault_fts f JOIN vault e ON f.rowid = e.rowid WHERE vault_fts MATCH ? ORDER BY rank LIMIT 50`
+      )
+      .all(ftsTerms) as { id: string; rank: number }[];
+
+    // Build a boost map: entries matching auto-memory context get priority
+    const boostMap = new Map<string, number>();
+    for (const fr of ftsRows) {
+      if (rowIds.has(fr.id)) {
+        boostMap.set(fr.id, fr.rank);
+      }
+    }
+
+    if (boostMap.size === 0) return rows;
+
+    // Sort: boosted entries first (by FTS rank), then unboosted in original order
+    const boosted = rows.filter((r: any) => boostMap.has(r.id));
+    const unboosted = rows.filter((r: any) => !boostMap.has(r.id));
+    boosted.sort((a: any, b: any) => (boostMap.get(a.id) ?? 0) - (boostMap.get(b.id) ?? 0));
+    return [...boosted, ...unboosted];
+  } catch {
+    // FTS errors are non-fatal; return original order
+    return rows;
+  }
+}
+
+/**
+ * Extract meaningful keywords from auto-memory context text.
+ * Filters out common stop words and short tokens.
+ */
+function extractKeywords(text: string): string[] {
+  const stopWords = new Set([
+    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+    'should', 'may', 'might', 'shall', 'can', 'need', 'must', 'ought',
+    'and', 'but', 'or', 'nor', 'not', 'so', 'yet', 'for', 'with',
+    'from', 'into', 'during', 'before', 'after', 'above', 'below',
+    'to', 'of', 'in', 'on', 'at', 'by', 'about', 'between', 'through',
+    'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them',
+    'their', 'we', 'our', 'you', 'your', 'he', 'she', 'him', 'her',
+    'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other',
+    'some', 'such', 'no', 'only', 'own', 'same', 'than', 'too', 'very',
+    'just', 'also', 'now', 'then', 'here', 'there', 'when', 'where',
+    'how', 'what', 'which', 'who', 'whom', 'why', 'if', 'because',
+    'as', 'until', 'while', 'use', 'using', 'used',
+  ]);
+
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !stopWords.has(w));
+
+  // Deduplicate while preserving order
+  const seen = new Set<string>();
+  return words.filter((w) => {
+    if (seen.has(w)) return false;
+    seen.add(w);
+    return true;
+  });
 }
 
 function queryRecent(ctx: LocalCtx, since: string, effectiveTags: string[]): any[] {
