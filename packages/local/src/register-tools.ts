@@ -21,6 +21,7 @@ import * as createSnapshot from './tools/create-snapshot.js';
 import * as sessionStart from './tools/session-start.js';
 import * as listBuckets from './tools/list-buckets.js';
 import * as ingestProject from './tools/ingest-project.js';
+import * as sessionEnd from './tools/session-end.js';
 
 const toolModules = [
   getContext,
@@ -33,6 +34,7 @@ const toolModules = [
   clearContext,
   createSnapshot,
   sessionStart,
+  sessionEnd,
   listBuckets,
 ];
 

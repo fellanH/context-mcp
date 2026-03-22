@@ -249,6 +249,27 @@ function validateSaveInput({
   return null;
 }
 
+function enrichDecisionMeta(
+  mergedMeta: Record<string, any>,
+  title: string | undefined,
+  body: string | undefined
+): void {
+  const combined = [title, body].filter(Boolean).join(' ').toLowerCase();
+
+  if (/\b(architect|infra|schema|database|api|stack|deploy|migration)\b/.test(combined)) {
+    mergedMeta.decision_type = 'architectural';
+  } else if (/\b(scope|feature|requirement|priority|roadmap|milestone)\b/.test(combined)) {
+    mergedMeta.decision_type = 'product';
+  } else if (/\b(convention|style|naming|lint|format|pattern)\b/.test(combined)) {
+    mergedMeta.decision_type = 'convention';
+  } else {
+    mergedMeta.decision_type = 'general';
+  }
+
+  mergedMeta.alternatives_noted = /\b(alternative|instead of|over|rather than|compared to|vs\.?|versus|option|considered)\b/i.test(combined);
+  mergedMeta.has_rationale = /\b(because|reason|rationale|why|trade.?off|benefit|downside|pro|con)\b/i.test(combined);
+}
+
 export const name = 'save_context';
 
 export const description =
@@ -585,6 +606,10 @@ export async function handler(
     mergedMeta.encoding_context = parsedCtx.structured;
   } else if (parsedCtx?.text) {
     mergedMeta.encoding_context = parsedCtx.text;
+  }
+
+  if (normalizedKind === 'decision') {
+    enrichDecisionMeta(mergedMeta, title, body);
   }
 
   const finalMeta = Object.keys(mergedMeta).length ? mergedMeta : undefined;

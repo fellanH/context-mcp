@@ -3,6 +3,15 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.6.0] — 2026-03-22
+
+### Added
+
+- **`session_end` MCP tool**: End-of-session knowledge capture. Accepts optional summary and explicit discoveries, auto-extracts insights from summary text, deduplicates against existing entries, and saves to the vault with `auto-session` tags. Returns a prompt template when called without arguments to guide agents through knowledge capture.
+- **Proactive save hints in `get_context`**: Adds a `_save_hint` field to response metadata when the query contains error-related terms or returns zero results, nudging agents to save what they learn.
+- **Decision metadata enrichment in `save_context`**: When saving with `kind: "decision"`, automatically classifies `decision_type` (architectural/product/convention/general) and detects whether alternatives and rationale are present in the body.
+- **Learning rate metrics in `context_status`**: New "Learning Rate" section showing entries saved in 7/30 days, session count, saves-per-session ratio, and recall-to-save ratio. Surfaces warnings when save rate is low.
+
 ## [3.5.1] — 2026-03-22
 
 ### Added

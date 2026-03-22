@@ -14,6 +14,47 @@ function relativeTime(ts: number): string {
   return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
 }
 
+interface LearningRate {
+  saved7d: number;
+  saved30d: number;
+  sessions30d: number;
+  savesPerSession: string;
+  recalls30d: number;
+  recallToSaveRatio: string;
+}
+
+function computeLearningRate(ctx: LocalCtx): LearningRate | null {
+  try {
+    const saved7d = (ctx.db.prepare(
+      `SELECT COUNT(*) as c FROM vault WHERE created_at >= datetime('now', '-7 days') AND kind NOT IN ('bucket', 'session', 'brief')`
+    ).get() as any)?.c ?? 0;
+
+    const saved30d = (ctx.db.prepare(
+      `SELECT COUNT(*) as c FROM vault WHERE created_at >= datetime('now', '-30 days') AND kind NOT IN ('bucket', 'session', 'brief')`
+    ).get() as any)?.c ?? 0;
+
+    const sessions30d = (ctx.db.prepare(
+      `SELECT COUNT(*) as c FROM vault WHERE created_at >= datetime('now', '-30 days') AND kind = 'session'`
+    ).get() as any)?.c ?? 0;
+
+    const savesPerSession = sessions30d > 0
+      ? (saved30d / sessions30d).toFixed(1)
+      : '0.0';
+
+    const recalls30d = (ctx.db.prepare(
+      `SELECT SUM(recall_count) as c FROM vault WHERE last_recalled_at >= datetime('now', '-30 days')`
+    ).get() as any)?.c ?? 0;
+
+    const recallToSaveRatio = saved30d > 0
+      ? `${(recalls30d / saved30d).toFixed(1)}:1`
+      : recalls30d > 0 ? `${recalls30d}:0 (all recall, no save)` : 'n/a';
+
+    return { saved7d, saved30d, sessions30d, savesPerSession, recalls30d, recallToSaveRatio };
+  } catch {
+    return null;
+  }
+}
+
 export const name = 'context_status';
 
 export const description =
@@ -111,6 +152,30 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
         for (const t of rs.topRecalled) {
           lines.push(`- "${t.title || '(untitled)'}" (\`${t.kind}\`): ${t.recall_count} recalls, ${t.recall_sessions} sessions`);
         }
+      }
+    }
+
+    const learningRate = computeLearningRate(ctx);
+    if (learningRate) {
+      lines.push(``, `### Learning Rate`);
+      lines.push(`| Metric | Value |`);
+      lines.push(`|---|---|`);
+      lines.push(`| **Saved (7 days)** | ${learningRate.saved7d} |`);
+      lines.push(`| **Saved (30 days)** | ${learningRate.saved30d} |`);
+      lines.push(`| **Sessions (30 days)** | ${learningRate.sessions30d} |`);
+      if (learningRate.sessions30d > 0) {
+        lines.push(`| **Saves per session** | ${learningRate.savesPerSession} |`);
+      }
+      if (learningRate.recalls30d > 0 || learningRate.saved30d > 0) {
+        lines.push(`| **Recalls (30 days)** | ${learningRate.recalls30d} |`);
+        lines.push(`| **Recall:save ratio** | ${learningRate.recallToSaveRatio} |`);
+      }
+      if (learningRate.saved30d === 0) {
+        lines.push('');
+        lines.push('_No entries saved in 30 days. Knowledge may be getting lost between sessions._');
+      } else if (learningRate.sessions30d > 0 && learningRate.savesPerSession === '0.0') {
+        lines.push('');
+        lines.push('_Very low save rate. Consider using `session_end` to capture learnings._');
       }
     }
 

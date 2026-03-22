@@ -243,6 +243,22 @@ function checkStaleness(entry: any): { stale: boolean; stale_reason: string } | 
   return null;
 }
 
+const ERROR_TERMS = /\b(error|bug|fix|debug|failing|broken|crash|exception|issue|wrong|unexpected|stacktrace|traceback)\b/i;
+
+function generateSaveHint(query: string | undefined, resultCount: number): string | null {
+  if (!query) return null;
+
+  if (ERROR_TERMS.test(query)) {
+    return 'If you solve this, save the root cause and fix as an insight.';
+  }
+
+  if (resultCount === 0) {
+    return 'No existing entries for this topic. If you learn something useful, save it for future sessions.';
+  }
+
+  return null;
+}
+
 export const name = 'get_context';
 
 export const description =
@@ -743,6 +759,12 @@ export async function handler(
   if (consolidationSuggestions.length > 0) {
     meta.consolidation_suggestions = consolidationSuggestions;
   }
+
+  const saveHint = generateSaveHint(query, filtered.length);
+  if (saveHint) {
+    meta.save_hint = saveHint;
+  }
+
   result._meta = meta;
   return result;
 }
