@@ -3,6 +3,19 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.7.0] — 2026-03-22
+
+### Added
+
+- **`recall` MCP tool**: Proactive vault surfacing for agents. Accepts the current task context and returns relevant vault entries without requiring explicit search queries. Three-phase rollout: base tool (Phase 1), Claude Code hooks for automatic triggering (Phase 2), semantic fallback with co-retrieval graph (Phase 3).
+- **Semantic fallback in recall**: When keyword search returns insufficient results, falls back to semantic similarity search to surface relevant entries that don't share exact terms.
+- **Co-retrieval graph**: Tracks which entries are frequently retrieved together and uses graph traversal to surface related entries during recall.
+- **Claude Code hooks for proactive surfacing**: Hooks that automatically trigger vault recall at key moments (session start, tool calls, errors) without manual agent intervention.
+- **`context-vault sync` CLI command**: Syncs vault markdown files with the database index. Includes dual-write test coverage.
+- **`auto_memory_path` parameter in `session_start`**: Accepts a path to Claude Code's auto-memory files, enriching session briefs with additional context. Response metadata now includes `_meta` with richer diagnostics.
+- **`--upgrade` flag for `context-vault setup`**: Upgrades an existing installation in place, preserving config while updating binaries and agent rules.
+- **Agent rules reference documentation**: Published reference page documenting all installable agent rules.
+
 ## [3.6.0] — 2026-03-22
 
 ### Added
