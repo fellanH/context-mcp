@@ -346,10 +346,11 @@ describe('save_context with related_to', () => {
       shared
     );
     const text = isOk(result);
-    expect(text).toContain('✓ Saved decision');
+    expect(text).toContain('✓ Saved');
+    expect(text).toContain('decision');
 
     // Extract saved ID from output
-    const idMatch = text.match(/id: (\S+)/);
+    const idMatch = text.match(/`([A-Z0-9]{26})`/);
     expect(idMatch).toBeTruthy();
     const savedId = idMatch[1];
 
@@ -432,7 +433,7 @@ describe('save_context with related_to', () => {
     isOk(result);
 
     // Find the written file
-    const idMatch = result.content[0].text.match(/id: (\S+)/);
+    const idMatch = result.content[0].text.match(/`([A-Z0-9]{26})`/);
     const savedId = idMatch[1];
     const row = ctx.db.prepare('SELECT file_path FROM vault WHERE id = ?').get(savedId);
     const { readFileSync } = await import('node:fs');
@@ -508,7 +509,7 @@ describe('get_context follow_links', () => {
     const text = isOk(result);
     expect(text).toContain('Linked Entries');
     expect(text).toContain('Linked Target');
-    expect(text).toContain('→ forward');
+    expect(text).toContain('→');
   }, 30000);
 
   it('resolves backlinks (entries that point to the result)', async () => {
@@ -537,7 +538,7 @@ describe('get_context follow_links', () => {
     const text = isOk(result);
     expect(text).toContain('Linked Entries');
     expect(text).toContain('Referring decision');
-    expect(text).toContain('← backlink');
+    expect(text).toContain('←');
   }, 30000);
 
   it('shows both forward and backward links in the same response', async () => {
@@ -574,8 +575,8 @@ describe('get_context follow_links', () => {
       shared
     );
     const text = isOk(result);
-    expect(text).toContain('→ forward');
-    expect(text).toContain('← backlink');
+    expect(text).toContain('→');
+    expect(text).toContain('←');
     expect(text).toContain('Forward target');
     expect(text).toContain('Backlink pattern');
   }, 30000);

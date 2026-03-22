@@ -50,8 +50,9 @@ describe('save_context handler', () => {
       shared
     );
     const text = isOk(result);
-    expect(text).toContain('✓ Saved insight');
-    expect(text).toContain('id:');
+    expect(text).toContain('✓ Saved');
+    expect(text).toContain('insight');
+    expect(text).toContain('`');
   }, 30000);
 
   it('rejects missing kind for new entries', async () => {
@@ -152,7 +153,7 @@ describe('save_context handler', () => {
       shared
     );
     const createText = isOk(createResult);
-    const idMatch = createText.match(/id: (\S+)/);
+    const idMatch = createText.match(/`([A-Z0-9]{26})`/);
     expect(idMatch).toBeTruthy();
     const id = idMatch[1];
 
@@ -179,7 +180,7 @@ describe('save_context handler', () => {
       ctx,
       shared
     );
-    const idMatch = isOk(createResult).match(/id: (\S+)/);
+    const idMatch = isOk(createResult).match(/`([A-Z0-9]{26})`/);
     const id = idMatch[1];
 
     const result = await saveContextTool.handler(
@@ -244,7 +245,8 @@ describe('save_context handler', () => {
       shared
     );
     const text = isOk(result);
-    expect(text).toContain('✓ Saved insight');
+    expect(text).toContain('✓ Saved');
+    expect(text).toContain('insight');
   }, 30000);
 
   it('dry_run: true with entity kind still requires identity_key', async () => {
@@ -268,8 +270,9 @@ describe('save_context handler', () => {
       shared
     );
     const text = isOk(result);
-    expect(text).toContain('✓ Saved insight');
-    expect(text).toContain('tier: durable');
+    expect(text).toContain('✓ Saved');
+    expect(text).toContain('insight');
+    expect(text).toContain('**durable**');
   }, 30000);
 
   it('defaults tier based on kind when tier not provided', async () => {
@@ -283,7 +286,7 @@ describe('save_context handler', () => {
       shared
     );
     const text = isOk(result);
-    expect(text).toContain('tier: durable');
+    expect(text).toContain('**durable**');
   }, 30000);
 
   it('stores tier in database with correct value', async () => {
@@ -297,7 +300,7 @@ describe('save_context handler', () => {
       shared
     );
     const text = isOk(result);
-    const idMatch = text.match(/id: (\S+)/);
+    const idMatch = text.match(/`([A-Z0-9]{26})`/);
     expect(idMatch).toBeTruthy();
     const id = idMatch[1];
 
@@ -522,7 +525,7 @@ describe('get_context handler', () => {
   it('includes tier in search result output', async () => {
     const result = await getContextTool.handler({ kind: 'insight' }, ctx, shared);
     const text = isOk(result);
-    expect(text).toMatch(/tier: (ephemeral|working|durable)/);
+    expect(text).toMatch(/\*\*(ephemeral|working|durable)\*\*/);
   }, 30000);
 });
 
@@ -861,24 +864,25 @@ describe('get_context skeleton mode', () => {
   it('applies default pivot_count=2: first 2 full, rest skeleton', async () => {
     const result = await getContextTool.handler({ kind: 'insight', limit: 5 }, ctx, shared);
     const text = isOk(result);
-    const skeletonMatches = text.match(/skeleton: true/g) || [];
-    const fullMatches = text.match(/skeleton: false/g) || [];
-    expect(fullMatches.length).toBe(2);
+    const skeletonMatches = text.match(/### .+ `skeleton`/g) || [];
+    const fullMatches = text.match(/### (?!.*`skeleton`).*\n/g) || [];
+    // 3 skeleton entries and 2 full entries in 5 results with default pivot_count=2
     expect(skeletonMatches.length).toBe(3);
+    expect(fullMatches.length).toBe(2);
   }, 30000);
 
   it('marks skeleton entries with skeleton label in heading', async () => {
     const result = await getContextTool.handler({ kind: 'insight', limit: 5 }, ctx, shared);
     const text = isOk(result);
     expect(text).toContain('skeleton');
-    const skeletonLabels = text.match(/⊘ skeleton/g) || [];
+    const skeletonLabels = text.match(/`skeleton`/g) || [];
     expect(skeletonLabels.length).toBe(3);
   }, 30000);
 
   it('skeleton entries have truncated body (~100 chars)', async () => {
     const result = await getContextTool.handler({ kind: 'insight', limit: 5 }, ctx, shared);
     const text = isOk(result);
-    const sections = text.split('###').filter((s) => s.includes('skeleton: true'));
+    const sections = text.split('###').filter((s) => s.includes('`skeleton`'));
     for (const section of sections) {
       const lines = section.split('\n').filter((l) => l.trim());
       const bodyLine = lines.find(
@@ -897,9 +901,7 @@ describe('get_context skeleton mode', () => {
       shared
     );
     const text = isOk(result);
-    const fullMatches = text.match(/skeleton: false/g) || [];
-    expect(fullMatches.length).toBe(0);
-    const skeletonMatches = text.match(/skeleton: true/g) || [];
+    const skeletonMatches = text.match(/`skeleton`/g) || [];
     expect(skeletonMatches.length).toBe(5);
   }, 30000);
 
@@ -910,10 +912,10 @@ describe('get_context skeleton mode', () => {
       shared
     );
     const text = isOk(result);
-    const skeletonMatches = text.match(/skeleton: true/g) || [];
+    const skeletonMatches = text.match(/`skeleton`/g) || [];
     expect(skeletonMatches.length).toBe(0);
-    const fullMatches = text.match(/skeleton: false/g) || [];
-    expect(fullMatches.length).toBe(5);
+    const headings = text.match(/### .+\n/g) || [];
+    expect(headings.length).toBe(5);
   }, 30000);
 
   it('pivot_count=1 returns only first entry full, rest skeleton', async () => {
@@ -923,10 +925,11 @@ describe('get_context skeleton mode', () => {
       shared
     );
     const text = isOk(result);
-    const fullMatches = text.match(/skeleton: false/g) || [];
-    const skeletonMatches = text.match(/skeleton: true/g) || [];
-    expect(fullMatches.length).toBe(1);
+    const skeletonMatches = text.match(/`skeleton`/g) || [];
     expect(skeletonMatches.length).toBe(2);
+    const headings = text.match(/### .+\n/g) || [];
+    const fullHeadings = headings.filter((h) => !h.includes('`skeleton`'));
+    expect(fullHeadings.length).toBe(1);
   }, 30000);
 
   it('works with max_tokens and pivot_count together', async () => {
@@ -937,8 +940,10 @@ describe('get_context skeleton mode', () => {
     );
     const text = isOk(result);
     expect(text).toContain('Token budget:');
-    expect(text).toContain('skeleton: true');
-    expect(text).toContain('skeleton: false');
+    expect(text).toMatch(/`skeleton`/);
+    const headings = text.match(/### .+\n/g) || [];
+    const fullHeadings = headings.filter((h) => !h.includes('`skeleton`'));
+    expect(fullHeadings.length).toBeGreaterThan(0);
   }, 30000);
 
   it('works with query-based search', async () => {
@@ -948,8 +953,9 @@ describe('get_context skeleton mode', () => {
       shared
     );
     const text = isOk(result);
-    const fullMatches = text.match(/skeleton: false/g) || [];
-    expect(fullMatches.length).toBe(1);
+    const headings = text.match(/### .+\n/g) || [];
+    const fullHeadings = headings.filter((h) => !h.includes('`skeleton`'));
+    expect(fullHeadings.length).toBe(1);
   }, 30000);
 });
 
@@ -1389,9 +1395,9 @@ describe('context_status handler', () => {
   it('returns vault status without errors', () => {
     const result = contextStatusTool.handler({}, ctx);
     const text = isOk(result);
-    expect(text).toContain('Vault Status');
-    expect(text).toContain('Database:');
-    expect(text).toContain('Schema:');
+    expect(text).toContain('Vault Dashboard');
+    expect(text).toContain('**Database**');
+    expect(text).toContain('**Schema**');
   });
 
   it('includes entry counts by kind', () => {
