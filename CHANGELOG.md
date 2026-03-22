@@ -2,6 +2,20 @@
 
 All notable changes to context-vault are documented here.
 
+## [3.4.5] — 2026-03-22
+
+### Added
+
+- **`context-vault reconnect` command**: Reads config, kills stale MCP servers, re-registers with correct vault-dir, and reindexes. Recovers from config drift without restarting Claude.
+- **Startup vault path validation**: Warns if vaultDir points to a temp directory (likely from a test run) or contains no markdown files despite having a marker.
+- **session_start index sanity check**: Compares DB entry count vs vault files on disk. Warns if 10x mismatch detected.
+- **Config write guard for tests**: `CONTEXT_VAULT_TEST=1` env var blocks writes to non-temp config paths, preventing test runs from corrupting the real config.
+
+### Fixed
+
+- **Test isolation**: Two integration tests were running `setup --yes` against the real `~/.context-mcp/config.json` instead of using an isolated HOME directory.
+- **Setup always passes --vault-dir**: MCP tool registration now always includes the explicit vault path, preventing silent fallback to wrong defaults after config drift.
+
 ## [3.4.4] — 2026-03-21
 
 ### Fixed
