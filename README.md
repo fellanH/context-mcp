@@ -9,8 +9,9 @@ Persistent memory for AI agents — save and search knowledge across sessions. Y
 > **Hosted tier** — cloud sync, web dashboard, and team sharing → [app.context-vault.com](https://app.context-vault.com)
 
 <p align="center">
-  <img src="demo.gif" alt="context-vault demo — Claude Code and Cursor using the knowledge vault" width="800">
+  <img src="assets/vault-brain.png" alt="Vault Brain — 3D knowledge graph visualization showing nodes, edges, and hub detection" width="800">
 </p>
+<p align="center"><em>Vault Brain — your knowledge as a living neural network</em></p>
 
 ## Quick Start
 
