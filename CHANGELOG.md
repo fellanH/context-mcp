@@ -3,6 +3,15 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.8.0] — 2026-03-23
+
+### Added
+
+- **Gemini and Antigravity support in setup wizard**: Automatic detection and configuration for Gemini CLI and Antigravity.
+- **Agent rules for Gemini**: Auto-installs `context-vault.md` rules for Gemini CLI and Antigravity during setup.
+- **Improved tool detection**: Detection now checks for both directory existence and `gemini` command availability.
+- **Helpful onboarding for Gemini users**: Added Gemini CLI to the recommended tools list in the setup wizard.
+
 ## [3.7.0] — 2026-03-22
 
 ### Added

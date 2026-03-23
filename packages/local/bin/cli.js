@@ -301,12 +301,24 @@ const TOOLS = [
   {
     id: 'antigravity',
     name: 'Antigravity (Gemini CLI)',
-    detect: () => anyDirExists(join(HOME, '.gemini', 'antigravity'), join(HOME, '.gemini')),
+    detect: async () =>
+      anyDirExists(join(HOME, '.gemini', 'antigravity'), join(HOME, '.gemini')) ||
+      (await commandExistsAsync('gemini')),
     configType: 'json',
     configPath: join(HOME, '.gemini', 'antigravity', 'mcp_config.json'),
     configKey: 'mcpServers',
-    rulesPath: null,
-    rulesMethod: null,
+    rulesPath: join(HOME, '.gemini', 'antigravity', 'rules', 'context-vault.md'),
+    rulesMethod: 'write',
+  },
+  {
+    id: 'google-ai',
+    name: 'Google AI / Gemini CLI',
+    detect: () => existsSync(join(HOME, '.gemini', 'mcp_config.json')),
+    configType: 'json',
+    configPath: join(HOME, '.gemini', 'mcp_config.json'),
+    configKey: 'mcpServers',
+    rulesPath: join(HOME, '.gemini', 'rules', 'context-vault.md'),
+    rulesMethod: 'write',
   },
   {
     id: 'cline',
@@ -758,6 +770,7 @@ async function runSetup() {
     if (userLevel === 'beginner') {
       console.log('  Install an AI tool first:');
       console.log(dim('    Claude Code:  https://docs.anthropic.com/en/docs/claude-code'));
+      console.log(dim('    Gemini CLI:   https://github.com/google-gemini/gemini-cli'));
       console.log(dim('    Cursor:       https://cursor.com'));
       console.log(dim('    Windsurf:     https://codeium.com/windsurf'));
       console.log();
