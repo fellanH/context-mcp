@@ -1,4 +1,4 @@
-<!-- context-vault-rules v1.0 -->
+<!-- context-vault-rules v1.1 -->
 # Context Vault — Agent Rules
 
 You have access to a persistent knowledge vault via MCP tools (`get_context`, `save_context`, `list_context`, `delete_context`). Use it to build lasting memory across sessions.

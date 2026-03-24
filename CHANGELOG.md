@@ -3,6 +3,23 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.9.0] — 2026-03-24
+
+### Added
+
+- **MCP remote mode**: Local vault syncs with hosted API at api.context-vault.com. `save_context` dual-writes to local + remote (fire-and-forget). `get_context` merges local and remote results. Falls back to local silently when remote is unreachable. CLI: `context-vault remote setup`, `remote status`, `remote disconnect`.
+- **Team vault integration**: Query, save, and publish entries to a shared team vault via MCP. `get_context` merges local + personal remote + team results. `session_start` includes team knowledge section. New `publish_to_team` MCP tool for publishing personal entries to a team vault.
+- **Team CLI commands**: `context-vault team seed` (publish local entries to team, respects category rules and privacy scan), `team join`, `team leave`, `team status`.
+- **Privacy scan on team publish**: `publish_to_team` handles server-side privacy scan responses (emails, API keys, internal hostnames). Shows matched content and offers force override. `team seed` skips blocked entries and reports them.
+- **Auto-memory overflow skill**: `/vault overflow` graduates lower-priority auto-memory entries to the vault when MEMORY.md approaches its 200-line cap. Ranks by type priority and age. Requires user approval.
+- **Auto-memory setup integration**: `/vault setup` detects Claude Code auto-memory, reports stats, offers to index existing entries into the vault as searchable copies.
+- **Auto-memory advisory in save/status/recall**: `save_context` warns when content overlaps with auto-memory entries. `context_status` reports auto-memory stats. `recall` deduplicates against auto-memory.
+- **Deferred sync mode**: `save_context` can write files only (no embedding), with a cron indexer to sync later. Configured via `dualWrite.deferredSync`.
+- **MCP-unavailable resilience**: `.context/` files remain readable as plain markdown when the MCP server or DB is unavailable.
+- **Team sharing heuristics in agent rules**: Agent rules (v1.1) now include guidance for when to suggest publishing entries to a team vault.
+- **Standalone prompt**: Copy-paste prompt for non-Claude Code users at `assets/standalone-prompt.md`.
+
+
 ## [3.8.0] — 2026-03-23
 
 ### Added
