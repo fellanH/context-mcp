@@ -12,6 +12,7 @@ import { ok, err, errWithHint, ensureVaultExists, ensureValidKind, kindIcon } fr
 import { maybeShowFeedbackPrompt } from '../telemetry.js';
 import { validateRelatedTo } from '../linking.js';
 import { getAutoMemory, findAutoMemoryOverlaps } from '../auto-memory.js';
+import { getRemoteClient } from '../remote.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 import {
   MAX_BODY_LENGTH,
@@ -523,6 +524,22 @@ export async function handler(
       dualWriteLocal(entry.filePath, entry.kind);
     }
 
+    // Remote sync for updates: fire-and-forget PUT to hosted API
+    const updateRemoteClient = getRemoteClient(config);
+    if (updateRemoteClient) {
+      updateRemoteClient.saveEntry({
+        id: entry.id,
+        kind: entry.kind,
+        title: entry.title,
+        body: entry.body,
+        tags: entry.tags,
+        meta: entry.meta,
+        source: entry.source,
+      }).catch((e: Error) => {
+        console.warn(`[context-vault] Remote sync (update) failed: ${e.message}`);
+      });
+    }
+
     const relPath = entry.filePath
       ? entry.filePath.replace(config.vaultDir + '/', '')
       : entry.filePath;
@@ -752,6 +769,28 @@ export async function handler(
 
   if (isDualWriteEnabled(config) && entry.filePath) {
     dualWriteLocal(entry.filePath, normalizedKind);
+  }
+
+  // Remote sync: fire-and-forget POST to hosted API
+  const remoteClient = getRemoteClient(config);
+  if (remoteClient) {
+    remoteClient.saveEntry({
+      id: entry.id,
+      kind: normalizedKind,
+      title,
+      body,
+      tags,
+      meta: finalMeta,
+      source,
+      identity_key,
+      expires_at,
+      supersedes,
+      related_to,
+      source_files,
+      tier: effectiveTier,
+    }).catch((e: Error) => {
+      console.warn(`[context-vault] Remote sync failed: ${e.message}`);
+    });
   }
 
   if (ctx.config?.dataDir) {

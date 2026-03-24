@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ok } from '../helpers.js';
 import { isEmbedAvailable } from '@context-vault/core/embed';
 import { getAutoMemory, findAutoMemoryOverlaps } from '../auto-memory.js';
+import { getRemoteClient } from '../remote.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const SEMANTIC_SIMILARITY_THRESHOLD = 0.6;
@@ -172,6 +173,32 @@ export async function handler(
 
     // Track surfaced
     if (sessionSet) sessionSet.add(row.id);
+  }
+
+  // Remote recall: merge hints from hosted API
+  const remoteClient = getRemoteClient(ctx.config);
+  if (remoteClient && hints.length < limit) {
+    try {
+      const remoteHints = await remoteClient.recall({
+        signal,
+        signal_type,
+        bucket,
+        max_hints: limit - hints.length,
+      });
+      const localIds = new Set(hints.map(h => h.id));
+      for (const rh of remoteHints) {
+        if (hints.length >= limit) break;
+        if (localIds.has(rh.id)) continue;
+        if (sessionSet && !bypassDedup && sessionSet.has(rh.id)) {
+          suppressed++;
+          continue;
+        }
+        hints.push(rh);
+        if (sessionSet) sessionSet.add(rh.id);
+      }
+    } catch (e) {
+      console.warn(`[context-vault] Remote recall failed: ${(e as Error).message}`);
+    }
   }
 
   let method: 'tag_match' | 'semantic' | 'none' = hints.length > 0 ? 'tag_match' : 'none';

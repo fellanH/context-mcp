@@ -1,8 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, resolve, dirname } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { DEFAULT_GROWTH_THRESHOLDS, DEFAULT_LIFECYCLE, DEFAULT_AUTO_INSIGHTS, DEFAULT_INDEXING } from './constants.js';
-import type { VaultConfig } from './types.js';
+import type { VaultConfig, RemoteConfig } from './types.js';
 
 /**
  * Guard against writes to the real config file during test runs.
@@ -162,6 +162,14 @@ export function resolveConfig(): VaultConfig {
         if (ix.maxBodySize != null) config.indexing.maxBodySize = Number(ix.maxBodySize);
         if (ix.autoIndexEvents != null) config.indexing.autoIndexEvents = ix.autoIndexEvents === true;
       }
+      if (fc.remote && typeof fc.remote === 'object') {
+        const r = fc.remote;
+        config.remote = {
+          enabled: r.enabled === true,
+          url: typeof r.url === 'string' ? r.url : 'https://api.context-vault.com',
+          apiKey: typeof r.apiKey === 'string' ? r.apiKey : '',
+        };
+      }
       config.resolvedFrom = 'config file';
     } catch (e) {
       throw new Error(`[context-vault] Invalid config at ${configPath}: ${(e as Error).message}`);
@@ -220,4 +228,41 @@ export function resolveConfig(): VaultConfig {
   config.vaultDirExists = existsSync(config.vaultDir);
 
   return config;
+}
+
+export function getRemoteConfig(dataDir?: string): RemoteConfig | null {
+  const dir = dataDir || join(homedir(), '.context-mcp');
+  const configPath = join(dir, 'config.json');
+  if (!existsSync(configPath)) return null;
+  try {
+    const fc = JSON.parse(readFileSync(configPath, 'utf-8'));
+    if (!fc.remote || typeof fc.remote !== 'object') return null;
+    return {
+      enabled: fc.remote.enabled === true,
+      url: typeof fc.remote.url === 'string' ? fc.remote.url : 'https://api.context-vault.com',
+      apiKey: typeof fc.remote.apiKey === 'string' ? fc.remote.apiKey : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveRemoteConfig(remote: Partial<RemoteConfig>, dataDir?: string): void {
+  const dir = dataDir || join(homedir(), '.context-mcp');
+  const configPath = join(dir, 'config.json');
+  assertNotTestMode(configPath);
+
+  mkdirSync(dirname(configPath), { recursive: true });
+
+  let fc: Record<string, any> = {};
+  if (existsSync(configPath)) {
+    try {
+      fc = JSON.parse(readFileSync(configPath, 'utf-8'));
+    } catch {
+      fc = {};
+    }
+  }
+
+  fc.remote = { ...(fc.remote || {}), ...remote };
+  writeFileSync(configPath, JSON.stringify(fc, null, 2) + '\n');
 }

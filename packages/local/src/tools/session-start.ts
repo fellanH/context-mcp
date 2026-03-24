@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { ok, err, ensureVaultExists, kindIcon, fmtDate } from '../helpers.js';
 import { getAutoMemory } from '../auto-memory.js';
+import { getRemoteClient } from '../remote.js';
 import type { AutoMemoryEntry, AutoMemoryResult } from '../auto-memory.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
@@ -232,12 +233,54 @@ export async function handler(
     }
   }
 
+  // Remote entries: pull recent from hosted API if configured
+  const remoteClient = getRemoteClient(ctx.config);
+  let remoteCount = 0;
+  if (remoteClient && tokensUsed < tokenBudget) {
+    try {
+      const seenIds = new Set([
+        ...decisions.map((d: any) => d.id),
+        ...deduped.map((d: any) => d.id),
+        ...(lastSession ? [lastSession.id] : []),
+      ]);
+      const remoteTags = effectiveTags.length ? effectiveTags : undefined;
+      const remoteResults = await remoteClient.search({
+        tags: remoteTags,
+        limit: 10,
+        since: sinceDate,
+      });
+      const uniqueRemote = remoteResults.filter((r: any) => !seenIds.has(r.id));
+      if (uniqueRemote.length > 0) {
+        const header = '## Remote Entries\n';
+        const headerTokens = estimateTokens(header);
+        if (tokensUsed + headerTokens <= tokenBudget) {
+          const entryLines: string[] = [];
+          tokensUsed += headerTokens;
+          for (const entry of uniqueRemote) {
+            const line = formatEntry(entry);
+            const lineTokens = estimateTokens(line);
+            if (tokensUsed + lineTokens > tokenBudget) break;
+            entryLines.push(line);
+            tokensUsed += lineTokens;
+            remoteCount++;
+          }
+          if (entryLines.length > 0) {
+            sections.push(header + entryLines.join('\n') + '\n');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[context-vault] Remote session_start failed: ${(e as Error).message}`);
+    }
+  }
+
   const totalEntries =
     (lastSession ? 1 : 0) +
     decisions.length +
     deduped.filter((_d: any) => {
       return true;
-    }).length;
+    }).length +
+    remoteCount;
 
   if (indexWarning) {
     sections.push(indexWarning);

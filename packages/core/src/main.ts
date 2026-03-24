@@ -1,6 +1,7 @@
 // Types
 export type {
   VaultConfig,
+  RemoteConfig,
   RecallConfig,
   ConsolidationConfig,
   GrowthThresholds,

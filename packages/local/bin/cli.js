@@ -7040,6 +7040,111 @@ async function runServe() {
   await import('../dist/server.js');
 }
 
+async function runRemote() {
+  const subcommand = args[1];
+  const { getRemoteConfig, saveRemoteConfig } = await import('@context-vault/core/config');
+  const dataDir = join(HOME, '.context-mcp');
+
+  if (subcommand === 'setup') {
+    const readline = await import('node:readline');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const ask = (q) => new Promise((resolve) => rl.question(q, resolve));
+
+    console.log();
+    console.log(`  ${bold('◇ Remote Vault Setup')}`);
+    console.log();
+
+    const defaultUrl = 'https://api.context-vault.com';
+    const urlInput = await ask(`  API URL ${dim(`(${defaultUrl})`)}: `);
+    const url = urlInput.trim() || defaultUrl;
+
+    const apiKey = await ask('  API Key: ');
+    rl.close();
+
+    if (!apiKey.trim()) {
+      console.error(`\n  ${red('✘')} API key is required.`);
+      process.exit(1);
+    }
+
+    console.log(`\n  Testing connection to ${dim(url)}...`);
+    try {
+      const res = await fetch(`${url.replace(/\/$/, '')}/api/vault/status`, {
+        headers: { 'Authorization': `Bearer ${apiKey.trim()}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (res.ok) {
+        saveRemoteConfig({ enabled: true, url, apiKey: apiKey.trim() }, dataDir);
+        console.log(`  ${green('✓')} Connected successfully. Remote sync enabled.`);
+        console.log(dim(`  Config saved to ${join(dataDir, 'config.json')}`));
+      } else {
+        const text = await res.text().catch(() => '');
+        console.error(`  ${red('✘')} Connection failed: HTTP ${res.status}`);
+        if (text) console.error(`  ${dim(text.slice(0, 200))}`);
+        process.exit(1);
+      }
+    } catch (e) {
+      console.error(`  ${red('✘')} Connection failed: ${e.message}`);
+      process.exit(1);
+    }
+    console.log();
+    return;
+  }
+
+  if (subcommand === 'status') {
+    const remote = getRemoteConfig(dataDir);
+    console.log();
+    console.log(`  ${bold('◇ Remote Status')}`);
+    console.log();
+    if (!remote) {
+      console.log(`  Remote:  ${dim('not configured')}`);
+      console.log(`  ${dim('Run')} ${cyan('context-vault remote setup')} ${dim('to connect.')}`);
+    } else {
+      const keyPreview = remote.apiKey ? remote.apiKey.slice(0, 6) + '...' : dim('(none)');
+      console.log(`  Enabled: ${remote.enabled ? green('yes') : red('no')}`);
+      console.log(`  URL:     ${remote.url}`);
+      console.log(`  API Key: ${keyPreview}`);
+
+      if (remote.enabled && remote.apiKey) {
+        console.log(`\n  Testing connection...`);
+        try {
+          const res = await fetch(`${remote.url.replace(/\/$/, '')}/api/vault/status`, {
+            headers: { 'Authorization': `Bearer ${remote.apiKey}`, 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(10000),
+          });
+          if (res.ok) {
+            console.log(`  ${green('✓')} Remote is reachable.`);
+          } else {
+            console.log(`  ${red('✘')} HTTP ${res.status}`);
+          }
+        } catch (e) {
+          console.log(`  ${red('✘')} ${e.message}`);
+        }
+      }
+    }
+    console.log();
+    return;
+  }
+
+  if (subcommand === 'disconnect') {
+    const remote = getRemoteConfig(dataDir);
+    if (!remote || !remote.enabled) {
+      console.log(`\n  ${dim('Remote sync is already disabled.')}\n`);
+      return;
+    }
+    saveRemoteConfig({ enabled: false }, dataDir);
+    console.log(`\n  ${green('✓')} Remote sync disabled. API key preserved (re-enable with ${cyan('context-vault remote setup')}).\n`);
+    return;
+  }
+
+  console.log();
+  console.log(`  ${bold('◇ context-vault remote')}`);
+  console.log();
+  console.log(`  ${cyan('setup')}       Connect to a hosted vault API`);
+  console.log(`  ${cyan('status')}      Show remote config and test connection`);
+  console.log(`  ${cyan('disconnect')}  Disable remote sync (preserves API key)`);
+  console.log();
+}
+
 async function main() {
   if (flags.has('--version') || command === 'version') {
     console.log(VERSION);
@@ -7172,6 +7277,9 @@ async function main() {
       break;
     case 'stats':
       await runStats();
+      break;
+    case 'remote':
+      await runRemote();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));

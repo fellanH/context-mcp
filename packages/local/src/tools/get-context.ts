@@ -10,6 +10,7 @@ import { resolveTemporalParams } from '../temporal.js';
 import { collectLinkedEntries } from '../linking.js';
 import { ok, err, errWithHint, kindIcon, fmtDate } from '../helpers.js';
 import { isEmbedAvailable } from '@context-vault/core/embed';
+import { getRemoteClient, mergeRemoteResults } from '../remote.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const STALE_DUPLICATE_DAYS = 7;
@@ -573,6 +574,28 @@ export async function handler(
 
     // Track access for filter-only results (hybrid search tracks its own)
     trackAccess(ctx, filtered);
+  }
+
+  // Remote merge: query hosted API and merge results (local wins for duplicates)
+  const remoteClient = getRemoteClient(ctx.config);
+  if (remoteClient && (hasQuery || hasFilters)) {
+    try {
+      const remoteResults = await remoteClient.search({
+        query: hasQuery ? query : undefined,
+        tags: effectiveTags.length ? effectiveTags : undefined,
+        kind: kindFilter || undefined,
+        category: scopedCategory || undefined,
+        scope: effectiveScope !== 'hot' ? effectiveScope : undefined,
+        limit: effectiveLimit,
+        since: effectiveSince || undefined,
+        until: effectiveUntil || undefined,
+      });
+      if (remoteResults.length > 0) {
+        filtered = mergeRemoteResults(filtered, remoteResults as any[], effectiveLimit);
+      }
+    } catch (e) {
+      console.warn(`[context-vault] Remote search failed: ${(e as Error).message}`);
+    }
   }
 
   // Brief score boost: briefs rank slightly higher so consolidated snapshots

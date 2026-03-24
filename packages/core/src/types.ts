@@ -15,6 +15,12 @@ export interface IndexingConfig {
   autoIndexEvents: boolean;
 }
 
+export interface RemoteConfig {
+  enabled: boolean;
+  url: string;
+  apiKey: string;
+}
+
 export interface VaultConfig {
   vaultDir: string;
   dataDir: string;
@@ -31,6 +37,7 @@ export interface VaultConfig {
   lifecycle: Record<string, { archiveAfterDays?: number }>;
   autoInsights: AutoInsightsConfig;
   indexing: IndexingConfig;
+  remote?: RemoteConfig;
 }
 
 export interface RecallConfig {
