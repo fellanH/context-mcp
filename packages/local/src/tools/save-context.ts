@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, basename, join } from 'node:path';
 import { homedir } from 'node:os';
-import { captureAndIndex, updateEntryFile } from '@context-vault/core/capture';
+import { captureAndIndex, updateEntryFile, writeEntry } from '@context-vault/core/capture';
 import { indexEntry } from '@context-vault/core/index';
 import { categoryFor, defaultTierFor } from '@context-vault/core/categories';
 import { normalizeKind, kindToPath } from '@context-vault/core/files';
@@ -36,6 +36,17 @@ function isDualWriteEnabled(config: { dataDir: string }): boolean {
     return true;
   } catch {
     return true;
+  }
+}
+
+function isDeferredSyncEnabled(config: { dataDir: string }): boolean {
+  try {
+    const configPath = join(config.dataDir, 'config.json');
+    if (!existsSync(configPath)) return false;
+    const fc = JSON.parse(readFileSync(configPath, 'utf-8'));
+    return fc.dualWrite?.deferredSync === true;
+  } catch {
+    return false;
   }
 }
 
@@ -533,6 +544,68 @@ export async function handler(
 
   if (categoryFor(normalizedKind) === 'entity' && !identity_key) {
     return err(`Entity kind "${normalizedKind}" requires identity_key`, 'MISSING_IDENTITY_KEY');
+  }
+
+  // ── Deferred sync: file-only write, skip DB entirely ──────────────────
+  if (isDeferredSyncEnabled(config)) {
+    const category = categoryFor(normalizedKind);
+    const effectiveTier = tier ?? defaultTierFor(normalizedKind);
+    const mergedMeta = { ...(meta || {}) };
+    if (folder) mergedMeta.folder = folder;
+    const parsedCtx = parseContextParam(encoding_context);
+    if (parsedCtx?.structured) {
+      mergedMeta.encoding_context = parsedCtx.structured;
+    } else if (parsedCtx?.text) {
+      mergedMeta.encoding_context = parsedCtx.text;
+    }
+    if (normalizedKind === 'decision') {
+      enrichDecisionMeta(mergedMeta, title, body);
+    }
+    const finalMeta = Object.keys(mergedMeta).length ? mergedMeta : undefined;
+
+    let entry;
+    try {
+      entry = writeEntry(ctx, {
+        kind: normalizedKind,
+        title,
+        body,
+        meta: finalMeta,
+        tags,
+        source,
+        folder,
+        identity_key,
+        expires_at,
+        supersedes,
+        related_to,
+        source_files,
+        tier: effectiveTier,
+        indexed: false,
+      });
+    } catch (e) {
+      return errWithHint(
+        e instanceof Error ? e.message : String(e),
+        'SAVE_FAILED',
+        'context-vault save_context is failing. Check `cat ~/.context-mcp/error.log | tail -5` and help me debug.'
+      );
+    }
+
+    if (isDualWriteEnabled(config) && entry.filePath) {
+      dualWriteLocal(entry.filePath, normalizedKind);
+    }
+
+    const relPath = entry.filePath
+      ? entry.filePath.replace(config.vaultDir + '/', '')
+      : entry.filePath;
+    const icon = kindIcon(normalizedKind);
+    const parts = [
+      `## ✓ Saved (deferred)`,
+      `${icon} **${title || '(untitled)'}**`,
+      `\`${normalizedKind}\` · **${effectiveTier}**${tags?.length ? ` · ${tags.join(', ')}` : ''}`,
+      `\`${entry.id}\` → ${relPath}`,
+      '',
+      '_Deferred sync: file written, not yet indexed. Run `vault sync` to index._',
+    ];
+    return ok(parts.join('\n'));
   }
 
   // Start reindex in background but don't wait — similarity check

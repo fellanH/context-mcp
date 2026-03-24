@@ -7,9 +7,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createTestCtx } from '../helpers/ctx.js';
 import { captureAndIndex } from '@context-vault/core/capture';
-import { formatFrontmatter } from '@context-vault/core/frontmatter';
+import { formatFrontmatter, parseFrontmatter, parseEntryFromMarkdown } from '@context-vault/core/frontmatter';
 import { formatBody } from '@context-vault/core/formatters';
 import { reindex } from '@context-vault/core/index';
+import { kindToPath } from '@context-vault/core/files';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -305,6 +306,115 @@ describe('sync dry-run logic', () => {
       expect(after).toBeUndefined();
     } finally {
       rmSync(join(contextDir, '..'), { recursive: true, force: true });
+    }
+  }, 30000);
+});
+
+// ─── MCP unavailable: local files still readable as plain markdown ───────────
+
+describe('vault MCP unavailable, local file still readable', () => {
+  it('.context/ files are readable and parseable without DB access', async () => {
+    const workspaceDir = join(tmpdir(), `cv-mcp-unavail-${Date.now()}`);
+    const contextDir = join(workspaceDir, '.context');
+    mkdirSync(contextDir, { recursive: true });
+
+    try {
+      const testId = 'OFFLINE_TEST_' + Date.now();
+      writeMdFile(contextDir, 'insight', `offline-insight-${testId}.md`, {
+        id: testId,
+        kind: 'insight',
+        title: 'Discovered API rate limit quirk',
+        body: 'The /search endpoint returns 429 after 50 req/min, not 100 as documented.',
+        tags: ['bucket:myproject', 'api', 'gotcha'],
+        tier: 'working',
+      });
+
+      writeMdFile(contextDir, 'decision', `offline-decision-${testId}.md`, {
+        id: 'OFFLINE_DEC_' + Date.now(),
+        kind: 'decision',
+        title: 'Use FTS5 over contentless tables',
+        body: 'FTS5 content tables are simpler and the storage overhead is acceptable for our scale.',
+        tags: ['bucket:myproject', 'architecture'],
+        tier: 'durable',
+      });
+
+      // No DB, no MCP, no ctx. Just filesystem reads.
+      const insightDir = join(contextDir, 'insight');
+      const decisionDir = join(contextDir, 'decision');
+      expect(existsSync(insightDir)).toBe(true);
+      expect(existsSync(decisionDir)).toBe(true);
+
+      const insightFiles = readdirSync(insightDir).filter(f => f.endsWith('.md'));
+      expect(insightFiles.length).toBe(1);
+
+      const raw = readFileSync(join(insightDir, insightFiles[0]), 'utf-8');
+      const { meta, body } = parseFrontmatter(raw);
+
+      expect(meta.id).toBe(testId);
+      expect(meta.title).toBe('Discovered API rate limit quirk');
+      expect(meta.tags).toContain('bucket:myproject');
+      expect(meta.tier).toBe('working');
+
+      const parsed = parseEntryFromMarkdown('insight', body, meta);
+      expect(parsed.body).toContain('429 after 50 req/min');
+
+      const decisionFiles = readdirSync(decisionDir).filter(f => f.endsWith('.md'));
+      expect(decisionFiles.length).toBe(1);
+
+      const decRaw = readFileSync(join(decisionDir, decisionFiles[0]), 'utf-8');
+      const { meta: decMeta, body: decBody } = parseFrontmatter(decRaw);
+      expect(decMeta.title).toBe('Use FTS5 over contentless tables');
+      expect(decMeta.tier).toBe('durable');
+
+      const decParsed = parseEntryFromMarkdown('decision', decBody, decMeta);
+      expect(decParsed.body).toContain('storage overhead is acceptable');
+    } finally {
+      rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it('.context/ files survive after DB is destroyed', async () => {
+    // Create a real entry via captureAndIndex, simulate dual-write, then verify
+    // the .context/ copy is readable even after "losing" DB access
+    let ctx, cleanup;
+    ({ ctx, cleanup } = await createTestCtx());
+
+    const workspaceDir = join(tmpdir(), `cv-db-destroy-${Date.now()}`);
+    mkdirSync(workspaceDir, { recursive: true });
+
+    try {
+      const entry = await captureAndIndex(ctx, {
+        kind: 'pattern',
+        title: 'Retry with exponential backoff',
+        body: 'All HTTP clients must use exponential backoff with jitter on 5xx responses.',
+        tags: ['bucket:infra', 'resilience'],
+      });
+
+      // Simulate dual-write: copy vault file to .context/
+      const vaultContent = readFileSync(entry.filePath, 'utf-8');
+      const localDir = join(workspaceDir, '.context', kindToPath('pattern'));
+      mkdirSync(localDir, { recursive: true });
+      const { basename } = await import('node:path');
+      const filename = basename(entry.filePath);
+      writeFileSync(join(localDir, filename), vaultContent);
+
+      // "Destroy" DB access by closing the context
+      cleanup();
+
+      // .context/ file should still be fully readable and parseable
+      const localPath = join(localDir, filename);
+      expect(existsSync(localPath)).toBe(true);
+
+      const raw = readFileSync(localPath, 'utf-8');
+      const { meta, body } = parseFrontmatter(raw);
+      expect(meta.id).toBe(entry.id);
+      expect(meta.title).toBe('Retry with exponential backoff');
+
+      const parsed = parseEntryFromMarkdown('pattern', body, meta);
+      expect(parsed.body).toContain('exponential backoff with jitter');
+      expect(meta.tags).toContain('bucket:infra');
+    } finally {
+      try { rmSync(workspaceDir, { recursive: true, force: true }); } catch {}
     }
   }, 30000);
 });
