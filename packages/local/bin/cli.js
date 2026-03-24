@@ -7182,6 +7182,8 @@ async function runTeam() {
     let publishedKnowledge = 0;
     let federatedEntities = 0;
     let skippedEvents = 0;
+    let blockedPrivacy = 0;
+    const blockedEntries = [];
     let errors = 0;
 
     const apiUrl = remote.url.replace(/\/$/, '');
@@ -7246,6 +7248,18 @@ async function runTeam() {
           } else {
             publishedKnowledge++;
           }
+        } else if (res.status === 422) {
+          const data = await res.json().catch(() => ({}));
+          if (data.code === 'PRIVACY_SCAN_FAILED') {
+            const matchTypes = Array.isArray(data.matches) ? data.matches.map(m => m.type) : [];
+            const uniqueTypes = [...new Set(matchTypes)];
+            console.log(`  ${yellow('!')} Blocked: "${row.title || row.id}" (${uniqueTypes.join(', ') || 'sensitive content'})`);
+            blockedPrivacy++;
+            blockedEntries.push({ title: row.title || row.id, types: uniqueTypes });
+          } else {
+            errors++;
+            console.error(`  ${red('!')} 422 for "${row.title || row.id}": ${data.error || 'unknown'}`);
+          }
         } else {
           const data = await res.json().catch(() => ({}));
           if (data.conflict) {
@@ -7263,16 +7277,22 @@ async function runTeam() {
       }
 
       // Progress indicator every 10 entries
-      const processed = publishedKnowledge + federatedEntities + skippedEvents + errors;
+      const processed = publishedKnowledge + federatedEntities + skippedEvents + blockedPrivacy + errors;
       if (processed % 10 === 0) {
         process.stdout.write(`  ${dim(`${processed}/${rows.length}...`)}\r`);
       }
     }
 
-    console.log(`  Published: ${green(publishedKnowledge)} knowledge, ${cyan(federatedEntities)} entities`);
-    console.log(`  Skipped:   ${dim(skippedEvents)} events (private)`);
+    console.log(`  Seeded: ${green(publishedKnowledge)} published, ${cyan(federatedEntities)} federated, ${dim(skippedEvents)} skipped (events), ${blockedPrivacy > 0 ? yellow(blockedPrivacy) : dim(blockedPrivacy)} blocked (privacy scan)`);
     if (errors > 0) {
-      console.log(`  Errors:    ${red(errors)}`);
+      console.log(`  Errors:  ${red(errors)}`);
+    }
+    if (blockedEntries.length > 0) {
+      console.log();
+      console.log(`  ${yellow('Blocked entries (review and clean before re-seeding):')}`);
+      for (const entry of blockedEntries) {
+        console.log(`    - ${entry.title} [${entry.types.join(', ')}]`);
+      }
     }
     console.log();
     return;

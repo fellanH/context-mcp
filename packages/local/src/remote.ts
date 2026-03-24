@@ -45,10 +45,19 @@ export interface TeamSearchResult extends RemoteSearchResult {
   recall_members?: number;
 }
 
+export interface PrivacyScanMatch {
+  type: string;
+  value: string;
+  field: string;
+  line: number;
+}
+
 export interface PublishResult {
   ok: boolean;
   id?: string;
   error?: string;
+  status?: number;
+  privacyMatches?: PrivacyScanMatch[];
   conflict?: {
     existing_entry_id: string;
     existing_author: string;
@@ -176,6 +185,7 @@ export class RemoteClient {
     entryId: string;
     teamId: string;
     visibility: string;
+    force?: boolean;
     entry?: Record<string, unknown>;
   }): Promise<PublishResult> {
     try {
@@ -185,6 +195,7 @@ export class RemoteClient {
           entryId: params.entryId,
           teamId: params.teamId,
           visibility: params.visibility,
+          ...(params.force ? { force: true } : {}),
           ...(params.entry || {}),
         }),
       });
@@ -196,8 +207,17 @@ export class RemoteClient {
           conflict: data.conflict as PublishResult['conflict'],
         };
       }
+      if (res.status === 422 && data.code === 'PRIVACY_SCAN_FAILED') {
+        const matches = Array.isArray(data.matches) ? data.matches as PrivacyScanMatch[] : [];
+        return {
+          ok: false,
+          error: typeof data.error === 'string' ? data.error : 'Privacy scan failed',
+          status: 422,
+          privacyMatches: matches,
+        };
+      }
       const errorText = typeof data.error === 'string' ? data.error : `HTTP ${res.status}`;
-      return { ok: false, error: errorText, conflict: data.conflict as PublishResult['conflict'] };
+      return { ok: false, error: errorText, status: res.status, conflict: data.conflict as PublishResult['conflict'] };
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }

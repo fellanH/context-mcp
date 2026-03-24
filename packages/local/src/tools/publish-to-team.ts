@@ -6,7 +6,7 @@ import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 export const name = 'publish_to_team';
 
 export const description =
-  'Publish a local vault entry to a team vault. Wraps the POST /api/vault/publish endpoint. Returns the published entry and any conflict advisory from the server.';
+  'Publish a local vault entry to a team vault. Wraps the POST /api/vault/publish endpoint. Returns the published entry and any conflict advisory from the server. If the server detects sensitive content, returns an advisory with matched patterns. Use force: true to override.';
 
 export const inputSchema = {
   entry_id: z
@@ -16,10 +16,14 @@ export const inputSchema = {
     .string()
     .optional()
     .describe('Team ID to publish to. Defaults to the teamId in remote config.'),
+  force: z
+    .boolean()
+    .optional()
+    .describe('When true, skip the server-side privacy scan and publish anyway. Use when you have reviewed the content and confirmed it is safe to share.'),
 };
 
 export async function handler(
-  { entry_id, team_id }: Record<string, any>,
+  { entry_id, team_id, force }: Record<string, any>,
   ctx: LocalCtx,
   _shared: SharedCtx
 ): Promise<ToolResult> {
@@ -52,6 +56,7 @@ export async function handler(
     entryId: entry_id,
     teamId: effectiveTeamId,
     visibility: 'team',
+    force: !!force,
     entry: {
       kind: existing.kind,
       title: existing.title,
@@ -66,6 +71,10 @@ export async function handler(
   });
 
   if (!result.ok) {
+    if (result.status === 422 && result.privacyMatches?.length) {
+      return formatPrivacyAdvisory(result.privacyMatches);
+    }
+
     const parts = [`Failed to publish: ${result.error}`];
     if (result.conflict) {
       parts.push('');
@@ -90,4 +99,14 @@ export async function handler(
     parts.push(`  ${result.conflict.suggestion}`);
   }
   return ok(parts.join('\n'));
+}
+
+function formatPrivacyAdvisory(matches: Array<{ type: string; value: string; field: string; line: number }>): ToolResult {
+  const lines = ['This entry contains sensitive content that should be removed before sharing:'];
+  for (const m of matches) {
+    lines.push(`- ${m.type} in ${m.field} (line ${m.line}): ${m.value}`);
+  }
+  lines.push('');
+  lines.push('Remove these and try again, or set force: true to override.');
+  return ok(lines.join('\n'));
 }
