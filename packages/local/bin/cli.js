@@ -7040,6 +7040,258 @@ async function runServe() {
   await import('../dist/server.js');
 }
 
+async function runTeam() {
+  const subcommand = args[1];
+  const { getRemoteConfig, saveRemoteConfig } = await import('@context-vault/core/config');
+  const dataDir = join(HOME, '.context-mcp');
+
+  if (subcommand === 'join') {
+    const teamId = args[2];
+    if (!teamId) {
+      console.error(`\n  ${red('Usage:')} context-vault team join <team-id>\n`);
+      process.exit(1);
+    }
+
+    const remote = getRemoteConfig(dataDir);
+    if (!remote || !remote.enabled || !remote.apiKey) {
+      console.error(`\n  ${red('✘')} Remote is not configured. Run ${cyan('context-vault remote setup')} first.\n`);
+      process.exit(1);
+    }
+
+    console.log(`\n  Testing connection to team ${dim(teamId)}...`);
+    try {
+      const res = await fetch(`${remote.url.replace(/\/$/, '')}/api/team/${teamId}/status`, {
+        headers: { 'Authorization': `Bearer ${remote.apiKey}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        saveRemoteConfig({ teamId }, dataDir);
+        console.log(`  ${green('✓')} Joined team: ${bold(data.name || teamId)}`);
+        if (data.entry_count != null) {
+          console.log(`  ${dim(`${data.entry_count} entries, ${data.member_count || '?'} members`)}`);
+        }
+      } else {
+        const text = await res.text().catch(() => '');
+        console.error(`  ${red('✘')} Failed to connect to team: HTTP ${res.status}`);
+        if (text) console.error(`  ${dim(text.slice(0, 200))}`);
+        process.exit(1);
+      }
+    } catch (e) {
+      console.error(`  ${red('✘')} Connection failed: ${e.message}`);
+      process.exit(1);
+    }
+    console.log();
+    return;
+  }
+
+  if (subcommand === 'leave') {
+    const remote = getRemoteConfig(dataDir);
+    if (!remote?.teamId) {
+      console.log(`\n  ${dim('Not currently in a team.')}\n`);
+      return;
+    }
+    saveRemoteConfig({ teamId: '' }, dataDir);
+    console.log(`\n  ${green('✓')} Left team. Team vault queries disabled.\n`);
+    return;
+  }
+
+  if (subcommand === 'status') {
+    const remote = getRemoteConfig(dataDir);
+    console.log();
+    console.log(`  ${bold('◇ Team Status')}`);
+    console.log();
+
+    if (!remote || !remote.teamId) {
+      console.log(`  Team:    ${dim('not joined')}`);
+      console.log(`  ${dim('Run')} ${cyan('context-vault team join <team-id>')} ${dim('to connect.')}`);
+      console.log();
+      return;
+    }
+
+    console.log(`  Team ID: ${remote.teamId}`);
+
+    if (remote.enabled && remote.apiKey) {
+      console.log(`  Checking status...`);
+      try {
+        const res = await fetch(`${remote.url.replace(/\/$/, '')}/api/team/${remote.teamId}/status`, {
+          headers: { 'Authorization': `Bearer ${remote.apiKey}`, 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          console.log(`  Name:    ${data.name || dim('(unnamed)')}`);
+          console.log(`  Members: ${data.member_count ?? dim('?')}`);
+          console.log(`  Entries: ${data.entry_count ?? dim('?')}`);
+          console.log(`  Health:  ${green('connected')}`);
+        } else {
+          console.log(`  Health:  ${red('error')} (HTTP ${res.status})`);
+        }
+      } catch (e) {
+        console.log(`  Health:  ${red('unreachable')} (${e.message})`);
+      }
+    } else {
+      console.log(`  Health:  ${yellow('remote not configured')}`);
+    }
+    console.log();
+    return;
+  }
+
+  if (subcommand === 'seed') {
+    const teamIdFlag = getFlag('--team');
+    const tagsFlag = getFlag('--tags');
+    const remote = getRemoteConfig(dataDir);
+
+    if (!remote || !remote.enabled || !remote.apiKey) {
+      console.error(`\n  ${red('✘')} Remote is not configured. Run ${cyan('context-vault remote setup')} first.\n`);
+      process.exit(1);
+    }
+
+    const teamId = teamIdFlag || remote.teamId;
+    if (!teamId) {
+      console.error(`\n  ${red('✘')} No team ID. Pass ${cyan('--team <id>')} or join a team first.\n`);
+      process.exit(1);
+    }
+
+    // Load local vault DB
+    const { resolveConfig } = await import('@context-vault/core/config');
+    const config = resolveConfig();
+
+    let DatabaseSync;
+    try {
+      DatabaseSync = (await import('node:sqlite')).DatabaseSync;
+    } catch {
+      console.error(`\n  ${red('✘')} Node.js SQLite not available. Requires Node >= 22.5.\n`);
+      process.exit(1);
+    }
+
+    const db = new DatabaseSync(config.dbPath, { open: true });
+
+    // Build query based on tag filter
+    let sql = 'SELECT id, kind, category, title, body, tags, meta, source, identity_key, tier FROM vault WHERE superseded_by IS NULL';
+    const params = [];
+
+    if (tagsFlag) {
+      sql += ' AND tags LIKE ?';
+      params.push(`%"${tagsFlag}"%`);
+    }
+
+    const rows = db.prepare(sql).all(...params);
+    db.close();
+
+    let publishedKnowledge = 0;
+    let federatedEntities = 0;
+    let skippedEvents = 0;
+    let errors = 0;
+
+    const apiUrl = remote.url.replace(/\/$/, '');
+
+    console.log();
+    console.log(`  ${bold('◇ Team Seed')}`);
+    console.log(`  Team: ${teamId}`);
+    console.log(`  Filter: ${tagsFlag || dim('(all entries)')}`);
+    console.log(`  Entries: ${rows.length}`);
+    console.log();
+
+    if (isDryRun) {
+      for (const row of rows) {
+        if (row.category === 'event') {
+          skippedEvents++;
+        } else if (row.category === 'entity') {
+          federatedEntities++;
+        } else {
+          publishedKnowledge++;
+        }
+      }
+      console.log(`  ${dim('[dry run]')}`);
+      console.log(`  Would publish: ${green(publishedKnowledge)} knowledge, ${cyan(federatedEntities)} entities`);
+      console.log(`  Would skip:    ${dim(skippedEvents)} events (private)`);
+      console.log();
+      return;
+    }
+
+    for (const row of rows) {
+      if (row.category === 'event') {
+        skippedEvents++;
+        continue;
+      }
+
+      const tags = row.tags ? JSON.parse(row.tags) : [];
+      const meta = row.meta ? JSON.parse(row.meta) : {};
+
+      try {
+        const res = await fetch(`${apiUrl}/api/vault/publish`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${remote.apiKey}`, 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(15000),
+          body: JSON.stringify({
+            entryId: row.id,
+            teamId,
+            visibility: 'team',
+            kind: row.kind,
+            title: row.title,
+            body: row.body,
+            tags,
+            meta,
+            source: row.source,
+            identity_key: row.identity_key,
+            tier: row.tier,
+            category: row.category,
+          }),
+        });
+
+        if (res.ok) {
+          if (row.category === 'entity') {
+            federatedEntities++;
+          } else {
+            publishedKnowledge++;
+          }
+        } else {
+          const data = await res.json().catch(() => ({}));
+          if (data.conflict) {
+            console.log(`  ${yellow('!')} Conflict for "${row.title || row.id}": ${data.conflict.suggestion || 'similar entry exists'}`);
+          }
+          if (row.category === 'entity') {
+            federatedEntities++;
+          } else {
+            publishedKnowledge++;
+          }
+        }
+      } catch (e) {
+        errors++;
+        console.error(`  ${red('✘')} Failed: ${row.title || row.id} (${e.message})`);
+      }
+
+      // Progress indicator every 10 entries
+      const processed = publishedKnowledge + federatedEntities + skippedEvents + errors;
+      if (processed % 10 === 0) {
+        process.stdout.write(`  ${dim(`${processed}/${rows.length}...`)}\r`);
+      }
+    }
+
+    console.log(`  Published: ${green(publishedKnowledge)} knowledge, ${cyan(federatedEntities)} entities`);
+    console.log(`  Skipped:   ${dim(skippedEvents)} events (private)`);
+    if (errors > 0) {
+      console.log(`  Errors:    ${red(errors)}`);
+    }
+    console.log();
+    return;
+  }
+
+  // Default: show team help
+  console.log();
+  console.log(`  ${bold('◇ context-vault team')}`);
+  console.log();
+  console.log(`  ${cyan('join <team-id>')}    Join a team vault`);
+  console.log(`  ${cyan('leave')}             Leave the current team`);
+  console.log(`  ${cyan('status')}            Show team connection status`);
+  console.log(`  ${cyan('seed')}              Publish local entries to team vault`);
+  console.log(`    ${dim('--team <id>')}      Team ID (defaults to joined team)`);
+  console.log(`    ${dim('--tags <filter>')}  Filter entries by tag (e.g. bucket:stormfors)`);
+  console.log(`    ${dim('--dry-run')}        Preview without publishing`);
+  console.log();
+}
+
 async function runRemote() {
   const subcommand = args[1];
   const { getRemoteConfig, saveRemoteConfig } = await import('@context-vault/core/config');
@@ -7280,6 +7532,9 @@ async function main() {
       break;
     case 'remote':
       await runRemote();
+      break;
+    case 'team':
+      await runTeam();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));

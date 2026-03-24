@@ -10,7 +10,7 @@ import { resolveTemporalParams } from '../temporal.js';
 import { collectLinkedEntries } from '../linking.js';
 import { ok, err, errWithHint, kindIcon, fmtDate } from '../helpers.js';
 import { isEmbedAvailable } from '@context-vault/core/embed';
-import { getRemoteClient, mergeRemoteResults } from '../remote.js';
+import { getRemoteClient, getTeamId, mergeRemoteResults, mergeWithTeamResults } from '../remote.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const STALE_DUPLICATE_DAYS = 7;
@@ -595,6 +595,27 @@ export async function handler(
       }
     } catch (e) {
       console.warn(`[context-vault] Remote search failed: ${(e as Error).message}`);
+    }
+  }
+
+  // Team vault merge: query team vault if teamId is configured
+  const teamId = getTeamId(ctx.config);
+  if (remoteClient && teamId && (hasQuery || hasFilters)) {
+    try {
+      const teamResults = await remoteClient.teamSearch(teamId, {
+        query: hasQuery ? query : undefined,
+        tags: effectiveTags.length ? effectiveTags : undefined,
+        kind: kindFilter || undefined,
+        category: scopedCategory || undefined,
+        limit: effectiveLimit,
+        since: effectiveSince || undefined,
+        until: effectiveUntil || undefined,
+      });
+      if (teamResults.length > 0) {
+        filtered = mergeWithTeamResults(filtered, teamResults as any[], effectiveLimit);
+      }
+    } catch (e) {
+      console.warn(`[context-vault] Team search failed: ${(e as Error).message}`);
     }
   }
 

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { ok, err, ensureVaultExists, kindIcon, fmtDate } from '../helpers.js';
 import { getAutoMemory } from '../auto-memory.js';
-import { getRemoteClient } from '../remote.js';
+import { getRemoteClient, getTeamId } from '../remote.js';
 import type { AutoMemoryEntry, AutoMemoryResult } from '../auto-memory.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
@@ -274,13 +274,54 @@ export async function handler(
     }
   }
 
+  // Team vault entries: include team knowledge in brief if teamId is configured
+  let teamCount = 0;
+  const teamId = getTeamId(ctx.config);
+  if (remoteClient && teamId && tokensUsed < tokenBudget) {
+    try {
+      const allSeenIds = new Set([
+        ...decisions.map((d: any) => d.id),
+        ...deduped.map((d: any) => d.id),
+        ...(lastSession ? [lastSession.id] : []),
+      ]);
+      const teamResults = await remoteClient.teamSearch(teamId, {
+        tags: effectiveTags.length ? effectiveTags : undefined,
+        limit: 10,
+        since: sinceDate,
+      });
+      const uniqueTeam = teamResults.filter((r: any) => !allSeenIds.has(r.id));
+      if (uniqueTeam.length > 0) {
+        const header = '## Team Knowledge\n';
+        const headerTokens = estimateTokens(header);
+        if (tokensUsed + headerTokens <= tokenBudget) {
+          const entryLines: string[] = [];
+          tokensUsed += headerTokens;
+          for (const entry of uniqueTeam) {
+            const line = formatEntry(entry) + ' `[team]`';
+            const lineTokens = estimateTokens(line);
+            if (tokensUsed + lineTokens > tokenBudget) break;
+            entryLines.push(line);
+            tokensUsed += lineTokens;
+            teamCount++;
+          }
+          if (entryLines.length > 0) {
+            sections.push(header + entryLines.join('\n') + '\n');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[context-vault] Team session_start failed: ${(e as Error).message}`);
+    }
+  }
+
   const totalEntries =
     (lastSession ? 1 : 0) +
     decisions.length +
     deduped.filter((_d: any) => {
       return true;
     }).length +
-    remoteCount;
+    remoteCount +
+    teamCount;
 
   if (indexWarning) {
     sections.push(indexWarning);

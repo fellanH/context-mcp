@@ -27,6 +27,7 @@ export interface RemoteSearchResult {
   recall_count: number;
   recall_sessions: number;
   last_recalled_at: string | null;
+  recall_members?: number;
 }
 
 export interface RemoteHint {
@@ -36,6 +37,24 @@ export interface RemoteHint {
   relevance: 'high' | 'medium';
   kind: string;
   tags: string[];
+}
+
+export interface TeamSearchResult extends RemoteSearchResult {
+  source: 'team';
+  recall_count: number;
+  recall_members?: number;
+}
+
+export interface PublishResult {
+  ok: boolean;
+  id?: string;
+  error?: string;
+  conflict?: {
+    existing_entry_id: string;
+    existing_author: string;
+    similarity: number;
+    suggestion: string;
+  };
 }
 
 export class RemoteClient {
@@ -99,6 +118,91 @@ export class RemoteClient {
     }
   }
 
+  async teamSearch(teamId: string, params: Record<string, unknown>): Promise<TeamSearchResult[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params.query) query.set('q', String(params.query));
+      if (Array.isArray(params.tags) && params.tags.length) query.set('tags', params.tags.join(','));
+      if (params.kind) query.set('kind', String(params.kind));
+      if (params.category) query.set('category', String(params.category));
+      if (params.limit) query.set('limit', String(params.limit));
+      if (params.since) query.set('since', String(params.since));
+      if (params.until) query.set('until', String(params.until));
+
+      const res = await this.fetch(`/api/team/${teamId}/search?${query.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json() as Record<string, unknown>;
+      const entries = Array.isArray(data.entries) ? data.entries : Array.isArray(data) ? data : [];
+      return (entries as TeamSearchResult[]).map(e => ({ ...e, source: 'team' as const }));
+    } catch {
+      return [];
+    }
+  }
+
+  async teamRecall(teamId: string, params: {
+    signal: string;
+    signal_type: string;
+    bucket?: string;
+    max_hints?: number;
+  }): Promise<RemoteHint[]> {
+    try {
+      const res = await this.fetch(`/api/team/${teamId}/search`, {
+        method: 'POST',
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) return [];
+      const data = await res.json() as Record<string, unknown>;
+      return Array.isArray(data.hints) ? data.hints : Array.isArray(data) ? data as RemoteHint[] : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async teamStatus(teamId: string): Promise<{ ok: boolean; error?: string; data?: Record<string, unknown> }> {
+    try {
+      const res = await this.fetch(`/api/team/${teamId}/status`);
+      if (res.ok) {
+        const data = await res.json() as Record<string, unknown>;
+        return { ok: true, data };
+      }
+      const text = await res.text().catch(() => '');
+      return { ok: false, error: `HTTP ${res.status}: ${text}` };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
+  async publishToTeam(params: {
+    entryId: string;
+    teamId: string;
+    visibility: string;
+    entry?: Record<string, unknown>;
+  }): Promise<PublishResult> {
+    try {
+      const res = await this.fetch('/api/vault/publish', {
+        method: 'POST',
+        body: JSON.stringify({
+          entryId: params.entryId,
+          teamId: params.teamId,
+          visibility: params.visibility,
+          ...(params.entry || {}),
+        }),
+      });
+      const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+      if (res.ok) {
+        return {
+          ok: true,
+          id: data.id as string | undefined,
+          conflict: data.conflict as PublishResult['conflict'],
+        };
+      }
+      const errorText = typeof data.error === 'string' ? data.error : `HTTP ${res.status}`;
+      return { ok: false, error: errorText, conflict: data.conflict as PublishResult['conflict'] };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
   async recall(params: {
     signal: string;
     signal_type: string;
@@ -148,6 +252,33 @@ export function getRemoteClient(config: { remote?: RemoteConfig }): RemoteClient
   return cachedClient;
 }
 
+export function getTeamId(config: { remote?: RemoteConfig }): string | null {
+  return config.remote?.teamId || null;
+}
+
+/**
+ * Apply recall-driven ranking boost to team results.
+ * Entries with higher recall_count and recall_members rank higher.
+ * Formula: score * log(1 + recall_count) * (1 + 0.1 * recall_members)
+ */
+export function applyTeamRecallBoost<T extends { score?: number; recall_count?: number; recall_members?: number }>(
+  entries: T[]
+): T[] {
+  return entries.map(e => {
+    const baseScore = (e as any).score ?? 0;
+    const recallCount = e.recall_count ?? 0;
+    const recallMembers = e.recall_members ?? 0;
+    if (recallCount === 0 && recallMembers === 0) return e;
+    const boostedScore = baseScore * Math.log(1 + recallCount) * (1 + 0.1 * recallMembers);
+    return { ...e, score: boostedScore };
+  });
+}
+
+/**
+ * Merge local, personal remote, and team results.
+ * Priority: local > personal remote > team.
+ * Team results get recall-driven ranking boost before merge.
+ */
 export function mergeRemoteResults<T extends { id: string; score?: number }>(
   localResults: T[],
   remoteResults: T[],
@@ -156,6 +287,19 @@ export function mergeRemoteResults<T extends { id: string; score?: number }>(
   const localIds = new Set(localResults.map(r => r.id));
   const uniqueRemote = remoteResults.filter(r => !localIds.has(r.id));
   const merged = [...localResults, ...uniqueRemote];
+  merged.sort((a, b) => ((b as any).score ?? 0) - ((a as any).score ?? 0));
+  return merged.slice(0, limit);
+}
+
+export function mergeWithTeamResults<T extends { id: string; score?: number; recall_count?: number; recall_members?: number }>(
+  localAndPersonal: T[],
+  teamResults: T[],
+  limit: number
+): T[] {
+  const existingIds = new Set(localAndPersonal.map(r => r.id));
+  const uniqueTeam = teamResults.filter(r => !existingIds.has(r.id));
+  const boostedTeam = applyTeamRecallBoost(uniqueTeam);
+  const merged = [...localAndPersonal, ...boostedTeam];
   merged.sort((a, b) => ((b as any).score ?? 0) - ((a as any).score ?? 0));
   return merged.slice(0, limit);
 }

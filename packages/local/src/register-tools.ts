@@ -23,6 +23,7 @@ import * as listBuckets from './tools/list-buckets.js';
 import * as ingestProject from './tools/ingest-project.js';
 import * as sessionEnd from './tools/session-end.js';
 import * as recall from './tools/recall.js';
+import * as publishToTeam from './tools/publish-to-team.js';
 
 const toolModules = [
   getContext,
@@ -38,6 +39,7 @@ const toolModules = [
   sessionEnd,
   listBuckets,
   recall,
+  publishToTeam,
 ];
 
 const TOOL_TIMEOUT_MS = 120_000;

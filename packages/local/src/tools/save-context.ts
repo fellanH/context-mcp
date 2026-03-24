@@ -12,7 +12,7 @@ import { ok, err, errWithHint, ensureVaultExists, ensureValidKind, kindIcon } fr
 import { maybeShowFeedbackPrompt } from '../telemetry.js';
 import { validateRelatedTo } from '../linking.js';
 import { getAutoMemory, findAutoMemoryOverlaps } from '../auto-memory.js';
-import { getRemoteClient } from '../remote.js';
+import { getRemoteClient, getTeamId } from '../remote.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 import {
   MAX_BODY_LENGTH,
@@ -388,6 +388,12 @@ export const inputSchema = {
     .describe(
       'Whether to index this entry for search (generate embeddings + FTS). Default: auto-determined by indexing config. Set to false to store file + metadata only, skipping embedding generation. Set to true to force indexing regardless of config rules.'
     ),
+  visibility: z
+    .enum(['personal', 'team'])
+    .optional()
+    .describe(
+      'Where to save: "personal" (default) saves to local + personal remote. "team" publishes to the team vault instead via POST /api/vault/publish. Requires teamId in remote config or a prior `context-vault team join`.'
+    ),
 };
 
 export async function handler(
@@ -411,6 +417,7 @@ export async function handler(
     conflict_resolution,
     encoding_context,
     indexed,
+    visibility,
   }: Record<string, any>,
   ctx: LocalCtx,
   { ensureIndexed }: SharedCtx
@@ -773,7 +780,35 @@ export async function handler(
 
   // Remote sync: fire-and-forget POST to hosted API
   const remoteClient = getRemoteClient(config);
-  if (remoteClient) {
+  if (visibility === 'team') {
+    const effectiveTeamId = getTeamId(config);
+    if (!remoteClient) {
+      console.warn('[context-vault] Team publish skipped: remote not configured');
+    } else if (!effectiveTeamId) {
+      console.warn('[context-vault] Team publish skipped: no teamId configured');
+    } else if (category === 'event') {
+      console.warn('[context-vault] Team publish skipped: events are private');
+    } else {
+      remoteClient.publishToTeam({
+        entryId: entry.id,
+        teamId: effectiveTeamId,
+        visibility: 'team',
+        entry: {
+          kind: normalizedKind,
+          title,
+          body,
+          tags,
+          meta: finalMeta,
+          source,
+          identity_key,
+          tier: effectiveTier,
+          category,
+        },
+      }).catch((e: Error) => {
+        console.warn(`[context-vault] Team publish failed: ${e.message}`);
+      });
+    }
+  } else if (remoteClient) {
     remoteClient.saveEntry({
       id: entry.id,
       kind: normalizedKind,

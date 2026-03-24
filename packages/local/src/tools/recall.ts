@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ok } from '../helpers.js';
 import { isEmbedAvailable } from '@context-vault/core/embed';
 import { getAutoMemory, findAutoMemoryOverlaps } from '../auto-memory.js';
-import { getRemoteClient } from '../remote.js';
+import { getRemoteClient, getTeamId } from '../remote.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const SEMANTIC_SIMILARITY_THRESHOLD = 0.6;
@@ -198,6 +198,32 @@ export async function handler(
       }
     } catch (e) {
       console.warn(`[context-vault] Remote recall failed: ${(e as Error).message}`);
+    }
+  }
+
+  // Team vault recall: include team results if teamId is configured
+  const teamId = getTeamId(ctx.config);
+  if (remoteClient && teamId && hints.length < limit) {
+    try {
+      const teamHints = await remoteClient.teamRecall(teamId, {
+        signal,
+        signal_type,
+        bucket,
+        max_hints: limit - hints.length,
+      });
+      const existingIds = new Set(hints.map(h => h.id));
+      for (const th of teamHints) {
+        if (hints.length >= limit) break;
+        if (existingIds.has(th.id)) continue;
+        if (sessionSet && !bypassDedup && sessionSet.has(th.id)) {
+          suppressed++;
+          continue;
+        }
+        hints.push({ ...th, tags: [...(th.tags || []), '[team]'] });
+        if (sessionSet) sessionSet.add(th.id);
+      }
+    } catch (e) {
+      console.warn(`[context-vault] Team recall failed: ${(e as Error).message}`);
     }
   }
 

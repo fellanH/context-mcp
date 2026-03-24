@@ -19,6 +19,7 @@ export interface RemoteConfig {
   enabled: boolean;
   url: string;
   apiKey: string;
+  teamId?: string;
 }
 
 export interface VaultConfig {

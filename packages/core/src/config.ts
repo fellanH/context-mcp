@@ -168,6 +168,7 @@ export function resolveConfig(): VaultConfig {
           enabled: r.enabled === true,
           url: typeof r.url === 'string' ? r.url : 'https://api.context-vault.com',
           apiKey: typeof r.apiKey === 'string' ? r.apiKey : '',
+          ...(typeof r.teamId === 'string' && r.teamId ? { teamId: r.teamId } : {}),
         };
       }
       config.resolvedFrom = 'config file';
@@ -241,6 +242,7 @@ export function getRemoteConfig(dataDir?: string): RemoteConfig | null {
       enabled: fc.remote.enabled === true,
       url: typeof fc.remote.url === 'string' ? fc.remote.url : 'https://api.context-vault.com',
       apiKey: typeof fc.remote.apiKey === 'string' ? fc.remote.apiKey : '',
+      ...(typeof fc.remote.teamId === 'string' && fc.remote.teamId ? { teamId: fc.remote.teamId } : {}),
     };
   } catch {
     return null;
