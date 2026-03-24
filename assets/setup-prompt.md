@@ -23,7 +23,16 @@ I just installed context-vault as an MCP server. Help me set it up properly for 
 
 5. Scan my current workspace for projects (look for package.json, .git, Cargo.toml, pyproject.toml, etc.). For each project, propose a vault bucket name and create it if I approve.
 
-6. Show me a summary of everything you configured.
+6. Check for Claude Code auto-memory integration:
+   - Look for auto-memory files at ~/.claude/projects/-<project-key>/memory/MEMORY.md
+     (project key = absolute cwd path with / replaced by -, leading - kept)
+   - If found, report stats: entry count, lines used out of 200 cap
+   - Offer to index existing memories into the vault as searchable copies
+     (kind: "reference", tags: ["auto-memory-indexed", "bucket:<project>"])
+   - This does NOT modify auto-memory files, only creates vault copies
+   - Mention the /vault overflow command for future overflow management
+
+7. Show me a summary of everything you configured.
 
 Important:
 - Never modify my existing rules files. Only create a new dedicated context-vault rules file or append with clear delimiter markers.
@@ -41,6 +50,7 @@ After running this prompt, your AI agent will:
 - **Detect** your existing rules and avoid conflicts
 - **Install** a rules file that teaches the agent when to save knowledge automatically
 - **Configure** project-specific vault buckets for organized storage
+- **Detect** Claude Code auto-memory and offer to index entries into the vault
 
 The rules file is a small (~50 lines) markdown file that guides your agent on:
 - When to save (after solving non-obvious bugs, finding undocumented behavior, etc.)
