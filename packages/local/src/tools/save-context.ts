@@ -11,6 +11,7 @@ import { shouldIndex } from '@context-vault/core/indexing';
 import { ok, err, errWithHint, ensureVaultExists, ensureValidKind, kindIcon } from '../helpers.js';
 import { maybeShowFeedbackPrompt } from '../telemetry.js';
 import { validateRelatedTo } from '../linking.js';
+import { getAutoMemory, findAutoMemoryOverlaps } from '../auto-memory.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 import {
   MAX_BODY_LENGTH,
@@ -821,6 +822,24 @@ export async function handler(
     } else {
       parts.push(formatSimilarWarning(similarEntries));
     }
+  }
+
+  // Auto-memory overlap detection (advisory)
+  try {
+    const autoMemory = getAutoMemory();
+    if (autoMemory.detected && autoMemory.entries.length > 0) {
+      const searchText = [title, body].filter(Boolean).join(' ');
+      const overlaps = findAutoMemoryOverlaps(autoMemory, searchText, 0.3);
+      if (overlaps.length > 0) {
+        const top = overlaps[0];
+        parts.push('');
+        parts.push(`### Auto-Memory Overlap`);
+        parts.push(`Similar content found in auto-memory: **${top.name}** (\`${top.file}\`, ${top.type} type, ${(top.similarity * 100).toFixed(0)}% overlap)`);
+        parts.push(`_This knowledge already exists in your auto-memory. Consider whether vault storage adds cross-project value._`);
+      }
+    }
+  } catch {
+    // Non-fatal: auto-memory overlap check should not block save
   }
 
   const criticalLimit = config.thresholds?.totalEntries?.critical;

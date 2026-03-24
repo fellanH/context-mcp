@@ -4,6 +4,8 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { ok, err, ensureVaultExists, kindIcon, fmtDate } from '../helpers.js';
+import { getAutoMemory } from '../auto-memory.js';
+import type { AutoMemoryEntry, AutoMemoryResult } from '../auto-memory.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const DEFAULT_MAX_TOKENS = 4000;
@@ -11,99 +13,6 @@ const RECENT_DAYS = 7;
 const MAX_BODY_PER_ENTRY = 400;
 const PRIORITY_KINDS = ['decision', 'insight', 'pattern'];
 const SESSION_SUMMARY_KIND = 'session';
-
-interface AutoMemoryEntry {
-  file: string;
-  name: string;
-  description: string;
-  type: string;
-  body: string;
-}
-
-interface AutoMemoryResult {
-  detected: boolean;
-  path: string | null;
-  entries: AutoMemoryEntry[];
-  linesUsed: number;
-}
-
-/**
- * Detect the Claude Code auto-memory directory for the current project.
- * Convention: ~/.claude/projects/-<cwd-with-slashes-replaced-by-dashes>/memory/
- */
-function detectAutoMemoryPath(): string | null {
-  try {
-    const cwd = process.cwd();
-    // Claude Code project key: absolute path with / replaced by -, leading - kept
-    const projectKey = cwd.replace(/\//g, '-');
-    const memoryDir = join(homedir(), '.claude', 'projects', projectKey, 'memory');
-    const memoryIndex = join(memoryDir, 'MEMORY.md');
-    if (existsSync(memoryIndex)) return memoryDir;
-  } catch {}
-  return null;
-}
-
-/**
- * Parse YAML-ish frontmatter from a memory file.
- * Returns { name, description, type } and the body after frontmatter.
- */
-function parseMemoryFile(content: string): { name: string; description: string; type: string; body: string } {
-  const result = { name: '', description: '', type: '', body: content };
-  const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
-  if (!fmMatch) return result;
-
-  const frontmatter = fmMatch[1];
-  result.body = fmMatch[2].trim();
-
-  for (const line of frontmatter.split('\n')) {
-    const kv = line.match(/^(\w+)\s*:\s*(.+)$/);
-    if (!kv) continue;
-    const [, key, val] = kv;
-    if (key === 'name') result.name = val.trim();
-    else if (key === 'description') result.description = val.trim();
-    else if (key === 'type') result.type = val.trim();
-  }
-  return result;
-}
-
-/**
- * Read and parse all auto-memory entries from a memory directory.
- */
-function readAutoMemory(memoryDir: string): AutoMemoryResult {
-  const indexPath = join(memoryDir, 'MEMORY.md');
-  let linesUsed = 0;
-
-  try {
-    const indexContent = readFileSync(indexPath, 'utf-8');
-    linesUsed = indexContent.split('\n').length;
-  } catch {
-    return { detected: true, path: memoryDir, entries: [], linesUsed: 0 };
-  }
-
-  const entries: AutoMemoryEntry[] = [];
-
-  try {
-    const files = readdirSync(memoryDir).filter(
-      (f) => f.endsWith('.md') && f !== 'MEMORY.md'
-    );
-
-    for (const file of files) {
-      try {
-        const content = readFileSync(join(memoryDir, file), 'utf-8');
-        const parsed = parseMemoryFile(content);
-        entries.push({
-          file,
-          name: parsed.name || file.replace('.md', ''),
-          description: parsed.description,
-          type: parsed.type,
-          body: parsed.body,
-        });
-      } catch {}
-    }
-  } catch {}
-
-  return { detected: true, path: memoryDir, entries, linesUsed };
-}
 
 /**
  * Build a search context string from auto-memory entries.
@@ -241,12 +150,7 @@ export async function handler(
   const sinceDate = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString();
 
   // Auto-detect Claude Code auto-memory (explicit path overrides auto-detection)
-  const resolvedMemoryPath = auto_memory_path?.trim()
-    ? (existsSync(join(auto_memory_path.trim(), 'MEMORY.md')) ? auto_memory_path.trim() : null)
-    : detectAutoMemoryPath();
-  const autoMemory: AutoMemoryResult = resolvedMemoryPath
-    ? readAutoMemory(resolvedMemoryPath)
-    : { detected: false, path: null, entries: [], linesUsed: 0 };
+  const autoMemory: AutoMemoryResult = getAutoMemory(auto_memory_path);
   const autoMemoryContext = buildAutoMemoryContext(autoMemory.entries);
   const topicsExtracted = autoMemory.entries.length > 0
     ? extractKeywords(autoMemoryContext).slice(0, 20)

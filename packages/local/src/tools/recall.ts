@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ok } from '../helpers.js';
 import { isEmbedAvailable } from '@context-vault/core/embed';
+import { getAutoMemory, findAutoMemoryOverlaps } from '../auto-memory.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const SEMANTIC_SIMILARITY_THRESHOLD = 0.6;
@@ -265,10 +266,33 @@ export async function handler(
     recordCoRetrieval(ctx, hints.map((h) => h.id));
   }
 
+  // Check for auto-memory overlap to avoid redundant surfacing
+  let autoMemoryOverlaps: Array<{ hint_id: string; memory_file: string; memory_name: string }> = [];
+  try {
+    const autoMemory = getAutoMemory();
+    if (autoMemory.detected && autoMemory.entries.length > 0) {
+      for (const h of hints) {
+        const searchText = [h.title, h.summary].filter(Boolean).join(' ');
+        const overlaps = findAutoMemoryOverlaps(autoMemory, searchText, 0.3);
+        if (overlaps.length > 0) {
+          autoMemoryOverlaps.push({
+            hint_id: h.id,
+            memory_file: overlaps[0].file,
+            memory_name: overlaps[0].name,
+          });
+        }
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
   // Format output
   const lines = [`[Vault: ${hints.length} ${hints.length === 1 ? 'entry' : 'entries'} may be relevant]`];
   for (const h of hints) {
-    lines.push(`- "${h.title}" (${h.kind}, ${h.relevance})`);
+    const overlap = autoMemoryOverlaps.find(o => o.hint_id === h.id);
+    const overlapNote = overlap ? ` [also in auto-memory: ${overlap.memory_name}]` : '';
+    lines.push(`- "${h.title}" (${h.kind}, ${h.relevance})${overlapNote}`);
   }
   lines.push('Use get_context to retrieve full details.');
 
@@ -279,6 +303,7 @@ export async function handler(
     signal_keywords: keywords,
     suppressed,
     hints,
+    auto_memory_overlaps: autoMemoryOverlaps.length > 0 ? autoMemoryOverlaps : undefined,
   };
   return result;
 }

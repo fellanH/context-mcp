@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { gatherVaultStatus, computeGrowthWarnings } from '../status.js';
 import { gatherRecallSummary } from '../stats/recall.js';
 import { errorLogPath, errorLogCount } from '../error-log.js';
+import { getAutoMemory } from '../auto-memory.js';
 import { ok, err, kindIcon } from '../helpers.js';
 import type { LocalCtx, ToolResult } from '../types.js';
 
@@ -177,6 +178,24 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
       } else if (learningRate.sessions30d > 0 && learningRate.savesPerSession === '0.0') {
         lines.push('');
         lines.push('_Very low save rate. Consider using `session_end` to capture learnings._');
+      }
+    }
+
+    // Auto-memory detection
+    const autoMemory = getAutoMemory();
+    if (autoMemory.detected) {
+      const LINES_CAP = 200;
+      const overflowRisk = autoMemory.linesUsed > 160;
+      lines.push(``, `### Auto-Memory`);
+      lines.push(`| | |`);
+      lines.push(`|---|---|`);
+      lines.push(`| **Path** | ${autoMemory.path} |`);
+      lines.push(`| **Entries** | ${autoMemory.entries.length} |`);
+      lines.push(`| **Lines** | ${autoMemory.linesUsed}/${LINES_CAP} |`);
+      if (overflowRisk) {
+        lines.push(`| **Status** | ⚠ Approaching limit. Run \`/vault overflow\` to graduate entries. |`);
+      } else {
+        lines.push(`| **Status** | ✓ Healthy |`);
       }
     }
 
