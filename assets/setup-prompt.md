@@ -32,7 +32,12 @@ I just installed context-vault as an MCP server. Help me set it up properly for 
    - This does NOT modify auto-memory files, only creates vault copies
    - Mention the /vault overflow command for future overflow management
 
-7. Show me a summary of everything you configured.
+7. Check for team vault configuration:
+   - Look for remote.teamId in the vault config (via context_status())
+   - If a team is configured, confirm the agent rules include team sharing heuristics
+   - If no team is configured, mention that teams can be set up later via the app at https://app.context-vault.com
+
+8. Show me a summary of everything you configured.
 
 Important:
 - Never modify my existing rules files. Only create a new dedicated context-vault rules file or append with clear delimiter markers.
