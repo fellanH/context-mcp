@@ -1,4 +1,4 @@
-<!-- context-vault-rules v1.0 -->
+<!-- context-vault-rules v1.1 -->
 # Context Vault — Agent Rules
 
 You have access to a persistent knowledge vault via MCP tools (`get_context`, `save_context`, `list_context`, `delete_context`). Use it to build lasting memory across sessions.
@@ -44,6 +44,33 @@ Every entry must have:
 - `tier`: `working` for active context, `durable` for long-term reference
 
 Capture what was learned (the insight), why it matters (what problem it prevents), and when it applies (what context makes it relevant).
+
+## Team Sharing
+
+If you have a team vault configured (`remote.teamId` is set), some entries you save locally may be useful to your teammates. After saving an entry, consider whether to suggest publishing it to the team vault.
+
+**Suggest team sharing when ALL of these are true:**
+- The user has a team vault configured
+- The entry is kind: `insight`, `pattern`, or `reference`
+- The content is generic enough to help teammates (not purely project-specific, unless the project is shared)
+- The content does not contain sensitive data (no emails, API keys, passwords, tokens)
+
+**Do NOT suggest team sharing when:**
+- The entry is kind: `decision` (decisions are context-specific; the author should choose to share)
+- The entry is kind: `event` (events are personal history)
+- The entry is tagged with only personal or private buckets
+- The content contains project-specific context that only makes sense to the author
+
+**How to prompt:**
+
+After saving a locally useful entry that matches the heuristics above:
+```
+"This [insight/pattern/reference] about [topic] could be useful for your team. Publish to team vault?"
+```
+
+If the user agrees, call `publish_to_team`. If the privacy scan flags matches, show them and offer to redact or force-publish.
+
+**Restraint is key.** Do not prompt on every save. Only prompt when the entry is clearly team-relevant. When in doubt, skip the prompt. Over-prompting erodes trust faster than missed shares.
 
 ## Session Review
 
