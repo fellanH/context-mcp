@@ -414,6 +414,8 @@ ${bold('Commands:')}
   ${cyan('restore')} <id>               Restore an archived entry back into the vault
   ${cyan('prune')}                      Remove expired entries (use --dry-run to preview)
   ${cyan('stats')} recall|co-retrieval  Measure recall ratio and co-retrieval graph
+  ${cyan('remote')} setup|status|disable  Connect to hosted vault (cloud sync)
+  ${cyan('team')} join|leave|status|browse  Join or manage a team vault
   ${cyan('update')}                     Check for and install updates
   ${cyan('uninstall')}                  Remove MCP configs and optionally data
 `);
@@ -2783,8 +2785,8 @@ async function runStatus() {
       const filled = maxCount > 0 ? Math.round((c / maxCount) * BAR_WIDTH) : 0;
       const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled);
       const countStr = String(c).padStart(4);
-      const IRREGULAR_PLURALS = { activity: 'activities', inbox: 'inboxes', index: 'indexes', match: 'matches' };
-      const plural = IRREGULAR_PLURALS[kind] || (kind.endsWith('s') ? kind : kind + 's');
+      const IRREGULAR_PLURALS = { activity: 'activities', inbox: 'inboxes', index: 'indexes', match: 'matches', entity: 'entities', summary: 'summaries' };
+      const plural = IRREGULAR_PLURALS[kind] || (kind.endsWith('y') ? kind.slice(0, -1) + 'ies' : kind.endsWith('s') || kind.endsWith('x') || kind.endsWith('ch') || kind.endsWith('sh') ? kind + 'es' : kind + 's');
       console.log(`    ${dim(bar)} ${countStr} ${plural}`);
     }
   } else {
@@ -4390,6 +4392,35 @@ async function runPostToolCall() {
 }
 
 async function runSave() {
+  if (flags.has('--help')) {
+    console.log(`
+  ${bold('context-vault save')}
+
+  Save an entry to the vault from CLI.
+
+${bold('Required:')}
+  --kind <kind>        Entry kind (insight, decision, pattern, reference, event)
+  --title <title>      Entry title
+
+${bold('Content')} (one of):
+  --body <text>        Inline body text
+  --file <path>        Read body from a file
+  (stdin)              Pipe content via stdin
+
+${bold('Optional:')}
+  --tags <a,b,c>       Comma-separated tags
+  --tier <tier>        working (default) or durable
+  --source <source>    Source label (default: cli)
+  --identity-key <key> Identity key (for entity kinds)
+  --meta <json>        Additional metadata as JSON
+
+${bold('Examples:')}
+  context-vault save --kind insight --title "Express 5 gotcha" --body "body parser changed"
+  echo "content" | context-vault save --kind reference --title "API notes"
+`);
+    return;
+  }
+
   const kind = getFlag('--kind');
   const title = getFlag('--title');
   const tags = getFlag('--tags');
@@ -4487,6 +4518,30 @@ async function runSave() {
 }
 
 async function runSearch() {
+  if (flags.has('--help')) {
+    console.log(`
+  ${bold('context-vault search')} <query> [options]
+
+  Search vault entries from CLI using hybrid semantic + full-text search.
+
+${bold('Usage:')}
+  context-vault search "express middleware"
+  context-vault search --kind insight --tags "bucket:myproject"
+  context-vault search "auth" --limit 20 --format json
+
+${bold('Options:')}
+  --kind <kind>        Filter by kind (insight, decision, pattern, reference, event)
+  --tags <a,b,c>       Filter by tags (comma-separated)
+  --limit <n>          Max results (default: 10)
+  --sort <mode>        Sort by: relevance (default), recent
+  --format <fmt>       Output format: plain (default), json
+  --scope <scope>      Search scope: hot (default), events, all
+  --full               Show full entry body (not truncated)
+  --query <text>       Explicit query (alternative to positional args)
+`);
+    return;
+  }
+
   const kind = getFlag('--kind');
   const tagsStr = getFlag('--tags');
   const limit = parseInt(getFlag('--limit') || '10', 10);
@@ -7424,8 +7479,13 @@ async function main() {
   }
 
   if (flags.has('--help') || command === 'help') {
-    showHelp(flags.has('--all'));
-    return;
+    // Commands with their own --help handling: delegate to them
+    const commandsWithHelp = new Set(['save', 'search', 'rules', 'hooks', 'daemon', 'team', 'remote']);
+    if (!command || command === 'help' || !commandsWithHelp.has(command)) {
+      showHelp(flags.has('--all'));
+      return;
+    }
+    // Fall through to command switch for commands with built-in --help
   }
 
   if (!command) {
