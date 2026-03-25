@@ -414,7 +414,7 @@ ${bold('Commands:')}
   ${cyan('restore')} <id>               Restore an archived entry back into the vault
   ${cyan('prune')}                      Remove expired entries (use --dry-run to preview)
   ${cyan('stats')} recall|co-retrieval  Measure recall ratio and co-retrieval graph
-  ${cyan('remote')} setup|status|disable  Connect to hosted vault (cloud sync)
+  ${cyan('remote')} setup|status|sync|pull  Connect to hosted vault (cloud sync)
   ${cyan('team')} join|leave|status|browse  Join or manage a team vault
   ${cyan('update')}                     Check for and install updates
   ${cyan('uninstall')}                  Remove MCP configs and optionally data
@@ -7463,13 +7463,442 @@ async function runRemote() {
     return;
   }
 
+  if (subcommand === 'sync') {
+    await runRemoteSync(getRemoteConfig, dataDir);
+    return;
+  }
+
+  if (subcommand === 'pull') {
+    await runRemotePull(getRemoteConfig, dataDir);
+    return;
+  }
+
   console.log();
   console.log(`  ${bold('◇ context-vault remote')}`);
   console.log();
   console.log(`  ${cyan('setup')}       Connect to a hosted vault API`);
   console.log(`  ${cyan('status')}      Show remote config and test connection`);
+  console.log(`  ${cyan('sync')}  ${dim('[--full] [--dry-run]')}  Sync local vault to hosted`);
+  console.log(`  ${cyan('pull')}        Pull remote entries to local`);
   console.log(`  ${cyan('disconnect')}  Disable remote sync (preserves API key)`);
   console.log();
+}
+
+// ---------------------------------------------------------------------------
+// remote sync — push local vault to hosted
+// ---------------------------------------------------------------------------
+async function runRemoteSync(getRemoteConfig, dataDir) {
+  const remote = getRemoteConfig(dataDir);
+  if (!remote || !remote.enabled || !remote.apiKey) {
+    console.error(`\n  ${red('✘')} Remote is not configured. Run ${cyan('context-vault remote setup')} first.\n`);
+    process.exit(1);
+  }
+
+  const isFullSync = flags.has('--full');
+  const { createHash } = await import('node:crypto');
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const config = resolveConfig();
+
+  let DatabaseSync;
+  try {
+    DatabaseSync = (await import('node:sqlite')).DatabaseSync;
+  } catch {
+    console.error(`\n  ${red('✘')} Node.js SQLite not available. Requires Node >= 22.5.\n`);
+    process.exit(1);
+  }
+
+  const db = new DatabaseSync(config.dbPath, { open: true });
+  const apiUrl = remote.url.replace(/\/$/, '');
+
+  function contentHash(entry) {
+    const data = (entry.title || '') + (entry.body || '') + JSON.stringify(entry.tags || []) + JSON.stringify(entry.meta || {});
+    return createHash('sha256').update(data).digest('hex');
+  }
+
+  console.log();
+  console.log(`  ${bold('◇ Remote Sync')}`);
+  console.log();
+
+  // Read all local entries
+  const localRows = db.prepare(
+    'SELECT id, kind, category, title, body, tags, meta, source, identity_key, tier, expires_at, created_at, updated_at FROM vault WHERE superseded_by IS NULL'
+  ).all();
+  db.close();
+
+  const localEntries = localRows.map((row) => ({
+    ...row,
+    tags: typeof row.tags === 'string' ? JSON.parse(row.tags) : (row.tags || []),
+    meta: typeof row.meta === 'string' ? JSON.parse(row.meta) : (row.meta || {}),
+  }));
+
+  console.log(`  Local entries: ${localEntries.length}`);
+
+  let toUpload;
+
+  if (isFullSync) {
+    console.log(`  Mode: ${cyan('full')} (uploading all entries)`);
+    toUpload = localEntries;
+  } else {
+    // Fetch remote manifest
+    console.log(`  Fetching remote manifest...`);
+    let manifest;
+    try {
+      const res = await fetch(`${apiUrl}/api/vault/manifest`, {
+        headers: { 'Authorization': `Bearer ${remote.apiKey}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        console.error(`  ${red('✘')} Manifest fetch failed: HTTP ${res.status}`);
+        if (text) console.error(`  ${dim(text.slice(0, 200))}`);
+        process.exit(1);
+      }
+      manifest = await res.json();
+    } catch (e) {
+      console.error(`  ${red('✘')} Manifest fetch failed: ${e.message}`);
+      process.exit(1);
+    }
+
+    const remoteEntries = manifest.entries || [];
+    const remoteMap = new Map();
+    for (const entry of remoteEntries) {
+      remoteMap.set(entry.id, entry);
+    }
+
+    // If remote manifest has content_hash, do a hash diff. Otherwise fall back to full sync.
+    const hasContentHash = remoteEntries.length > 0 && remoteEntries[0].content_hash;
+
+    if (!hasContentHash && remoteEntries.length > 0) {
+      console.log(`  ${yellow('!')} Remote manifest lacks content_hash. Falling back to full upload.`);
+      toUpload = localEntries;
+    } else {
+      toUpload = [];
+      let unchanged = 0;
+      for (const entry of localEntries) {
+        const remoteEntry = remoteMap.get(entry.id);
+        if (!remoteEntry) {
+          toUpload.push(entry);
+        } else if (remoteEntry.content_hash !== contentHash(entry)) {
+          toUpload.push(entry);
+        } else {
+          unchanged++;
+        }
+      }
+      console.log(`  Unchanged: ${unchanged}`);
+    }
+  }
+
+  const newCount = toUpload.length;
+  console.log(`  To upload: ${newCount}`);
+
+  if (newCount === 0) {
+    console.log(`\n  ${green('✓')} Everything is in sync.\n`);
+    await drainOfflineQueue(apiUrl, remote.apiKey);
+    return;
+  }
+
+  if (isDryRun) {
+    console.log();
+    for (const entry of toUpload.slice(0, 20)) {
+      console.log(`  ${dim(entry.id)} ${entry.kind || '?'} ${entry.title || dim('(untitled)')}`);
+    }
+    if (toUpload.length > 20) {
+      console.log(`  ${dim(`... and ${toUpload.length - 20} more`)}`);
+    }
+    console.log(`\n  ${dim('Dry run. No changes made.')}\n`);
+    return;
+  }
+
+  // Stream as NDJSON
+  console.log(`  Uploading...`);
+  const ndjsonBody = toUpload.map((entry) => JSON.stringify(entry)).join('\n') + '\n';
+
+  let jobId, entriesUploaded;
+  try {
+    const res = await fetch(`${apiUrl}/api/vault/import/stream`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${remote.apiKey}`,
+        'Content-Type': 'application/x-ndjson',
+      },
+      body: ndjsonBody,
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.error(`  ${red('✘')} Upload failed: HTTP ${res.status}`);
+      if (text) console.error(`  ${dim(text.slice(0, 200))}`);
+      process.exit(1);
+    }
+    const data = await res.json();
+    jobId = data.job_id;
+    entriesUploaded = data.entries_uploaded || newCount;
+  } catch (e) {
+    console.error(`  ${red('✘')} Upload failed: ${e.message}`);
+    process.exit(1);
+  }
+
+  console.log(`  ${green('✓')} Uploaded ${entriesUploaded} entries.`);
+
+  if (!jobId) {
+    console.log(`\n  ${green('✓')} Sync complete (no job tracking available).\n`);
+    await drainOfflineQueue(apiUrl, remote.apiKey);
+    return;
+  }
+
+  // Poll job status until embeddings complete
+  console.log(`  Job: ${dim(jobId)}`);
+  console.log(`  Waiting for embeddings...`);
+
+  let attempts = 0;
+  const maxAttempts = 300; // 10 min max
+  while (attempts < maxAttempts) {
+    await new Promise((r) => setTimeout(r, 2000));
+    attempts++;
+    try {
+      const res = await fetch(`${apiUrl}/api/vault/jobs/${jobId}`, {
+        headers: { 'Authorization': `Bearer ${remote.apiKey}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.log(`  ${yellow('!')} Job not found (server may not support job tracking yet).`);
+          break;
+        }
+        continue;
+      }
+      const job = await res.json();
+      const embedded = job.entries_embedded || 0;
+      const total = job.total_entries || entriesUploaded;
+      const pct = total > 0 ? Math.round((embedded / total) * 100) : 0;
+      process.stdout.write(`\r  Embeddings: ${embedded}/${total} (${pct}%)   `);
+
+      if (job.status === 'complete') {
+        process.stdout.write('\n');
+        console.log(`  ${green('✓')} Embeddings complete.`);
+        break;
+      }
+      if (job.status === 'failed') {
+        process.stdout.write('\n');
+        console.error(`  ${red('✘')} Embedding job failed.`);
+        if (job.errors) console.error(`  ${dim(JSON.stringify(job.errors).slice(0, 300))}`);
+        break;
+      }
+    } catch {
+      // Transient error, keep polling
+    }
+  }
+
+  if (attempts >= maxAttempts) {
+    console.log(`\n  ${yellow('!')} Timed out waiting for embeddings. They will complete in the background.`);
+  }
+
+  console.log(`\n  ${green('✓')} Synced ${entriesUploaded} entries.\n`);
+  await drainOfflineQueue(apiUrl, remote.apiKey);
+}
+
+// ---------------------------------------------------------------------------
+// remote pull — fetch remote entries to local
+// ---------------------------------------------------------------------------
+async function runRemotePull(getRemoteConfig, dataDir) {
+  const remote = getRemoteConfig(dataDir);
+  if (!remote || !remote.enabled || !remote.apiKey) {
+    console.error(`\n  ${red('✘')} Remote is not configured. Run ${cyan('context-vault remote setup')} first.\n`);
+    process.exit(1);
+  }
+
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const config = resolveConfig();
+
+  let DatabaseSync;
+  try {
+    DatabaseSync = (await import('node:sqlite')).DatabaseSync;
+  } catch {
+    console.error(`\n  ${red('✘')} Node.js SQLite not available. Requires Node >= 22.5.\n`);
+    process.exit(1);
+  }
+
+  const db = new DatabaseSync(config.dbPath, { open: true });
+  const apiUrl = remote.url.replace(/\/$/, '');
+
+  console.log();
+  console.log(`  ${bold('◇ Remote Pull')}`);
+  console.log();
+
+  // Fetch remote manifest
+  console.log(`  Fetching remote manifest...`);
+  let manifest;
+  try {
+    const res = await fetch(`${apiUrl}/api/vault/manifest`, {
+      headers: { 'Authorization': `Bearer ${remote.apiKey}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.error(`  ${red('✘')} Manifest fetch failed: HTTP ${res.status}`);
+      if (text) console.error(`  ${dim(text.slice(0, 200))}`);
+      db.close();
+      process.exit(1);
+    }
+    manifest = await res.json();
+  } catch (e) {
+    console.error(`  ${red('✘')} Manifest fetch failed: ${e.message}`);
+    db.close();
+    process.exit(1);
+  }
+
+  const remoteEntries = manifest.entries || [];
+  console.log(`  Remote entries: ${remoteEntries.length}`);
+
+  // Build local manifest
+  const localRows = db.prepare('SELECT id, updated_at FROM vault').all();
+  const localMap = new Map();
+  for (const row of localRows) {
+    localMap.set(row.id, row.updated_at);
+  }
+
+  // Diff: remote entries not in local, or remote.updated_at > local.updated_at
+  const toPull = [];
+  for (const entry of remoteEntries) {
+    const localUpdated = localMap.get(entry.id);
+    if (!localUpdated) {
+      toPull.push(entry.id);
+    } else if (entry.updated_at && entry.updated_at > localUpdated) {
+      toPull.push(entry.id);
+    }
+  }
+
+  console.log(`  To pull: ${toPull.length}`);
+
+  if (toPull.length === 0) {
+    console.log(`\n  ${green('✓')} Local vault is up to date.\n`);
+    db.close();
+    await drainOfflineQueue(apiUrl, remote.apiKey);
+    return;
+  }
+
+  if (isDryRun) {
+    for (const id of toPull.slice(0, 20)) {
+      const remoteEntry = remoteEntries.find((e) => e.id === id);
+      console.log(`  ${dim(id)} ${remoteEntry?.kind || '?'} ${remoteEntry?.title || dim('(untitled)')}`);
+    }
+    if (toPull.length > 20) {
+      console.log(`  ${dim(`... and ${toPull.length - 20} more`)}`);
+    }
+    console.log(`\n  ${dim('Dry run. No changes made.')}\n`);
+    db.close();
+    return;
+  }
+
+  // Batch fetch in groups of 100
+  let pulled = 0;
+
+  // Ensure vault table has the columns we need for INSERT OR REPLACE
+  const insertStmt = db.prepare(`
+    INSERT OR REPLACE INTO vault (id, kind, category, title, body, tags, meta, source, identity_key, tier, expires_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (let i = 0; i < toPull.length; i += 100) {
+    const batch = toPull.slice(i, i + 100);
+    const idsParam = batch.join(',');
+    try {
+      const res = await fetch(`${apiUrl}/api/vault/entries?ids=${encodeURIComponent(idsParam)}`, {
+        headers: { 'Authorization': `Bearer ${remote.apiKey}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) {
+        console.error(`  ${red('✘')} Batch fetch failed: HTTP ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      const entries = data.entries || data;
+      for (const entry of (Array.isArray(entries) ? entries : [])) {
+        const tags = typeof entry.tags === 'string' ? entry.tags : JSON.stringify(entry.tags || []);
+        const meta = typeof entry.meta === 'string' ? entry.meta : JSON.stringify(entry.meta || {});
+        insertStmt.run(
+          entry.id,
+          entry.kind || null,
+          entry.category || 'knowledge',
+          entry.title || null,
+          entry.body || '',
+          tags,
+          meta,
+          entry.source || null,
+          entry.identity_key || null,
+          entry.tier || 'working',
+          entry.expires_at || null,
+          entry.created_at || new Date().toISOString(),
+          entry.updated_at || new Date().toISOString()
+        );
+        pulled++;
+      }
+    } catch (e) {
+      console.error(`  ${yellow('!')} Batch fetch error: ${e.message}`);
+    }
+    process.stdout.write(`\r  Progress: ${Math.min(i + 100, toPull.length)}/${toPull.length}   `);
+  }
+
+  db.close();
+  process.stdout.write('\n');
+  console.log(`\n  ${green('✓')} Pulled ${pulled} entries from remote.\n`);
+  await drainOfflineQueue(apiUrl, remote.apiKey);
+}
+
+// ---------------------------------------------------------------------------
+// Offline queue drain — best-effort, runs after any successful remote call
+// ---------------------------------------------------------------------------
+async function drainOfflineQueue(apiUrl, apiKey) {
+  const queuePath = join(HOME, '.context-mcp', 'sync-queue.jsonl');
+  if (!existsSync(queuePath)) return;
+
+  let lines;
+  try {
+    const content = readFileSync(queuePath, 'utf-8').trim();
+    if (!content) {
+      unlinkSync(queuePath);
+      return;
+    }
+    lines = content.split('\n').filter(Boolean);
+  } catch {
+    return;
+  }
+
+  if (lines.length === 0) {
+    try { unlinkSync(queuePath); } catch {}
+    return;
+  }
+
+  console.log(`  ${dim(`Draining offline queue (${lines.length} entries)...`)}`);
+  const remaining = [];
+
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line);
+      const res = await fetch(`${apiUrl}/api/vault/entries`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(entry),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) {
+        remaining.push(line);
+      }
+    } catch {
+      remaining.push(line);
+    }
+  }
+
+  if (remaining.length > 0) {
+    writeFileSync(queuePath, remaining.join('\n') + '\n');
+    console.log(`  ${yellow('!')} ${remaining.length} entries still queued (will retry next sync).`);
+  } else {
+    try { unlinkSync(queuePath); } catch {}
+    console.log(`  ${green('✓')} Offline queue drained.`);
+  }
 }
 
 async function main() {
