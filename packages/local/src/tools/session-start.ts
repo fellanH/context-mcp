@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { ok, err, ensureVaultExists, kindIcon, fmtDate } from '../helpers.js';
 import { getAutoMemory } from '../auto-memory.js';
-import { getRemoteClient, getTeamId } from '../remote.js';
+import { getRemoteClient, getTeamId, getPublicVaults } from '../remote.js';
 import type { AutoMemoryEntry, AutoMemoryResult } from '../auto-memory.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
@@ -314,6 +314,50 @@ export async function handler(
     }
   }
 
+  // Public vault entries: include public knowledge if publicVaults are configured
+  let publicCount = 0;
+  const publicVaultSlugs = getPublicVaults(ctx.config);
+  if (remoteClient && publicVaultSlugs.length > 0 && tokensUsed < tokenBudget) {
+    try {
+      const allPublicSeenIds = new Set([
+        ...decisions.map((d: any) => d.id),
+        ...deduped.map((d: any) => d.id),
+        ...(lastSession ? [lastSession.id] : []),
+      ]);
+      const publicSearches = publicVaultSlugs.map(slug =>
+        remoteClient.publicSearch(slug, {
+          tags: effectiveTags.length ? effectiveTags : undefined,
+          limit: 5,
+          since: sinceDate,
+        }).catch(() => [])
+      );
+      const allPublicResults = await Promise.all(publicSearches);
+      const flatPublic = allPublicResults.flat().filter((r: any) => !allPublicSeenIds.has(r.id));
+      if (flatPublic.length > 0) {
+        const header = '## Public Knowledge\n';
+        const headerTokens = estimateTokens(header);
+        if (tokensUsed + headerTokens <= tokenBudget) {
+          const entryLines: string[] = [];
+          tokensUsed += headerTokens;
+          for (const entry of flatPublic) {
+            const slug = (entry as any).vault_slug || 'public';
+            const line = formatEntry(entry) + ` \`[public:${slug}]\``;
+            const lineTokens = estimateTokens(line);
+            if (tokensUsed + lineTokens > tokenBudget) break;
+            entryLines.push(line);
+            tokensUsed += lineTokens;
+            publicCount++;
+          }
+          if (entryLines.length > 0) {
+            sections.push(header + entryLines.join('\n') + '\n');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[context-vault] Public vault session_start failed: ${(e as Error).message}`);
+    }
+  }
+
   const totalEntries =
     (lastSession ? 1 : 0) +
     decisions.length +
@@ -321,7 +365,8 @@ export async function handler(
       return true;
     }).length +
     remoteCount +
-    teamCount;
+    teamCount +
+    publicCount;
 
   if (indexWarning) {
     sections.push(indexWarning);

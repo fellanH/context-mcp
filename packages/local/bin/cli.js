@@ -416,6 +416,7 @@ ${bold('Commands:')}
   ${cyan('stats')} recall|co-retrieval  Measure recall ratio and co-retrieval graph
   ${cyan('remote')} setup|status|sync|pull  Connect to hosted vault (cloud sync)
   ${cyan('team')} join|leave|status|browse  Join or manage a team vault
+  ${cyan('public')} create|seed|list|add  Manage and consume public vaults
   ${cyan('update')}                     Check for and install updates
   ${cyan('uninstall')}                  Remove MCP configs and optionally data
 `);
@@ -7367,6 +7368,313 @@ async function runTeam() {
   console.log();
 }
 
+async function runPublic() {
+  const subcommand = args[1];
+  const { getRemoteConfig, saveRemoteConfig } = await import('@context-vault/core/config');
+  const dataDir = join(HOME, '.context-mcp');
+
+  if (subcommand === 'create') {
+    const name = args[2];
+    const slug = getFlag('--slug') || (name ? name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-') : null);
+    const description = getFlag('--description') || '';
+    const domainTags = getFlag('--domains') ? getFlag('--domains').split(',').map(s => s.trim()) : [];
+    const visibility = getFlag('--visibility') || 'free';
+
+    if (!name || !slug) {
+      console.error(`\n  ${red('Usage:')} context-vault public create <name> [--slug <slug>] [--description <desc>] [--domains <tag1,tag2>] [--visibility free|pro]\n`);
+      process.exit(1);
+    }
+
+    const remote = getRemoteConfig(dataDir);
+    if (!remote || !remote.enabled || !remote.apiKey) {
+      console.error(`\n  ${red('✘')} Remote is not configured. Run ${cyan('context-vault remote setup')} first.\n`);
+      process.exit(1);
+    }
+
+    console.log(`\n  Creating public vault "${bold(name)}" (${slug})...`);
+    try {
+      const res = await fetch(`${remote.url.replace(/\/$/, '')}/api/public/vaults`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${remote.apiKey}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15000),
+        body: JSON.stringify({ name, slug, description, domain_tags: domainTags, visibility }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        console.log(`  ${green('✓')} Created public vault: ${bold(data.slug || slug)}`);
+        console.log(`  Visibility: ${visibility}`);
+        if (domainTags.length) console.log(`  Domains:    ${domainTags.join(', ')}`);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        console.error(`  ${red('✘')} Failed: ${data.error || `HTTP ${res.status}`}`);
+        process.exit(1);
+      }
+    } catch (e) {
+      console.error(`  ${red('✘')} Connection failed: ${e.message}`);
+      process.exit(1);
+    }
+    console.log();
+    return;
+  }
+
+  if (subcommand === 'seed') {
+    const vaultSlug = getFlag('--vault');
+    const tagsFlag = getFlag('--tags');
+    const remote = getRemoteConfig(dataDir);
+
+    if (!remote || !remote.enabled || !remote.apiKey) {
+      console.error(`\n  ${red('✘')} Remote is not configured. Run ${cyan('context-vault remote setup')} first.\n`);
+      process.exit(1);
+    }
+
+    if (!vaultSlug) {
+      console.error(`\n  ${red('Usage:')} context-vault public seed --vault <slug> [--tags <filter>] [--dry-run]\n`);
+      process.exit(1);
+    }
+
+    // Load local vault DB
+    const { resolveConfig } = await import('@context-vault/core/config');
+    const config = resolveConfig();
+
+    let DatabaseSync;
+    try {
+      DatabaseSync = (await import('node:sqlite')).DatabaseSync;
+    } catch {
+      console.error(`\n  ${red('✘')} Node.js SQLite not available. Requires Node >= 22.5.\n`);
+      process.exit(1);
+    }
+
+    const db = new DatabaseSync(config.dbPath, { open: true });
+
+    let sql = 'SELECT id, kind, category, title, body, tags, meta, source, identity_key, tier FROM vault WHERE superseded_by IS NULL';
+    const params = [];
+    if (tagsFlag) {
+      sql += ' AND tags LIKE ?';
+      params.push(`%"${tagsFlag}"%`);
+    }
+
+    const rows = db.prepare(sql).all(...params);
+    db.close();
+
+    let publishedKnowledge = 0;
+    let publishedEntities = 0;
+    let skippedEvents = 0;
+    let blockedPrivacy = 0;
+    const blockedEntries = [];
+    let errors = 0;
+
+    const apiUrl = remote.url.replace(/\/$/, '');
+
+    console.log();
+    console.log(`  ${bold('◇ Public Vault Seed')}`);
+    console.log(`  Vault: ${vaultSlug}`);
+    console.log(`  Filter: ${tagsFlag || dim('(all entries)')}`);
+    console.log(`  Entries: ${rows.length}`);
+    console.log();
+
+    if (isDryRun) {
+      for (const row of rows) {
+        if (row.category === 'event') skippedEvents++;
+        else if (row.category === 'entity') publishedEntities++;
+        else publishedKnowledge++;
+      }
+      console.log(`  ${dim('[dry run]')}`);
+      console.log(`  Would publish: ${green(publishedKnowledge)} knowledge, ${cyan(publishedEntities)} entities`);
+      console.log(`  Would skip:    ${dim(skippedEvents)} events (blocked for public)`);
+      console.log();
+      return;
+    }
+
+    for (const row of rows) {
+      if (row.category === 'event') {
+        skippedEvents++;
+        continue;
+      }
+
+      const tags = row.tags ? JSON.parse(row.tags) : [];
+      const meta = row.meta ? JSON.parse(row.meta) : {};
+
+      try {
+        const res = await fetch(`${apiUrl}/api/public/${vaultSlug}/entries`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${remote.apiKey}`, 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(15000),
+          body: JSON.stringify({
+            kind: row.kind,
+            title: row.title,
+            body: row.body,
+            tags,
+            meta,
+            source: row.source,
+            identity_key: row.identity_key,
+            tier: row.tier,
+            category: row.category,
+          }),
+        });
+
+        if (res.ok) {
+          if (row.category === 'entity') publishedEntities++;
+          else publishedKnowledge++;
+        } else if (res.status === 422) {
+          const data = await res.json().catch(() => ({}));
+          if (data.code === 'PRIVACY_SCAN_FAILED') {
+            const matchTypes = Array.isArray(data.matches) ? data.matches.map(m => m.type) : [];
+            const uniqueTypes = [...new Set(matchTypes)];
+            console.log(`  ${yellow('!')} Blocked: "${row.title || row.id}" (${uniqueTypes.join(', ') || 'sensitive content'})`);
+            blockedPrivacy++;
+            blockedEntries.push({ title: row.title || row.id, types: uniqueTypes });
+          } else {
+            errors++;
+            console.error(`  ${red('!')} 422 for "${row.title || row.id}": ${data.error || 'unknown'}`);
+          }
+        } else {
+          errors++;
+          const text = await res.text().catch(() => '');
+          console.error(`  ${red('!')} HTTP ${res.status} for "${row.title || row.id}": ${text.slice(0, 200)}`);
+        }
+      } catch (e) {
+        errors++;
+        console.error(`  ${red('✘')} Failed: ${row.title || row.id} (${e.message})`);
+      }
+
+      const processed = publishedKnowledge + publishedEntities + skippedEvents + blockedPrivacy + errors;
+      if (processed % 10 === 0) {
+        process.stdout.write(`  ${dim(`${processed}/${rows.length}...`)}\r`);
+      }
+    }
+
+    console.log(`  Seeded: ${green(publishedKnowledge)} knowledge, ${cyan(publishedEntities)} entities, ${dim(skippedEvents)} skipped (events), ${blockedPrivacy > 0 ? yellow(blockedPrivacy) : dim(blockedPrivacy)} blocked (privacy)`);
+    if (errors > 0) console.log(`  Errors: ${red(errors)}`);
+    if (blockedEntries.length > 0) {
+      console.log();
+      console.log(`  ${yellow('Blocked entries (review and clean before re-seeding):')}`);
+      for (const entry of blockedEntries) {
+        console.log(`    - ${entry.title} [${entry.types.join(', ')}]`);
+      }
+    }
+    console.log();
+    return;
+  }
+
+  if (subcommand === 'list') {
+    const domain = getFlag('--domain');
+    const remote = getRemoteConfig(dataDir);
+
+    const apiUrl = remote?.url?.replace(/\/$/, '') || 'https://api.context-vault.com';
+    const headers = {};
+    if (remote?.apiKey) headers['Authorization'] = `Bearer ${remote.apiKey}`;
+    headers['Content-Type'] = 'application/json';
+
+    const query = new URLSearchParams();
+    if (domain) query.set('domain', domain);
+
+    console.log();
+    console.log(`  ${bold('◇ Public Vaults')}`);
+    console.log();
+
+    try {
+      const res = await fetch(`${apiUrl}/api/public/vaults?${query.toString()}`, {
+        headers,
+        signal: AbortSignal.timeout(10000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const vaults = Array.isArray(data.vaults) ? data.vaults : Array.isArray(data) ? data : [];
+        if (vaults.length === 0) {
+          console.log(`  ${dim('No public vaults found.')}`);
+        } else {
+          for (const v of vaults) {
+            const domains = Array.isArray(v.domain_tags) ? v.domain_tags.join(', ') : '';
+            console.log(`  ${bold(v.name || v.slug)} ${dim(`(${v.slug})`)}`);
+            if (v.description) console.log(`    ${v.description}`);
+            const stats = [`${v.consumer_count ?? 0} consumers`, `${v.total_recalls ?? 0} recalls`];
+            if (domains) stats.push(domains);
+            console.log(`    ${dim(stats.join(' · '))}`);
+            console.log();
+          }
+        }
+      } else {
+        console.error(`  ${red('✘')} Failed to list vaults: HTTP ${res.status}`);
+      }
+    } catch (e) {
+      console.error(`  ${red('✘')} Connection failed: ${e.message}`);
+    }
+    console.log();
+    return;
+  }
+
+  if (subcommand === 'add') {
+    const slug = args[2];
+    if (!slug) {
+      console.error(`\n  ${red('Usage:')} context-vault public add <slug>\n`);
+      process.exit(1);
+    }
+
+    const configPath = join(dataDir, 'config.json');
+    let config = {};
+    try {
+      config = JSON.parse(readFileSync(configPath, 'utf-8'));
+    } catch {}
+
+    if (!config.remote) config.remote = {};
+    if (!Array.isArray(config.remote.publicVaults)) config.remote.publicVaults = [];
+
+    if (config.remote.publicVaults.includes(slug)) {
+      console.log(`\n  ${dim('Already added:')} ${slug}\n`);
+      return;
+    }
+
+    config.remote.publicVaults.push(slug);
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+    console.log(`\n  ${green('✓')} Added public vault: ${bold(slug)}`);
+    console.log(`  Your agent will now query this vault in get_context, session_start, and recall.\n`);
+    return;
+  }
+
+  if (subcommand === 'remove') {
+    const slug = args[2];
+    if (!slug) {
+      console.error(`\n  ${red('Usage:')} context-vault public remove <slug>\n`);
+      process.exit(1);
+    }
+
+    const configPath = join(dataDir, 'config.json');
+    let config = {};
+    try {
+      config = JSON.parse(readFileSync(configPath, 'utf-8'));
+    } catch {}
+
+    if (!config.remote?.publicVaults || !config.remote.publicVaults.includes(slug)) {
+      console.log(`\n  ${dim('Not found:')} ${slug}\n`);
+      return;
+    }
+
+    config.remote.publicVaults = config.remote.publicVaults.filter(s => s !== slug);
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+    console.log(`\n  ${green('✓')} Removed public vault: ${bold(slug)}\n`);
+    return;
+  }
+
+  // Default: show public help
+  console.log();
+  console.log(`  ${bold('◇ context-vault public')}`);
+  console.log();
+  console.log(`  ${cyan('create <name>')}      Create a new public vault`);
+  console.log(`    ${dim('--slug <slug>')}      URL-friendly identifier`);
+  console.log(`    ${dim('--description <d>')} Vault description`);
+  console.log(`    ${dim('--domains <tags>')}  Comma-separated domain tags`);
+  console.log(`    ${dim('--visibility <v>')} free (default) or pro`);
+  console.log(`  ${cyan('seed')}               Publish local entries to a public vault`);
+  console.log(`    ${dim('--vault <slug>')}    Target public vault slug (required)`);
+  console.log(`    ${dim('--tags <filter>')}   Filter entries by tag`);
+  console.log(`    ${dim('--dry-run')}         Preview without publishing`);
+  console.log(`  ${cyan('list')}               Browse available public vaults`);
+  console.log(`    ${dim('--domain <tag>')}    Filter by domain tag`);
+  console.log(`  ${cyan('add <slug>')}         Add a public vault to your agent config`);
+  console.log(`  ${cyan('remove <slug>')}      Remove a public vault from your config`);
+  console.log();
+}
+
 async function runRemote() {
   const subcommand = args[1];
   const { getRemoteConfig, saveRemoteConfig } = await import('@context-vault/core/config');
@@ -8044,6 +8352,9 @@ async function main() {
       break;
     case 'team':
       await runTeam();
+      break;
+    case 'public':
+      await runPublic();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));

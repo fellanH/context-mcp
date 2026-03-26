@@ -10,7 +10,7 @@ import { resolveTemporalParams } from '../temporal.js';
 import { collectLinkedEntries } from '../linking.js';
 import { ok, err, errWithHint, kindIcon, fmtDate } from '../helpers.js';
 import { isEmbedAvailable } from '@context-vault/core/embed';
-import { getRemoteClient, getTeamId, mergeRemoteResults, mergeWithTeamResults } from '../remote.js';
+import { getRemoteClient, getTeamId, getPublicVaults, mergeRemoteResults, mergeWithTeamResults, mergeWithPublicResults } from '../remote.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const STALE_DUPLICATE_DAYS = 7;
@@ -616,6 +616,34 @@ export async function handler(
       }
     } catch (e) {
       console.warn(`[context-vault] Team search failed: ${(e as Error).message}`);
+    }
+  }
+
+  // Public vault merge: query each configured public vault
+  const publicVaultSlugs = getPublicVaults(ctx.config);
+  if (remoteClient && publicVaultSlugs.length > 0 && (hasQuery || hasFilters)) {
+    const publicSearches = publicVaultSlugs.map(slug =>
+      remoteClient.publicSearch(slug, {
+        query: hasQuery ? query : undefined,
+        tags: effectiveTags.length ? effectiveTags : undefined,
+        kind: kindFilter || undefined,
+        category: scopedCategory || undefined,
+        limit: effectiveLimit,
+        since: effectiveSince || undefined,
+        until: effectiveUntil || undefined,
+      }).catch(e => {
+        console.warn(`[context-vault] Public vault "${slug}" search failed: ${(e as Error).message}`);
+        return [];
+      })
+    );
+    try {
+      const allPublicResults = await Promise.all(publicSearches);
+      const combined = allPublicResults.flat();
+      if (combined.length > 0) {
+        filtered = mergeWithPublicResults(filtered, combined as any[], effectiveLimit);
+      }
+    } catch (e) {
+      console.warn(`[context-vault] Public vault search failed: ${(e as Error).message}`);
     }
   }
 

@@ -45,6 +45,12 @@ export interface TeamSearchResult extends RemoteSearchResult {
   recall_members?: number;
 }
 
+export interface PublicSearchResult extends RemoteSearchResult {
+  source: 'public';
+  vault_slug: string;
+  recall_count: number;
+}
+
 export interface PrivacyScanMatch {
   type: string;
   value: string;
@@ -242,6 +248,103 @@ export class RemoteClient {
     }
   }
 
+  async publicSearch(slug: string, params: Record<string, unknown>): Promise<PublicSearchResult[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params.query) query.set('q', String(params.query));
+      if (Array.isArray(params.tags) && params.tags.length) query.set('tags', params.tags.join(','));
+      if (params.kind) query.set('kind', String(params.kind));
+      if (params.category) query.set('category', String(params.category));
+      if (params.limit) query.set('limit', String(params.limit));
+      if (params.since) query.set('since', String(params.since));
+      if (params.until) query.set('until', String(params.until));
+
+      const res = await this.fetch(`/api/public/${slug}/search?${query.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json() as Record<string, unknown>;
+      const entries = Array.isArray(data.entries) ? data.entries : Array.isArray(data) ? data : [];
+      return (entries as PublicSearchResult[]).map(e => ({ ...e, source: 'public' as const, vault_slug: slug }));
+    } catch {
+      return [];
+    }
+  }
+
+  async publicRecall(slug: string, params: {
+    signal: string;
+    signal_type: string;
+    bucket?: string;
+    max_hints?: number;
+  }): Promise<RemoteHint[]> {
+    try {
+      const res = await this.fetch(`/api/public/${slug}/search`, {
+        method: 'POST',
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) return [];
+      const data = await res.json() as Record<string, unknown>;
+      return Array.isArray(data.hints) ? data.hints : Array.isArray(data) ? data as RemoteHint[] : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async publicList(params?: { domain?: string; sort?: string }): Promise<Record<string, unknown>[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.domain) query.set('domain', params.domain);
+      if (params?.sort) query.set('sort', params.sort);
+
+      const res = await this.fetch(`/api/public/vaults?${query.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json() as Record<string, unknown>;
+      return Array.isArray(data.vaults) ? data.vaults as Record<string, unknown>[] : Array.isArray(data) ? data as Record<string, unknown>[] : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async publicCreate(params: {
+    name: string;
+    slug: string;
+    description?: string;
+    domain_tags?: string[];
+    visibility?: string;
+  }): Promise<{ ok: boolean; slug?: string; error?: string }> {
+    try {
+      const res = await this.fetch('/api/public/vaults', {
+        method: 'POST',
+        body: JSON.stringify(params),
+      });
+      const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+      if (res.ok) {
+        return { ok: true, slug: (data.slug as string) || params.slug };
+      }
+      return { ok: false, error: typeof data.error === 'string' ? data.error : `HTTP ${res.status}` };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
+  async publicSeed(slug: string, entry: Record<string, unknown>): Promise<PublishResult> {
+    try {
+      const res = await this.fetch(`/api/public/${slug}/entries`, {
+        method: 'POST',
+        body: JSON.stringify(entry),
+      });
+      const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+      if (res.ok) {
+        return { ok: true, id: data.id as string | undefined };
+      }
+      if (res.status === 422 && data.code === 'PRIVACY_SCAN_FAILED') {
+        const matches = Array.isArray(data.matches) ? data.matches as PrivacyScanMatch[] : [];
+        return { ok: false, error: 'Privacy scan failed', status: 422, privacyMatches: matches };
+      }
+      return { ok: false, error: typeof data.error === 'string' ? data.error : `HTTP ${res.status}`, status: res.status };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
   private fetch(path: string, opts: RequestInit = {}): Promise<Response> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -322,4 +425,46 @@ export function mergeWithTeamResults<T extends { id: string; score?: number; rec
   const merged = [...localAndPersonal, ...boostedTeam];
   merged.sort((a, b) => ((b as any).score ?? 0) - ((a as any).score ?? 0));
   return merged.slice(0, limit);
+}
+
+/**
+ * Apply recall-driven ranking boost to public vault results.
+ * Uses freshness decay: entries not updated in 90+ days get 0.8 multiplier.
+ * Formula: score * log(1 + recall_count) * freshness_decay
+ */
+export function applyPublicRecallBoost<T extends { score?: number; recall_count?: number; updated_at?: string | null }>(
+  entries: T[]
+): T[] {
+  const now = Date.now();
+  const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+  return entries.map(e => {
+    const baseScore = (e as any).score ?? 0;
+    const recallCount = (e as any).recall_count ?? 0;
+    if (recallCount === 0) return e;
+    const updatedAt = (e as any).updated_at ? new Date((e as any).updated_at).getTime() : now;
+    const freshnessDecay = (now - updatedAt > NINETY_DAYS_MS) ? 0.8 : 1.0;
+    const boostedScore = baseScore * Math.log(1 + recallCount) * freshnessDecay;
+    return { ...e, score: boostedScore };
+  });
+}
+
+/**
+ * Merge existing results with public vault results.
+ * Public results get recall-driven ranking boost with freshness decay before merge.
+ */
+export function mergeWithPublicResults<T extends { id: string; score?: number; recall_count?: number }>(
+  existing: T[],
+  publicResults: T[],
+  limit: number
+): T[] {
+  const existingIds = new Set(existing.map(r => r.id));
+  const uniquePublic = publicResults.filter(r => !existingIds.has(r.id));
+  const boostedPublic = applyPublicRecallBoost(uniquePublic);
+  const merged = [...existing, ...boostedPublic];
+  merged.sort((a, b) => ((b as any).score ?? 0) - ((a as any).score ?? 0));
+  return merged.slice(0, limit);
+}
+
+export function getPublicVaults(config: { remote?: RemoteConfig & { publicVaults?: string[] } }): string[] {
+  return (config.remote as any)?.publicVaults || [];
 }

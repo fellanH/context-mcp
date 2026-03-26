@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ok } from '../helpers.js';
 import { isEmbedAvailable } from '@context-vault/core/embed';
 import { getAutoMemory, findAutoMemoryOverlaps } from '../auto-memory.js';
-import { getRemoteClient, getTeamId } from '../remote.js';
+import { getRemoteClient, getTeamId, getPublicVaults } from '../remote.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
 const SEMANTIC_SIMILARITY_THRESHOLD = 0.6;
@@ -224,6 +224,40 @@ export async function handler(
       }
     } catch (e) {
       console.warn(`[context-vault] Team recall failed: ${(e as Error).message}`);
+    }
+  }
+
+  // Public vault recall: query each configured public vault
+  const publicVaultSlugs = getPublicVaults(ctx.config);
+  if (remoteClient && publicVaultSlugs.length > 0 && hints.length < limit) {
+    const publicRecalls = publicVaultSlugs.map(slug =>
+      remoteClient.publicRecall(slug, {
+        signal,
+        signal_type,
+        bucket,
+        max_hints: limit - hints.length,
+      }).catch(e => {
+        console.warn(`[context-vault] Public vault "${slug}" recall failed: ${(e as Error).message}`);
+        return [];
+      })
+    );
+    try {
+      const allPublicHints = await Promise.all(publicRecalls);
+      const existingIds = new Set(hints.map(h => h.id));
+      for (const publicHints of allPublicHints) {
+        for (const ph of publicHints) {
+          if (hints.length >= limit) break;
+          if (existingIds.has(ph.id)) continue;
+          if (sessionSet && !bypassDedup && sessionSet.has(ph.id)) {
+            suppressed++;
+            continue;
+          }
+          hints.push({ ...ph, tags: [...(ph.tags || []), '[public]'] });
+          if (sessionSet) sessionSet.add(ph.id);
+        }
+      }
+    } catch (e) {
+      console.warn(`[context-vault] Public vault recall failed: ${(e as Error).message}`);
     }
   }
 
