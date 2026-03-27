@@ -3,6 +3,14 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.10.0] — 2026-03-27
+
+### Added
+
+- **Public vaults**: `get_context`, `recall`, and `session_start` now surface entries from public vaults in search results. Public vault entries are merged alongside local and team results with source attribution.
+- **Public vault CLI**: `context-vault public browse`, `public search`, `public subscribe` commands for discovering and subscribing to public vaults.
+- **Setup prompt update**: Enhanced standalone prompt with public vault awareness.
+
 ## [3.9.0] — 2026-03-24
 
 ### Added
