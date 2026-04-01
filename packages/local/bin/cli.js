@@ -85,12 +85,15 @@ function isNpx() {
   return ROOT.includes('/_npx/') || ROOT.includes('\\_npx\\');
 }
 
-/** Check if a global install of context-vault exists on PATH (not npx cache) */
+/** Check if a global install of context-vault exists (not npx cache) */
 function hasGlobalInstall() {
   try {
-    const cmd = platform() === 'win32' ? 'where context-vault' : 'which context-vault';
-    const which = execSync(cmd, { encoding: 'utf-8', stdio: 'pipe', timeout: 3000 }).trim();
-    return !!which && !which.includes('/_npx/') && !which.includes('\\_npx\\');
+    // Can't use `which` here because npx prepends its cache to PATH,
+    // so `which context-vault` returns the npx cache path, not the global one.
+    // Instead, check the npm global prefix bin directory directly.
+    const prefix = execSync('npm prefix -g', { encoding: 'utf-8', stdio: 'pipe', timeout: 5000 }).trim();
+    const bin = platform() === 'win32' ? 'context-vault.cmd' : 'context-vault';
+    return existsSync(join(prefix, 'bin', bin));
   } catch { return false; }
 }
 
@@ -806,14 +809,7 @@ async function runSetup() {
   // MCP server binary is on PATH. This makes tool configs reliable (no npx
   // cache dependency) and startup faster (no npx overhead on every spawn).
   if (isNpx() && !isDryRun) {
-    const hasGlobal = (() => {
-      try {
-        const cmd = platform() === 'win32' ? 'where context-vault' : 'which context-vault';
-        const which = execSync(cmd, { encoding: 'utf-8', stdio: 'pipe', timeout: 3000 }).trim();
-        // Verify it's not pointing back to the npx cache
-        return which && !which.includes('/_npx/') && !which.includes('\\_npx\\');
-      } catch { return false; }
-    })();
+    const hasGlobal = hasGlobalInstall();
 
     if (!hasGlobal) {
       if (!isNonInteractive) {
