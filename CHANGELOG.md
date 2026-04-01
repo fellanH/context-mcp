@@ -3,6 +3,13 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.12.0] — 2026-04-01
+
+### Changed
+
+- **Setup via npx now installs globally**: `npx context-vault setup` detects the npx environment and prompts to install globally via `npm install -g`. This ensures the MCP server binary is on PATH permanently, making tool configs reliable and server startup faster. In `--yes` mode, auto-installs without prompting.
+- **Unified server config resolution**: All tool configuration (Claude Code, Cursor, Windsurf, Codex) now uses a single `getServerConfig()` function that checks for a global install first, regardless of how setup was invoked. Eliminates duplicate config logic across `configureClaude`, `configureCodex`, and `configureJsonTool`.
+
 ## [3.11.0] — 2026-04-01
 
 ### Fixed

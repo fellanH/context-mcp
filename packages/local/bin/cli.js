@@ -85,6 +85,48 @@ function isNpx() {
   return ROOT.includes('/_npx/') || ROOT.includes('\\_npx\\');
 }
 
+/** Check if a global install of context-vault exists on PATH (not npx cache) */
+function hasGlobalInstall() {
+  try {
+    const cmd = platform() === 'win32' ? 'where context-vault' : 'which context-vault';
+    const which = execSync(cmd, { encoding: 'utf-8', stdio: 'pipe', timeout: 3000 }).trim();
+    return !!which && !which.includes('/_npx/') && !which.includes('\\_npx\\');
+  } catch { return false; }
+}
+
+/**
+ * Determine the best server config for tool MCP configs.
+ * Priority: global binary > npx fallback > local dev path.
+ * Even when running via npx, prefer the global binary if it exists
+ * (e.g., we just installed it during setup).
+ */
+function getServerConfig(vaultDir) {
+  const serverArgs = ['serve'];
+  if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
+
+  if (hasGlobalInstall()) {
+    return { command: 'context-vault', args: serverArgs };
+  }
+  if (isNpx()) {
+    return {
+      command: 'npx',
+      args: ['-y', 'context-vault', 'serve', ...(vaultDir ? ['--vault-dir', vaultDir] : [])],
+      env: { NODE_OPTIONS: '--no-warnings=ExperimentalWarning' },
+    };
+  }
+  if (isInstalledPackage()) {
+    return { command: 'context-vault', args: serverArgs };
+  }
+  // Local dev clone
+  const nodeArgs = [SERVER_PATH];
+  if (vaultDir) nodeArgs.push('--vault-dir', vaultDir);
+  return {
+    command: process.execPath,
+    args: nodeArgs,
+    env: { NODE_OPTIONS: '--no-warnings=ExperimentalWarning' },
+  };
+}
+
 /** Detect user experience level based on dev environment signals */
 function detectUserExperience() {
   if (isNonInteractive) return 'developer';
@@ -758,6 +800,58 @@ async function runSetup() {
     }
     // choice === "1" falls through to full setup below
     console.log();
+  }
+
+  // Global install: when running via npx, offer to install globally so the
+  // MCP server binary is on PATH. This makes tool configs reliable (no npx
+  // cache dependency) and startup faster (no npx overhead on every spawn).
+  if (isNpx() && !isDryRun) {
+    const hasGlobal = (() => {
+      try {
+        const cmd = platform() === 'win32' ? 'where context-vault' : 'which context-vault';
+        const which = execSync(cmd, { encoding: 'utf-8', stdio: 'pipe', timeout: 3000 }).trim();
+        // Verify it's not pointing back to the npx cache
+        return which && !which.includes('/_npx/') && !which.includes('\\_npx\\');
+      } catch { return false; }
+    })();
+
+    if (!hasGlobal) {
+      if (!isNonInteractive) {
+        console.log(dim('  context-vault needs a permanent install to run as an MCP server.'));
+        console.log(dim('  Without it, AI tools must re-download the package on every launch.\n'));
+        const installAnswer = await prompt('  Install globally via npm? (Y/n):', 'Y');
+        if (installAnswer.toLowerCase() !== 'n') {
+          console.log();
+          try {
+            console.log(dim('  Installing context-vault globally...\n'));
+            execSync('npm install -g context-vault@' + VERSION, {
+              stdio: 'inherit',
+              timeout: 120000,
+            });
+            console.log(`\n  ${green('✓')} Installed context-vault v${VERSION} globally\n`);
+          } catch (e) {
+            console.log(`\n  ${yellow('!')} Global install failed: ${e.message}`);
+            console.log(dim('  Falling back to npx-based config. You can install later:'));
+            console.log(dim('  npm install -g context-vault\n'));
+          }
+        } else {
+          console.log(dim('\n  Skipped. MCP configs will use npx (slower startup).\n'));
+        }
+      } else {
+        // Non-interactive (--yes): auto-install globally
+        try {
+          console.log(dim('  Installing context-vault globally...\n'));
+          execSync('npm install -g context-vault@' + VERSION, {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: 120000,
+          });
+          console.log(`  ${green('✓')} Installed context-vault v${VERSION} globally\n`);
+        } catch (e) {
+          console.log(`  ${yellow('!')} Global install failed: ${e.message}`);
+          console.log(dim('  Continuing with npx-based config.\n'));
+        }
+      }
+    }
   }
 
   // Detect tools
@@ -1480,53 +1574,13 @@ async function configureClaude(tool, vaultDir) {
   }
 
   try {
-    if (isNpx()) {
-      const serverArgs = ['-y', 'context-vault', 'serve'];
-      if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
-      execFileSync(
-        'claude',
-        [
-          'mcp',
-          'add',
-          '-s',
-          'user',
-          'context-vault',
-          '-e',
-          'NODE_OPTIONS=--no-warnings=ExperimentalWarning',
-          '--',
-          'npx',
-          ...serverArgs,
-        ],
-        { stdio: 'pipe', env }
-      );
-    } else if (isInstalledPackage()) {
-      const serverArgs = ['serve'];
-      if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
-      execFileSync(
-        'claude',
-        ['mcp', 'add', '-s', 'user', 'context-vault', '--', 'context-vault', ...serverArgs],
-        { stdio: 'pipe', env }
-      );
-    } else {
-      const nodeArgs = [SERVER_PATH];
-      if (vaultDir) nodeArgs.push('--vault-dir', vaultDir);
-      execFileSync(
-        'claude',
-        [
-          'mcp',
-          'add',
-          '-s',
-          'user',
-          'context-vault',
-          '-e',
-          'NODE_OPTIONS=--no-warnings=ExperimentalWarning',
-          '--',
-          process.execPath,
-          ...nodeArgs,
-        ],
-        { stdio: 'pipe', env }
-      );
+    const srvCfg = getServerConfig(vaultDir);
+    const claudeArgs = ['mcp', 'add', '-s', 'user', 'context-vault'];
+    if (srvCfg.env?.NODE_OPTIONS) {
+      claudeArgs.push('-e', `NODE_OPTIONS=${srvCfg.env.NODE_OPTIONS}`);
     }
+    claudeArgs.push('--', srvCfg.command, ...srvCfg.args);
+    execFileSync('claude', claudeArgs, { stdio: 'pipe', env });
   } catch (e) {
     const stderr = e.stderr?.toString().trim();
     throw new Error(stderr || e.message);
@@ -1542,25 +1596,10 @@ async function configureCodex(tool, vaultDir) {
   }
 
   try {
-    if (isNpx()) {
-      const serverArgs = ['-y', 'context-vault', 'serve'];
-      if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
-      execFileSync('codex', ['mcp', 'add', 'context-vault', '--', 'npx', ...serverArgs], {
-        stdio: 'pipe',
-      });
-    } else if (isInstalledPackage()) {
-      const serverArgs = ['serve'];
-      if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
-      execFileSync('codex', ['mcp', 'add', 'context-vault', '--', 'context-vault', ...serverArgs], {
-        stdio: 'pipe',
-      });
-    } else {
-      const nodeArgs = [SERVER_PATH];
-      if (vaultDir) nodeArgs.push('--vault-dir', vaultDir);
-      execFileSync('codex', ['mcp', 'add', 'context-vault', '--', process.execPath, ...nodeArgs], {
-        stdio: 'pipe',
-      });
-    }
+    const srvCfg = getServerConfig(vaultDir);
+    execFileSync('codex', ['mcp', 'add', 'context-vault', '--', srvCfg.command, ...srvCfg.args], {
+      stdio: 'pipe',
+    });
   } catch (e) {
     const stderr = e.stderr?.toString().trim();
     throw new Error(stderr || e.message);
@@ -1664,29 +1703,7 @@ function configureJsonTool(tool, vaultDir) {
   // Clean up old "context-mcp" key
   delete config[tool.configKey]['context-mcp'];
 
-  if (isNpx()) {
-    const serverArgs = vaultDir ? ['--vault-dir', vaultDir] : [];
-    config[tool.configKey]['context-vault'] = {
-      command: 'npx',
-      args: ['-y', 'context-vault', 'serve', ...serverArgs],
-      env: { NODE_OPTIONS: '--no-warnings=ExperimentalWarning' },
-    };
-  } else if (isInstalledPackage()) {
-    const serverArgs = ['serve'];
-    if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
-    config[tool.configKey]['context-vault'] = {
-      command: 'context-vault',
-      args: serverArgs,
-    };
-  } else {
-    const serverArgs = [SERVER_PATH];
-    if (vaultDir) serverArgs.push('--vault-dir', vaultDir);
-    config[tool.configKey]['context-vault'] = {
-      command: process.execPath,
-      args: serverArgs,
-      env: { NODE_OPTIONS: '--no-warnings=ExperimentalWarning' },
-    };
-  }
+  config[tool.configKey]['context-vault'] = getServerConfig(vaultDir);
 
   writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 }
