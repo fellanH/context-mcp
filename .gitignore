@@ -18,3 +18,5 @@ skills/
 skills-lock.json
 !packages/local/assets/skills/
 .context/
+.claude-plugin/
+commands/

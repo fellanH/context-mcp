@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "context-vault": {
+      "command": "context-vault",
+      "args": ["serve"]
+    }
+  }
+}
+
