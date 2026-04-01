@@ -23,11 +23,15 @@
     "prepack": "node scripts/prepack.js"
   },
   "files": [
+    ".claude-plugin/",
     "assets/",
     "bin/",
+    "commands/",
     "dist/",
+    "skills/",
     "src/",
     "scripts/",
+    ".mcp.json",
     "README.md",
     "LICENSE"
   ],
