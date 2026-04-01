@@ -131,12 +131,34 @@ context-vault --version   # verify version matches release
 context-vault setup       # if not already set up
 ```
 
-Use Option B for post-release verification because it installs the exact published binary and avoids npx cache ambiguity.
+Use Option A for post-release verification since it exercises the full user flow: npx download, global install prompt, tool config writes with direct binary paths.
+
+**What setup does when invoked via npx:**
+
+1. Detects npx environment (`isNpx()`)
+2. Checks if global install exists (`hasGlobalInstall()` via `npm prefix -g`)
+3. If no global install: prompts to install globally (auto-accepts in `--yes` mode)
+4. Runs `npm install -g context-vault@<version>`
+5. All tool configs use `{ command: "context-vault" }` (direct binary, not npx)
+
+**Important:** `hasGlobalInstall()` uses `npm prefix -g` to find the global binary, not `which`. Inside npx, `which context-vault` returns the npx cache path, which would cause false negatives.
+
+### Verify tool configs use direct binary
+
+After setup, all tool configs should reference `context-vault` directly (not `npx`):
+
+```bash
+# Claude Code
+claude mcp list | grep context-vault
+
+# JSON configs (Cursor, Claude Desktop, Windsurf)
+python3 -c "import json; d=json.load(open('$HOME/.cursor/mcp.json')); print(d['mcpServers']['context-vault']['command'])"
+# Expected: "context-vault" (NOT "npx")
+```
 
 ### Verify server startup
 
 ```bash
-# Start the server, watch resource usage for 10 seconds
 context-vault serve --http --port 13377 &
 CV_PID=$!
 
