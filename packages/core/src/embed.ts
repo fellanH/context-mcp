@@ -59,25 +59,41 @@ export async function embed(text: string): Promise<Float32Array | null> {
   return new Float32Array(result.data);
 }
 
+const EMBED_CHUNK_SIZE = 8;
+
 export async function embedBatch(texts: string[]): Promise<(Float32Array | null)[]> {
   if (!texts.length) return [];
   const ext = await ensurePipeline();
   if (!ext) return texts.map(() => null);
 
-  const result = await ext(texts, { pooling: 'mean', normalize: true });
-  if (!result?.data?.length) {
-    extractor = null;
-    embedAvailable = null;
-    loadingPromise = null;
-    throw new Error('Embedding pipeline returned empty result');
+  // Process in small chunks with event loop yields to prevent CPU monopolization
+  const allResults: (Float32Array | null)[] = [];
+
+  for (let i = 0; i < texts.length; i += EMBED_CHUNK_SIZE) {
+    const chunk = texts.slice(i, i + EMBED_CHUNK_SIZE);
+    const result = await ext(chunk, { pooling: 'mean', normalize: true });
+    if (!result?.data?.length) {
+      extractor = null;
+      embedAvailable = null;
+      loadingPromise = null;
+      throw new Error('Embedding pipeline returned empty result');
+    }
+    const dim = result.data.length / chunk.length;
+    if (!Number.isInteger(dim) || dim <= 0) {
+      throw new Error(
+        `Unexpected embedding dimension: ${result.data.length} / ${chunk.length} = ${dim}`
+      );
+    }
+    for (let j = 0; j < chunk.length; j++) {
+      allResults.push(result.data.subarray(j * dim, (j + 1) * dim));
+    }
+    // Yield to event loop between chunks so the server stays responsive
+    if (i + EMBED_CHUNK_SIZE < texts.length) {
+      await new Promise<void>(r => setTimeout(r, 0));
+    }
   }
-  const dim = result.data.length / texts.length;
-  if (!Number.isInteger(dim) || dim <= 0) {
-    throw new Error(
-      `Unexpected embedding dimension: ${result.data.length} / ${texts.length} = ${dim}`
-    );
-  }
-  return texts.map((_, i) => result.data.subarray(i * dim, (i + 1) * dim));
+
+  return allResults;
 }
 
 export function resetEmbedPipeline(): void {

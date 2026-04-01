@@ -3,6 +3,20 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.11.0] — 2026-04-01
+
+### Fixed
+
+- **Runaway process protection**: Server no longer loads the embedding model or computes embeddings on startup. FTS index is built immediately (fast, pure SQLite). Embeddings are generated lazily on first semantic search, keeping startup instant and memory low.
+- **RSS watchdog**: Process self-terminates if memory exceeds 1 GB (configurable via `CONTEXT_VAULT_MAX_RSS_MB`), preventing system resource exhaustion from runaway operations.
+- **Reindex timeout**: Auto-reindex at startup is capped at 30 seconds. If exceeded, the server continues in FTS-only mode. Run `context-vault reindex` manually for full embedding rebuild.
+- **Chunked embedding batches**: `embedBatch()` now processes in chunks of 8 with event loop yields between chunks, preventing CPU monopolization during embedding generation.
+
+### Changed
+
+- `reindex()` accepts `skipEmbeddings` option. Auto-reindex on server start uses this to skip embedding generation entirely, deferring to lazy on-demand embedding during search.
+- Lazy embedding in `hybridSearch()` respects the same guards as reindex: only entries with `indexed=1` and `category != 'event'` get embeddings.
+
 ## [3.10.0] — 2026-03-27
 
 ### Added

@@ -1,4 +1,5 @@
 import type { BaseCtx, SearchResult, SearchOptions, VaultEntry } from './types.js';
+import { embedBatch } from './embed.js';
 
 const NEAR_DUP_THRESHOLD = 0.92;
 const RRF_K = 60;
@@ -166,6 +167,55 @@ export async function hybridSearch(
       if (!(err as Error).message?.includes('fts5: syntax error')) {
         console.error(`[retrieve] FTS search error: ${(err as Error).message}`);
       }
+    }
+  }
+
+  // Lazy embedding: generate missing embeddings for entries found by FTS.
+  // This handles the case where reindex ran with skipEmbeddings (deferred mode).
+  // Only embeds what FTS found (small batch), not the entire vault.
+  // Guards: only embed entries where indexed=1 AND category!='event' (same rules as reindex).
+  if (ftsRankedIds.length > 0) {
+    try {
+      const eligibleIds = ftsRankedIds.filter((id) => {
+        const entry = rowMap.get(id);
+        return entry && entry.indexed !== 0 && entry.category !== 'event';
+      });
+
+      if (eligibleIds.length > 0) {
+        const ftsRowids = eligibleIds
+          .map((id) => {
+            const row = ctx.db.prepare('SELECT rowid FROM vault WHERE id = ?').get(id) as { rowid: number } | undefined;
+            return row ? { id, rowid: row.rowid } : null;
+          })
+          .filter((r): r is { id: string; rowid: number } => r !== null);
+
+        if (ftsRowids.length > 0) {
+          const placeholders = ftsRowids.map(() => '?').join(',');
+          const existingVec = new Set(
+            (ctx.db.prepare(`SELECT rowid FROM vault_vec WHERE rowid IN (${placeholders})`).all(
+              ...ftsRowids.map((r) => r.rowid)
+            ) as { rowid: number }[]).map((r) => r.rowid)
+          );
+
+          const missing = ftsRowids.filter((r) => !existingVec.has(r.rowid));
+          if (missing.length > 0) {
+            const entries = missing.map((r) => {
+              const entry = rowMap.get(r.id);
+              return { rowid: r.rowid, text: [entry?.title, entry?.body].filter(Boolean).join(' ') };
+            });
+            const embeddings = await embedBatch(entries.map((e) => e.text));
+            for (let i = 0; i < entries.length; i++) {
+              if (embeddings[i]) {
+                try { ctx.deleteVec(entries[i].rowid); } catch {}
+                ctx.insertVec(entries[i].rowid, embeddings[i]!);
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Non-fatal: vector search will just have fewer candidates
+      console.error(`[search] Lazy embedding failed: ${(err as Error).message}`);
     }
   }
 

@@ -188,9 +188,9 @@ export async function pruneExpired(ctx: BaseCtx): Promise<number> {
 
 export async function reindex(
   ctx: BaseCtx,
-  opts: { fullSync?: boolean; indexingConfig?: IndexingConfig; dryRun?: boolean; kindFilter?: string } = {}
+  opts: { fullSync?: boolean; indexingConfig?: IndexingConfig; dryRun?: boolean; kindFilter?: string; skipEmbeddings?: boolean } = {}
 ): Promise<ReindexStats> {
-  const { fullSync = true, indexingConfig, dryRun = false, kindFilter: reindexKindFilter } = opts;
+  const { fullSync = true, indexingConfig, dryRun = false, kindFilter: reindexKindFilter, skipEmbeddings = false } = opts;
   const ixConfig = indexingConfig ?? (ctx.config as any)?.indexing ?? DEFAULT_INDEXING;
   const stats: ReindexStats = {
     added: 0,
@@ -469,48 +469,52 @@ export async function reindex(
     throw e;
   }
 
-  for (let i = 0; i < pendingEmbeds.length; i += EMBED_BATCH_SIZE) {
-    const batch = pendingEmbeds.slice(i, i + EMBED_BATCH_SIZE);
-    const embeddings = await embedBatch(batch.map((e) => e.text));
-    for (let j = 0; j < batch.length; j++) {
-      if (embeddings[j]) {
-        try {
-          ctx.deleteVec(batch[j].rowid);
-        } catch {}
-        ctx.insertVec(batch[j].rowid, embeddings[j]!);
-      }
-    }
-  }
-
-  // Detect entries with missing embeddings and regenerate them
-  if (fullSync) {
-    const missingVec = ctx.db
-      .prepare(
-        `SELECT v.rowid, v.title, v.body FROM vault v
-         WHERE v.category != 'event'
-           AND v.indexed = 1
-           AND v.rowid NOT IN (SELECT rowid FROM vault_vec)`
-      )
-      .all() as { rowid: number; title: string | null; body: string }[];
-
-    if (missingVec.length > 0) {
-      const missingEmbeds = missingVec.map((r) => ({
-        rowid: r.rowid,
-        text: [r.title, r.body].filter(Boolean).join(' '),
-      }));
-
-      for (let i = 0; i < missingEmbeds.length; i += EMBED_BATCH_SIZE) {
-        const batch = missingEmbeds.slice(i, i + EMBED_BATCH_SIZE);
-        const embeddings = await embedBatch(batch.map((e) => e.text));
-        for (let j = 0; j < batch.length; j++) {
-          if (embeddings[j]) {
-            ctx.insertVec(batch[j].rowid, embeddings[j]!);
-          }
+  if (!skipEmbeddings) {
+    for (let i = 0; i < pendingEmbeds.length; i += EMBED_BATCH_SIZE) {
+      const batch = pendingEmbeds.slice(i, i + EMBED_BATCH_SIZE);
+      const embeddings = await embedBatch(batch.map((e) => e.text));
+      for (let j = 0; j < batch.length; j++) {
+        if (embeddings[j]) {
+          try {
+            ctx.deleteVec(batch[j].rowid);
+          } catch {}
+          ctx.insertVec(batch[j].rowid, embeddings[j]!);
         }
       }
-
-      console.error(`[context-vault] Regenerated ${missingVec.length} missing embeddings`);
     }
+
+    // Detect entries with missing embeddings and regenerate them
+    if (fullSync) {
+      const missingVec = ctx.db
+        .prepare(
+          `SELECT v.rowid, v.title, v.body FROM vault v
+           WHERE v.category != 'event'
+             AND v.indexed = 1
+             AND v.rowid NOT IN (SELECT rowid FROM vault_vec)`
+        )
+        .all() as { rowid: number; title: string | null; body: string }[];
+
+      if (missingVec.length > 0) {
+        const missingEmbeds = missingVec.map((r) => ({
+          rowid: r.rowid,
+          text: [r.title, r.body].filter(Boolean).join(' '),
+        }));
+
+        for (let i = 0; i < missingEmbeds.length; i += EMBED_BATCH_SIZE) {
+          const batch = missingEmbeds.slice(i, i + EMBED_BATCH_SIZE);
+          const embeddings = await embedBatch(batch.map((e) => e.text));
+          for (let j = 0; j < batch.length; j++) {
+            if (embeddings[j]) {
+              ctx.insertVec(batch[j].rowid, embeddings[j]!);
+            }
+          }
+        }
+
+        console.error(`[context-vault] Regenerated ${missingVec.length} missing embeddings`);
+      }
+    }
+  } else if (pendingEmbeds.length > 0) {
+    console.error(`[context-vault] Deferred ${pendingEmbeds.length} embeddings (will generate on first search)`);
   }
 
   return stats;

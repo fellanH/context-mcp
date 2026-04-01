@@ -43,6 +43,37 @@ const toolModules = [
 ];
 
 const TOOL_TIMEOUT_MS = 120_000;
+const REINDEX_TIMEOUT_MS = 30_000;
+
+const TOOL_ANNOTATIONS: Record<
+  string,
+  {
+    readOnlyHint: boolean;
+    destructiveHint?: boolean;
+  }
+> = {
+  // Read-only tools (4)
+  list_context: { readOnlyHint: true },
+  context_status: { readOnlyHint: true },
+  list_buckets: { readOnlyHint: true },
+  session_start: { readOnlyHint: true },
+
+  // Read with side-effect counters (2) — update hit_count/recall_count/co-retrievals
+  get_context: { readOnlyHint: false, destructiveHint: false },
+  recall: { readOnlyHint: false, destructiveHint: false },
+
+  // Additive write tools (3) — create entries, never delete/replace
+  create_snapshot: { readOnlyHint: false, destructiveHint: false },
+  ingest_url: { readOnlyHint: false, destructiveHint: false },
+  ingest_project: { readOnlyHint: false, destructiveHint: false },
+
+  // Destructive write tools (5) — may update/delete existing data
+  save_context: { readOnlyHint: false, destructiveHint: true },
+  delete_context: { readOnlyHint: false, destructiveHint: true },
+  clear_context: { readOnlyHint: false, destructiveHint: true },
+  session_end: { readOnlyHint: false, destructiveHint: true },
+  publish_to_team: { readOnlyHint: false, destructiveHint: true },
+};
 
 // Reindex state hoisted to module scope so that in HTTP daemon mode
 // (where registerTools is called once per session), the reindex only
@@ -138,13 +169,18 @@ export function registerTools(server: any, ctx: LocalCtx): void {
       if (blocking) return reindexPromise;
       return; // non-blocking: just ensure it's started
     }
-    const promise = reindex(ctx, { fullSync: true })
+    const promise = Promise.race([
+      reindex(ctx, { fullSync: true, skipEmbeddings: true }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Reindex timeout (30s). FTS index may be incomplete.')), REINDEX_TIMEOUT_MS)
+      ),
+    ])
       .then((stats) => {
         reindexDone = true;
         const total = stats.added + stats.updated + stats.removed;
         if (total > 0) {
           console.error(
-            `[context-vault] Auto-reindex: +${stats.added} ~${stats.updated} -${stats.removed} (${stats.unchanged} unchanged)`
+            `[context-vault] Auto-reindex: +${stats.added} ~${stats.updated} -${stats.removed} (${stats.unchanged} unchanged, embeddings deferred)`
           );
         }
       })
@@ -179,6 +215,7 @@ export function registerTools(server: any, ctx: LocalCtx): void {
       mod.name,
       mod.description,
       mod.inputSchema,
+      TOOL_ANNOTATIONS[mod.name] ?? { readOnlyHint: false, destructiveHint: true },
       tracked(
         ((args: Record<string, unknown>) => mod.handler(args, ctx, shared)) as (
           ...args: any[]

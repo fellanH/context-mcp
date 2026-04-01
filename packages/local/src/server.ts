@@ -452,6 +452,22 @@ async function main(): Promise<void> {
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
 
+    // RSS watchdog: kill the process if memory usage exceeds the cap.
+    // Prevents runaway embedding/reindex operations from frying user systems.
+    const MAX_RSS_BYTES = parseInt(process.env.CONTEXT_VAULT_MAX_RSS_MB || '1024', 10) * 1024 * 1024;
+    const rssWatchdog = setInterval(() => {
+      const { rss } = process.memoryUsage();
+      if (rss > MAX_RSS_BYTES) {
+        const rssMb = Math.round(rss / 1024 / 1024);
+        const capMb = Math.round(MAX_RSS_BYTES / 1024 / 1024);
+        console.error(`[context-vault] WATCHDOG: RSS ${rssMb}MB exceeds ${capMb}MB limit. Shutting down to protect system resources.`);
+        console.error(`[context-vault] Adjust limit with CONTEXT_VAULT_MAX_RSS_MB env var, or run 'context-vault reindex' manually.`);
+        try { unlinkSync(PID_PATH); } catch {}
+        process.exit(137);
+      }
+    }, 5_000);
+    rssWatchdog.unref();
+
     phase = 'CONNECTED';
     let latestKnownVersion: string | null = null;
 
