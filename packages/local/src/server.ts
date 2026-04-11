@@ -415,7 +415,7 @@ async function main(): Promise<void> {
           console.error('[context-vault] Rolling back active transaction...');
           db!.exec('ROLLBACK');
         }
-        (db as any).pragma('wal_checkpoint(TRUNCATE)');
+        db!.exec('PRAGMA wal_checkpoint(TRUNCATE)');
         db!.close();
         console.error('[context-vault] Database closed cleanly.');
       } catch (shutdownErr) {
@@ -597,7 +597,7 @@ async function main(): Promise<void> {
         await transports[sessionId].handleRequest(req, res);
       });
 
-      app.listen(port, () => {
+      const httpServer = app.listen(port, () => {
         console.error(`[context-vault] Serving on http://localhost:${port}/mcp`);
         const pidDir = join(homedir(), '.context-mcp');
         mkdirSync(pidDir, { recursive: true });
@@ -627,6 +627,16 @@ async function main(): Promise<void> {
             console.error(`[context-vault] Health check failed: ${(e as Error).message}`);
           }
         }, 5 * 60 * 1000);
+      });
+      httpServer.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE') {
+          console.error(`[context-vault] Port ${port} is already in use.`);
+          console.error(`[context-vault] Check what's using it: lsof -i :${port}`);
+          console.error(`[context-vault] Or try a different port: context-vault serve --http --port ${port + 1}`);
+        } else {
+          console.error(`[context-vault] Server error: ${err.message}`);
+        }
+        process.exit(1);
       });
     } else {
       const transport = new StdioServerTransport();

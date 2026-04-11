@@ -324,7 +324,7 @@ export const inputSchema = {
     .number()
     .optional()
     .describe(
-      'Skeleton mode: top pivot_count entries by relevance are returned with full body. Remaining entries are returned as skeletons (title + tags + first ~100 chars of body). Default: 2. Set to 0 to skeleton all results, or a high number to disable.'
+      'Number of top results to return with full body text. Lower-ranked results are returned as summaries (title + tags + first ~100 chars). Default: 2. Set to 0 to summarize all results, or a high number to return all with full body.'
     ),
   include_ephemeral: z
     .boolean()
@@ -503,6 +503,7 @@ export async function handler(
       includeSuperseeded: include_superseded ?? false,
       includeEphemeral: include_ephemeral ?? false,
       contextEmbedding,
+      trackMeta: { query, sessionGoal: typeof context === 'string' ? context : context ? JSON.stringify(context) : undefined },
     });
 
     // Post-filter by tags if provided, then apply requested limit
@@ -724,7 +725,7 @@ export async function handler(
     const entryTags = r.tags ? JSON.parse(r.tags) : [];
     const tagStr = entryTags.length ? entryTags.join(', ') : '';
     const icon = kindIcon(r.kind);
-    const skeletonLabel = isSkeleton ? ' `skeleton`' : '';
+    const skeletonLabel = isSkeleton ? ' `[summary]`' : '';
     const tierLabel = r.tier ? `**${r.tier}**` : '';
     const dateStr = r.updated_at && r.updated_at !== r.created_at
       ? `${fmtDate(r.created_at)} (upd ${fmtDate(r.updated_at)})`

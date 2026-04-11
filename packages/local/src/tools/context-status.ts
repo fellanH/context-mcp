@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gatherVaultStatus, computeGrowthWarnings } from '../status.js';
 import { gatherRecallSummary } from '../stats/recall.js';
-import { errorLogPath, errorLogCount } from '../error-log.js';
+import { errorLogPath, errorLogCount, embedRelatedLogTail } from '../error-log.js';
 import { getAutoMemory } from '../auto-memory.js';
 import { ok, err, kindIcon } from '../helpers.js';
 import type { LocalCtx, ToolResult } from '../types.js';
@@ -104,6 +104,12 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
       const pct = ix.total > 0 ? Math.round((ix.indexed / ix.total) * 100) : 100;
       lines.push(`| **Indexed entries** | ${ix.indexed}/${ix.total} (${pct}%) |`);
     }
+    if (status.ftsRowCount != null) {
+      lines.push(`| **Search index rows** | ${status.ftsRowCount.toLocaleString()} |`);
+    }
+    lines.push(
+      `| **Related entry pairs** | ${(status.coRetrievalPairCount ?? 0).toLocaleString()} |`
+    );
 
     // Indexed kinds as compact table
     lines.push(``, `### Entries by Kind`);
@@ -218,6 +224,29 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
       }
       lines.push(`Use save_context to refresh or add expires_at to retire stale entries.`);
     }
+
+    const embedLogHints = embedRelatedLogTail(config.dataDir);
+    if (embedLogHints.length > 0) {
+      lines.push(``, `### Embedding hints (error.log tail)`);
+      lines.push(`_Lines mentioning embeddings — see \`docs/large-vaults.md\` for triage._`);
+      for (const ln of embedLogHints) {
+        lines.push(`- ${ln.length > 240 ? ln.slice(0, 237) + '...' : ln}`);
+      }
+    }
+
+    const healthSnapshot = {
+      total_entries: status.embeddingStatus?.total ?? null,
+      searchable: status.embeddingStatus?.indexed ?? null,
+      pending_indexing: status.embeddingStatus?.missing ?? null,
+      search_index_rows: status.ftsRowCount ?? null,
+      related_pairs: status.coRetrievalPairCount ?? 0,
+      database_size_bytes: status.dbSizeBytes ?? null,
+      files_on_disk: status.fileCount,
+    };
+    lines.push(``, `### Vault Health Snapshot`);
+    lines.push('```json');
+    lines.push(JSON.stringify(healthSnapshot, null, 2));
+    lines.push('```');
 
     // Error log
     const logPath = errorLogPath(config.dataDir);

@@ -3,6 +3,22 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.15.0] — 2026-04-06
+
+### Added
+
+- **Associative recall**: `recall()` now always runs a parallel semantic search against durable entries, not just as a fallback when keywords return zero results. Architectural decisions surface automatically when conversation topics are related, even if no keyword matches occur. Threshold is 0.45 (lower than standard 0.6, because durable entries are high-value). Up to 2 extra hints beyond `max_hints` are allowed to accommodate constraint surfacing without crowding out keyword results.
+- **UserPromptSubmit hook wired to recall**: `unified.mjs` now calls `recallConstraints()` in parallel with the existing handlers. Prior decisions matching the prompt topic are injected as `additionalContext` before the agent responds. Only high-relevance or decision/pattern/architecture entries are surfaced. Failure is always non-blocking (3-second timeout).
+
+## [3.14.0] — 2026-04-06
+
+### Added
+
+- **Tier-aware retrieval**: Durable entries now get priority treatment across all three retrieval paths.
+  - `session_start` adds a "Foundational Decisions" section that loads durable decision/pattern/architecture/reference entries without any date filter, so foundational decisions remain visible regardless of age.
+  - `get_context` hybrid search applies a 1.3x score multiplier to durable entries in the RRF scoring pass, surfacing architectural knowledge above ephemeral noise.
+  - `recall` promotes durable entries to `high` relevance when they match even a single keyword (non-durable entries still require 2+ keyword matches for high relevance).
+
 ## [3.13.0] — 2026-04-01
 
 ### Changed

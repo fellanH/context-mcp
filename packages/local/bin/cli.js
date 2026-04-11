@@ -2188,104 +2188,6 @@ async function runReindex() {
   }
 }
 
-async function runReclassify() {
-  const dryRun = flags.has('--dry-run');
-  const kindFilter = getFlag('--kind');
-
-  const EVENT_KINDS = [
-    'events', 'activity', 'user-prompts', 'agent',
-    'handoff', 'outcome', 'session-review', 'session-summary',
-  ];
-
-  const kinds = kindFilter ? [kindFilter] : EVENT_KINDS;
-  const placeholders = kinds.map(() => '?').join(', ');
-
-  const { resolveConfig } = await import('@context-vault/core/config');
-  const { initDatabase, prepareStatements, deleteVec } =
-    await import('@context-vault/core/db');
-
-  const config = resolveConfig();
-  if (!config.vaultDirExists) {
-    console.error(red(`Vault directory not found: ${config.vaultDir}`));
-    console.error('Run ' + cyan('context-vault setup') + ' to configure.');
-    process.exit(1);
-  }
-
-  const db = await initDatabase(config.dbPath);
-
-  // Count affected entries
-  const countRow = db
-    .prepare(
-      `SELECT COUNT(*) as cnt FROM vault WHERE kind IN (${placeholders}) AND category = 'knowledge'`
-    )
-    .get(...kinds);
-  const total = countRow.cnt;
-
-  if (total === 0) {
-    console.log(green('  No entries need reclassification.'));
-    db.close();
-    return;
-  }
-
-  if (dryRun) {
-    console.log(`\n  ${bold(String(total))} entries would be reclassified from ${yellow('knowledge')} to ${green('event')}:\n`);
-    const breakdown = db
-      .prepare(
-        `SELECT kind, COUNT(*) as cnt FROM vault WHERE kind IN (${placeholders}) AND category = 'knowledge' GROUP BY kind ORDER BY cnt DESC`
-      )
-      .all(...kinds);
-    for (const row of breakdown) {
-      console.log(`    ${row.kind}: ${bold(String(row.cnt))}`);
-    }
-    console.log(dim('\n  Dry run, no changes made.'));
-    db.close();
-    return;
-  }
-
-  const stmts = prepareStatements(db);
-  const BATCH_SIZE = 1000;
-  let reclassified = 0;
-  let embeddingsRemoved = 0;
-
-  console.log(dim(`  Reclassifying ${total} entries...`));
-
-  while (true) {
-    const batch = db
-      .prepare(
-        `SELECT rowid, id FROM vault WHERE kind IN (${placeholders}) AND category = 'knowledge' LIMIT ${BATCH_SIZE}`
-      )
-      .all(...kinds);
-
-    if (batch.length === 0) break;
-
-    const rowids = batch.map((r) => r.rowid);
-    const batchPlaceholders = rowids.map(() => '?').join(', ');
-
-    // Update category and clear indexed flag (triggers remove FTS entries automatically)
-    db.prepare(
-      `UPDATE vault SET category = 'event', indexed = 0 WHERE rowid IN (${batchPlaceholders})`
-    ).run(...rowids);
-
-    // Remove embeddings from vault_vec
-    for (const rowid of rowids) {
-      try {
-        deleteVec(stmts, rowid);
-        embeddingsRemoved++;
-      } catch {
-        // Entry may not have had an embedding
-      }
-    }
-
-    reclassified += batch.length;
-    process.stdout.write(`\r  Progress: ${reclassified}/${total}`);
-  }
-
-  db.close();
-  console.log('');
-  console.log(green(`  ✓ Reclassified ${reclassified} entries from knowledge to event`));
-  console.log(`    Embeddings removed: ${embeddingsRemoved}`);
-}
-
 async function runSync() {
   const dryRun = flags.has('--dry-run');
   const positional = args.slice(1).find((a) => !a.startsWith('--'));
@@ -7096,6 +6998,96 @@ ${progArgs.map(a => `    <string>${a}</string>`).join('\n')}
   }
 }
 
+async function runTier() {
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const { initDatabase, prepareStatements, insertVec, deleteVec, insertCtxVec, deleteCtxVec } = await import('@context-vault/core/db');
+  const { runTierAnalysis } = await import('@context-vault/core/tier-analysis');
+
+  const config = resolveConfig();
+  const dryRun = args.includes('--dry-run');
+  const hotThreshold = parseInt(argValue('--hot-threshold') || '5', 10);
+  const coldDays = parseInt(argValue('--cold-days') || '30', 10);
+  const bundleThreshold = parseInt(argValue('--bundle-threshold') || '3', 10);
+
+  let db;
+  try {
+    db = await initDatabase(config.dbPath);
+  } catch (e) {
+    console.error(red(`  Database not accessible: ${e.message}`));
+    process.exit(1);
+  }
+
+  const stmts = prepareStatements(db);
+  const embedMod = await import('@context-vault/core/embed');
+  const ctx = {
+    db, config, stmts,
+    embed: (text) => embedMod.embed(text),
+    insertVec: (rowid, emb) => insertVec(stmts, rowid, emb),
+    deleteVec: (rowid) => deleteVec(stmts, rowid),
+    insertCtxVec: (rowid, emb) => insertCtxVec(stmts, rowid, emb),
+    deleteCtxVec: (rowid) => deleteCtxVec(stmts, rowid),
+  };
+
+  let report;
+  try {
+    report = await runTierAnalysis(ctx, {
+      hotThreshold,
+      coldDays,
+      coAccessThreshold: bundleThreshold,
+      dryRun,
+    });
+  } finally {
+    db.close();
+  }
+
+  console.log();
+  console.log(`  ${bold('◇ context-vault tier')}${dryRun ? dim(' (dry run)') : ''}`);
+  console.log();
+  console.log(`  Hot entries (${hotThreshold}+ accesses / 7 days):  ${bold(String(report.hotEntries.length))}`);
+  console.log(`  Cold entries (no access / ${coldDays} days):       ${bold(String(report.coldEntries.length))}`);
+  console.log(`  Warm resets:                              ${bold(String(report.warmReset))}`);
+  console.log(`  Co-access bundles:                        ${bold(String(report.bundles.length))}`);
+  console.log(`  Access log pruned:                        ${bold(String(report.accessLogPruned))} rows`);
+
+  if (report.hotEntries.length > 0) {
+    console.log();
+    console.log(`  ${bold('Hot entries:')}`);
+    for (let i = 0; i < report.hotEntries.length; i++) {
+      const e = report.hotEntries[i];
+      const title = (e.title || '(untitled)').slice(0, 50);
+      console.log(`    ${i + 1}. "${title}" (${e.accessCount} accesses)`);
+    }
+  }
+
+  if (report.coldEntries.length > 0) {
+    console.log();
+    console.log(`  ${bold('Cold entries:')} ${dim(`(showing first 10 of ${report.coldEntries.length})`)}`);
+    for (let i = 0; i < Math.min(10, report.coldEntries.length); i++) {
+      const e = report.coldEntries[i];
+      const title = (e.title || '(untitled)').slice(0, 50);
+      const last = e.lastAccessed ? e.lastAccessed.slice(0, 10) : 'never';
+      console.log(`    ${i + 1}. "${title}" (last: ${last})`);
+    }
+  }
+
+  if (report.bundles.length > 0) {
+    console.log();
+    console.log(`  ${bold('Co-access bundles:')}`);
+    for (let i = 0; i < report.bundles.length; i++) {
+      const b = report.bundles[i];
+      const names = b.entries.slice(0, 4).map((e) => e.title || e.id.slice(-8)).join(', ');
+      console.log(`    ${i + 1}. [${b.entries.length} entries, weight: ${b.totalWeight}] ${names}`);
+    }
+  }
+
+  console.log();
+}
+
+function argValue(flag) {
+  const idx = args.indexOf(flag);
+  return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : null;
+}
+
 async function runStats() {
   const { resolveConfig } = await import('@context-vault/core/config');
   const { initDatabase } = await import('@context-vault/core/db');
@@ -8410,6 +8402,9 @@ async function main() {
     case 'reindex':
       await runReindex();
       break;
+    case 'reclassify':
+      await runReclassify();
+      break;
     case 'sync':
       await runSync();
       break;
@@ -8457,6 +8452,9 @@ async function main() {
       break;
     case 'stats':
       await runStats();
+      break;
+    case 'tier':
+      await runTier();
       break;
     case 'remote':
       await runRemote();

@@ -293,7 +293,7 @@ export const inputSchema = {
     .string()
     .optional()
     .describe(
-      'Entry ULID to update. When provided, updates the existing entry instead of creating new. Omitted fields are preserved.'
+      'Entry ID to update. When provided, updates the existing entry instead of creating new. Omitted fields are preserved.'
     ),
   kind: z
     .string()
@@ -845,7 +845,7 @@ export async function handler(
   if (!effectiveIndexed) {
     parts.push(
       '',
-      '_Note: this entry is stored but not indexed (no embeddings/FTS). It will not appear in search results. Use `include_unindexed: true` in list_context to browse unindexed entries._'
+      '_Note: this entry is stored as a file but not indexed for search. It will not appear in search results. Use `include_unindexed: true` in list_context to browse stored-only entries._'
     );
   }
   if (effectiveTier === 'ephemeral') {

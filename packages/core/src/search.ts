@@ -124,6 +124,7 @@ export async function hybridSearch(
     includeSuperseeded = false,
     includeEphemeral = false,
     contextEmbedding = null,
+    trackMeta,
   } = opts;
 
   const rowMap = new Map<string, VaultEntry>();
@@ -339,7 +340,8 @@ export async function hybridSearch(
       entry.recall_count ?? 0,
       entry.last_recalled_at ?? null
     );
-    rrfScores.set(id, (rrfScores.get(id) ?? 0) * boost * recall);
+    const durable = entry.tier === 'durable' ? 1.3 : 1.0;
+    rrfScores.set(id, (rrfScores.get(id) ?? 0) * boost * recall * durable);
   }
 
   const candidates: SearchResult[] = [...rowMap.values()].map((entry) => ({
@@ -389,13 +391,13 @@ export async function hybridSearch(
       if (vec) selectedVecs.push(vec);
     }
     const dedupedPage = injectDiscoverySlots(selected.slice(offset, offset + limit), candidates);
-    trackAccess(ctx, dedupedPage);
+    trackAccess(ctx, dedupedPage, trackMeta);
     return dedupedPage;
   }
 
   const page = candidates.slice(offset, offset + limit);
   const finalPage = injectDiscoverySlots(page, candidates);
-  trackAccess(ctx, finalPage);
+  trackAccess(ctx, finalPage, trackMeta);
   return finalPage;
 }
 
@@ -428,7 +430,7 @@ export function setSessionId(id: string): void {
   _sessionId = id;
 }
 
-export function trackAccess(ctx: BaseCtx, entries: SearchResult[]): void {
+export function trackAccess(ctx: BaseCtx, entries: SearchResult[], meta?: { query?: string; sessionGoal?: string }): void {
   if (!entries.length) return;
 
   const ids = entries.map((e) => e.id);
@@ -478,4 +480,53 @@ export function trackAccess(ctx: BaseCtx, entries: SearchResult[]): void {
       // Non-fatal
     }
   }
+
+  // Write per-access rows to access_log for adaptive tiering
+  try {
+    const insertLog = ctx.db.prepare(
+      `INSERT INTO access_log (entry_id, query, session_id, session_goal, accessed_at) VALUES (?, ?, ?, ?, ?)`
+    );
+    const sid = _sessionId || 'default';
+    for (const entry of entries) {
+      insertLog.run(entry.id, meta?.query ?? null, sid, meta?.sessionGoal ?? null, now);
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  // Compute and write heat_tier for each accessed entry
+  try {
+    const updateHeat = ctx.db.prepare(`UPDATE vault SET heat_tier = ? WHERE id = ?`);
+    for (const entry of entries) {
+      const recallCount = (entry.recall_count ?? 0) + 1;
+      const recallSessions = entry.recall_sessions ?? 0;
+      // Just recalled, so recency bonus is 10 (0 days since last recall)
+      const heat = (recallCount * 3) + (recallSessions * 2) + 10;
+      const tier = heat > 10 ? 'hot' : heat >= 1 ? 'warm' : null;
+      updateHeat.run(tier, entry.id);
+    }
+  } catch {
+    // Non-fatal
+  }
+}
+
+export function computeHeatForEntry(entry: { recall_count: number; recall_sessions: number; last_recalled_at: string | null; created_at: string }): { heat: number; tier: 'hot' | 'warm' | 'cold' | null } {
+  const recallCount = entry.recall_count ?? 0;
+  const recallSessions = entry.recall_sessions ?? 0;
+
+  let recencyBonus = 0;
+  if (entry.last_recalled_at) {
+    const daysSinceRecall = (Date.now() - new Date(entry.last_recalled_at).getTime()) / 86400000;
+    recencyBonus = Math.max(0, 10 - daysSinceRecall);
+  }
+
+  const heat = (recallCount * 3) + (recallSessions * 2) + recencyBonus;
+
+  if (heat > 10) return { heat, tier: 'hot' };
+  if (heat >= 1) return { heat, tier: 'warm' };
+
+  const ageDays = (Date.now() - new Date(entry.created_at).getTime()) / 86400000;
+  if (ageDays > 30) return { heat, tier: 'cold' };
+
+  return { heat, tier: null };
 }

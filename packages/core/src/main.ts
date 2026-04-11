@@ -97,6 +97,7 @@ export {
   recencyDecayScore,
   dotProduct,
   reciprocalRankFusion,
+  computeHeatForEntry,
 } from './search.js';
 
 // Capture

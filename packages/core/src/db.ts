@@ -147,7 +147,8 @@ export const SCHEMA_DDL = `
     indexed         INTEGER DEFAULT 1,
     recall_count    INTEGER DEFAULT 0,
     recall_sessions INTEGER DEFAULT 0,
-    last_recalled_at TEXT
+    last_recalled_at TEXT,
+    heat_tier       TEXT CHECK(heat_tier IN ('hot', 'warm', 'cold'))
   );
 
   CREATE INDEX IF NOT EXISTS idx_vault_kind ON vault(kind);
@@ -158,6 +159,7 @@ export const SCHEMA_DDL = `
   CREATE INDEX IF NOT EXISTS idx_vault_superseded ON vault(superseded_by) WHERE superseded_by IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_vault_tier ON vault(tier);
   CREATE INDEX IF NOT EXISTS idx_vault_indexed ON vault(indexed);
+  CREATE INDEX IF NOT EXISTS idx_vault_heat_tier ON vault(heat_tier) WHERE heat_tier IS NOT NULL;
 
   CREATE VIRTUAL TABLE IF NOT EXISTS vault_fts USING fts5(
     title, body, tags, kind,
@@ -190,9 +192,20 @@ export const SCHEMA_DDL = `
     last_at TEXT NOT NULL,
     PRIMARY KEY (entry_a, entry_b)
   );
+
+  CREATE TABLE IF NOT EXISTS access_log (
+    id          INTEGER PRIMARY KEY,
+    entry_id    TEXT NOT NULL,
+    query       TEXT,
+    session_id  TEXT,
+    session_goal TEXT,
+    accessed_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_access_log_entry_at ON access_log(entry_id, accessed_at);
+  CREATE INDEX IF NOT EXISTS idx_access_log_goal ON access_log(session_goal) WHERE session_goal IS NOT NULL;
 `;
 
-const CURRENT_VERSION = 18;
+const CURRENT_VERSION = 19;
 
 export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
   const sqliteVec = await loadSqliteVec();
@@ -272,9 +285,32 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
           last_at TEXT NOT NULL,
           PRIMARY KEY (entry_a, entry_b)
         )`);
-        db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+        db.exec(`PRAGMA user_version = 18`);
       } catch (e) {
         console.error(`[context-vault] v17->v18 migration failed: ${(e as Error).message}`);
+        return db;
+      }
+      // Fall through to v18->v19 migration
+    }
+
+    // v18 -> v19: add access_log table and heat_tier column
+    if (version === 18 || version === 17 || version === 16 || version === 15) {
+      try {
+        db.exec(`CREATE TABLE IF NOT EXISTS access_log (
+          id          INTEGER PRIMARY KEY,
+          entry_id    TEXT NOT NULL,
+          query       TEXT,
+          session_id  TEXT,
+          session_goal TEXT,
+          accessed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_access_log_entry_at ON access_log(entry_id, accessed_at)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_access_log_goal ON access_log(session_goal) WHERE session_goal IS NOT NULL`);
+        db.exec(`ALTER TABLE vault ADD COLUMN heat_tier TEXT CHECK(heat_tier IN ('hot', 'warm', 'cold'))`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_heat_tier ON vault(heat_tier) WHERE heat_tier IS NOT NULL`);
+        db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+      } catch (e) {
+        console.error(`[context-vault] v18->v19 migration failed: ${(e as Error).message}`);
       }
       return db;
     }
@@ -320,7 +356,7 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
       return freshDb;
     }
 
-    if (version < 18) {
+    if (version < 19) {
       db.exec(SCHEMA_DDL);
       db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
     }

@@ -11,7 +11,7 @@ export const description =
 export const inputSchema = {
   entry_id: z
     .string()
-    .describe('The ULID of the local entry to publish to the team vault.'),
+    .describe('The ID of the local entry to publish to the team vault.'),
   team_id: z
     .string()
     .optional()

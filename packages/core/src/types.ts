@@ -106,6 +106,7 @@ export interface VaultEntry {
   recall_count: number;
   recall_sessions: number;
   last_recalled_at: string | null;
+  heat_tier: string | null;
   rowid?: number;
 }
 
@@ -204,4 +205,6 @@ export interface SearchOptions {
   includeEphemeral?: boolean;
   /** Pre-computed context embedding for contextual reinstatement boosting. */
   contextEmbedding?: Float32Array | null;
+  /** Metadata forwarded to access_log rows written by trackAccess. */
+  trackMeta?: { query?: string; sessionGoal?: string };
 }

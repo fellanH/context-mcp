@@ -1,6 +1,6 @@
 {
   "name": "@context-vault/core",
-  "version": "3.13.0",
+  "version": "3.15.0",
   "type": "module",
   "description": "Pure local engine: capture, index, search, and utilities for context-vault",
   "main": "dist/main.js",
@@ -69,6 +69,10 @@
     "./indexing": {
       "types": "./dist/indexing.d.ts",
       "import": "./dist/indexing.js"
+    },
+    "./tier-analysis": {
+      "types": "./dist/tier-analysis.d.ts",
+      "import": "./dist/tier-analysis.js"
     }
   },
   "files": [

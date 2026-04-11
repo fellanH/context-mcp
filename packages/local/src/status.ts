@@ -162,6 +162,21 @@ export function gatherVaultStatus(ctx: LocalCtx, opts: Record<string, unknown> =
     errors.push(`Indexing stats failed: ${(e as Error).message}`);
   }
 
+  let ftsRowCount: number | null = null;
+  try {
+    ftsRowCount = (db.prepare('SELECT COUNT(*) as c FROM vault_fts').get() as { c: number } | undefined)?.c ?? 0;
+  } catch (e) {
+    errors.push(`FTS row count failed: ${(e as Error).message}`);
+  }
+
+  let coRetrievalPairCount = 0;
+  try {
+    coRetrievalPairCount =
+      (db.prepare('SELECT COUNT(*) as c FROM co_retrievals').get() as { c: number } | undefined)?.c ?? 0;
+  } catch (e) {
+    errors.push(`Co-retrieval count failed: ${(e as Error).message}`);
+  }
+
   let staleKnowledge: unknown[] = [];
   try {
     const stalenessKinds = Object.entries(KIND_STALENESS_DAYS);
@@ -219,6 +234,8 @@ export function gatherVaultStatus(ctx: LocalCtx, opts: Record<string, unknown> =
     archivedCount,
     staleKnowledge,
     indexingStats,
+    ftsRowCount,
+    coRetrievalPairCount,
     recallStats,
     resolvedFrom: config.resolvedFrom,
     errors,

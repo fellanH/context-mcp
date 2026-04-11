@@ -6,10 +6,10 @@ import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 export const name = 'delete_context';
 
 export const description =
-  'Delete an entry from your vault by its ULID id. Removes the file from disk and cleans up the search index.';
+  'Delete an entry from your vault by its ID. Removes the file from disk and cleans up the search index.';
 
 export const inputSchema = {
-  id: z.string().describe('The entry ULID to delete'),
+  id: z.string().describe('The entry ID to delete'),
 };
 
 export async function handler(
@@ -27,11 +27,16 @@ export async function handler(
     // Delete DB record first — if this fails, the file stays and no orphan is created
     const rowidResult = ctx.stmts.getRowid.get(id);
     if (rowidResult?.rowid) {
-      try {
-        ctx.deleteVec(Number(rowidResult.rowid));
-      } catch {}
+      try { ctx.deleteVec(Number(rowidResult.rowid)); } catch {}
+      try { ctx.deleteCtxVec(Number(rowidResult.rowid)); } catch {}
     }
     ctx.stmts.deleteEntry.run(id);
+
+    // Clean up access_log and co_retrievals references
+    try { ctx.db.prepare(`DELETE FROM access_log WHERE entry_id = ?`).run(id); } catch {}
+    try {
+      ctx.db.prepare(`DELETE FROM co_retrievals WHERE entry_a = ? OR entry_b = ?`).run(id, id);
+    } catch {}
 
     // Delete file from disk after successful DB delete
     let fileWarning = null;

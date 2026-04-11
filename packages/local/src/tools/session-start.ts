@@ -1,567 +1,527 @@
 import { z } from 'zod';
-import { execSync } from 'node:child_process';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
-import { ok, err, ensureVaultExists, kindIcon, fmtDate } from '../helpers.js';
-import { getAutoMemory } from '../auto-memory.js';
+import { ok } from '../helpers.js';
+import { isEmbedAvailable } from '@context-vault/core/embed';
+import { getAutoMemory, findAutoMemoryOverlaps } from '../auto-memory.js';
 import { getRemoteClient, getTeamId, getPublicVaults } from '../remote.js';
-import type { AutoMemoryEntry, AutoMemoryResult } from '../auto-memory.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
 
-const DEFAULT_MAX_TOKENS = 4000;
-const RECENT_DAYS = 7;
-const MAX_BODY_PER_ENTRY = 400;
-const PRIORITY_KINDS = ['decision', 'insight', 'pattern'];
-const SESSION_SUMMARY_KIND = 'session';
+const SEMANTIC_SIMILARITY_THRESHOLD = 0.6;
+const CO_RETRIEVAL_WEIGHT_CAP = 50;
+
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'should', 'may', 'might', 'shall', 'can', 'need', 'must', 'ought',
+  'and', 'but', 'or', 'nor', 'not', 'so', 'yet', 'for', 'with',
+  'from', 'into', 'during', 'before', 'after', 'above', 'below',
+  'to', 'of', 'in', 'on', 'at', 'by', 'about', 'between', 'through',
+  'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them',
+  'their', 'we', 'our', 'you', 'your', 'he', 'she', 'him', 'her',
+  'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other',
+  'some', 'such', 'no', 'only', 'own', 'same', 'than', 'too', 'very',
+  'just', 'also', 'now', 'then', 'here', 'there', 'when', 'where',
+  'how', 'what', 'which', 'who', 'whom', 'why', 'if', 'because',
+  'as', 'until', 'while', 'use', 'using', 'used',
+]);
+
+const DEFAULT_MAX_HINTS = 3;
+
+/** Module-level session dedup map: session_id -> Set of surfaced entry IDs */
+const sessionSurfaced = new Map<string, Set<string>>();
 
 /**
- * Build a search context string from auto-memory entries.
- * Used to boost vault retrieval relevance.
+ * Extract keywords from a signal string.
+ * Split on whitespace, filter stopwords and words under 4 chars, keep top 10.
  */
-function buildAutoMemoryContext(entries: AutoMemoryEntry[]): string {
-  if (entries.length === 0) return '';
-  const parts = entries
-    .map((e) => {
-      const desc = e.description ? `: ${e.description}` : '';
-      // Include a snippet of the body for richer context
-      const bodySnippet = e.body ? ` -- ${e.body.slice(0, 200)}` : '';
-      return `${e.name}${desc}${bodySnippet}`;
-    });
-  return parts.join('. ');
+export function extractKeywords(signal: string): string[] {
+  const words = signal
+    .toLowerCase()
+    .replace(/[^a-z0-9\s_-]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const w of words) {
+    if (seen.has(w)) continue;
+    seen.add(w);
+    unique.push(w);
+    if (unique.length >= 10) break;
+  }
+  return unique;
 }
 
-export const name = 'session_start';
+export const name = 'recall';
 
 export const description =
-  'Auto-assemble a context brief for the current project on session start. Pulls recent entries, last session summary, and active decisions/blockers into a token-budgeted capsule formatted for agent consumption.';
+  'Search the vault using a raw signal (prompt text, error message, file path, or task context). Returns lightweight hints for proactive surfacing. Designed for runtime hooks, not direct user interaction.';
 
 export const inputSchema = {
-  project: z
+  signal: z
+    .string()
+    .describe('Raw text: prompt, error message, file path, or combined signal.'),
+  signal_type: z
+    .enum(['prompt', 'error', 'file', 'task'])
+    .describe('Type of signal, used to weight results.'),
+  bucket: z
     .string()
     .optional()
-    .describe(
-      'Project name or tag to scope the brief. Auto-detected from cwd/git remote if not provided.'
-    ),
-  max_tokens: z
+    .describe('Scope results to a project bucket.'),
+  session_id: z
+    .string()
+    .optional()
+    .describe('Session identifier for dedup. Entries already surfaced this session are suppressed.'),
+  max_hints: z
     .number()
     .optional()
-    .describe('Token budget for the capsule (rough estimate: 1 token ~ 4 chars). Default: 4000.'),
-  buckets: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Bucket names to scope the session brief. Each name expands to a 'bucket:<name>' tag filter. When provided, the brief only includes entries from these buckets."
-    ),
-  auto_memory_path: z
-    .string()
-    .optional()
-    .describe(
-      "Explicit path to the Claude Code auto-memory directory. Overrides auto-detection. If not provided, session_start attempts to detect ~/.claude/projects/-<project-key>/memory/ from cwd."
-    ),
+    .describe('Maximum hints to return. Default: 3.'),
 };
 
-function detectProject() {
-  try {
-    const remote = execSync('git remote get-url origin 2>/dev/null', {
-      encoding: 'utf-8',
-      timeout: 3000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-    if (remote) {
-      const match = remote.match(/\/([^/]+?)(?:\.git)?$/);
-      if (match) return match[1];
-    }
-  } catch {}
-
-  try {
-    const cwd = process.cwd();
-    const parts = cwd.split(/[/\\]/);
-    return parts[parts.length - 1];
-  } catch {}
-
-  return null;
-}
-
-function truncateBody(body: string | null | undefined, maxLen = MAX_BODY_PER_ENTRY): string {
-  if (!body) return '(no body)';
-  if (body.length <= maxLen) return body;
-  return body.slice(0, maxLen) + '...';
-}
-
-function estimateTokens(text: string | null | undefined): number {
-  return Math.ceil((text || '').length / 4);
-}
-
-function formatEntry(entry: any): string {
-  const tags = entry.tags ? JSON.parse(entry.tags) : [];
-  const tagStr = tags.length ? tags.join(', ') : '';
-  const date = fmtDate(entry.updated_at || entry.created_at);
-  const icon = kindIcon(entry.kind);
-  const meta = [`\`${entry.kind}\``, tagStr, date].filter(Boolean).join(' · ');
-  return [
-    `- ${icon} **${entry.title || '(untitled)'}**`,
-    `  ${meta} · \`${entry.id}\``,
-    `  ${truncateBody(entry.body).replace(/\n+/g, ' ').trim()}`,
-  ].join('\n');
-}
-
 export async function handler(
-  { project, max_tokens, buckets, auto_memory_path }: Record<string, any>,
+  { signal, signal_type, bucket, session_id, max_hints }: Record<string, any>,
   ctx: LocalCtx,
   { ensureIndexed }: SharedCtx
 ): Promise<ToolResult> {
-  const { config } = ctx;
-
-  const vaultErr = ensureVaultExists(config);
-  if (vaultErr) return vaultErr;
+  const start = Date.now();
 
   await ensureIndexed();
 
-  // Sanity check: compare DB entries vs disk files
-  let indexWarning = '';
-  try {
-    const dbCount = (ctx.db.prepare('SELECT COUNT(*) as cnt FROM vault').get() as any)?.cnt ?? 0;
-    let diskCount = 0;
-    const walk = (dir: string, depth = 0) => {
-      if (depth > 3 || diskCount >= 100) return;
-      try {
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
-          if (diskCount >= 100) return;
-          if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== '_archive') {
-            walk(`${dir}/${entry.name}`, depth + 1);
-          } else if (entry.name.endsWith('.md')) {
-            diskCount++;
-          }
-        }
-      } catch {}
+  const keywords = extractKeywords(signal || '');
+  const limit = max_hints ?? DEFAULT_MAX_HINTS;
+
+  if (keywords.length === 0) {
+    const result = ok('No relevant entries found.');
+    result._meta = {
+      latency_ms: Date.now() - start,
+      method: 'none' as const,
+      signal_keywords: [],
+      suppressed: 0,
     };
-    walk(config.vaultDir);
-    if (diskCount >= 100 && dbCount < diskCount / 10) {
-      indexWarning = `\n> **WARNING:** Vault has significantly more files on disk (~${diskCount}+) than indexed entries (${dbCount}). The search index may be out of sync. Run \`context-vault reconnect\` to fix.\n`;
-    }
-  } catch {}
-
-  const effectiveProject = project?.trim() || detectProject();
-  const tokenBudget = max_tokens || DEFAULT_MAX_TOKENS;
-
-  const bucketTags = buckets?.length ? buckets.map((b: string) => `bucket:${b}`) : [];
-  const effectiveTags = bucketTags.length ? bucketTags : effectiveProject ? [effectiveProject] : [];
-
-  const sinceDate = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString();
-
-  // Auto-detect Claude Code auto-memory (explicit path overrides auto-detection)
-  const autoMemory: AutoMemoryResult = getAutoMemory(auto_memory_path);
-  const autoMemoryContext = buildAutoMemoryContext(autoMemory.entries);
-  const topicsExtracted = autoMemory.entries.length > 0
-    ? extractKeywords(autoMemoryContext).slice(0, 20)
-    : [];
-
-  const sections = [];
-  let tokensUsed = 0;
-
-  sections.push(`# Session Brief${effectiveProject ? ` -- ${effectiveProject}` : ''}`);
-  const bucketsLabel = buckets?.length ? ` | buckets: ${buckets.join(', ')}` : '';
-  const autoMemoryLabel = autoMemory.detected
-    ? ` | auto-memory: ${autoMemory.entries.length} entries detected, used as search context`
-    : '';
-  sections.push(
-    `_Generated ${new Date().toISOString().slice(0, 10)} | budget: ${tokenBudget} tokens${bucketsLabel}${autoMemoryLabel}_\n`
-  );
-  tokensUsed += estimateTokens(sections.join('\n'));
-
-  const lastSession = queryLastSession(ctx, effectiveTags);
-  if (lastSession) {
-    const sessionBlock = ['## Last Session Summary', truncateBody(lastSession.body, 600), ''].join(
-      '\n'
-    );
-    const sessionTokens = estimateTokens(sessionBlock);
-    if (tokensUsed + sessionTokens <= tokenBudget) {
-      sections.push(sessionBlock);
-      tokensUsed += sessionTokens;
-    }
+    return result;
   }
 
-  // When auto-memory context is available, boost decisions query with FTS
-  const decisions = queryByKinds(
-    ctx,
-    PRIORITY_KINDS,
-    sinceDate,
-    effectiveTags,
-    autoMemoryContext
-  );
-  if (decisions.length > 0) {
-    const header = '## Active Decisions, Insights & Patterns\n';
-    const headerTokens = estimateTokens(header);
-    if (tokensUsed + headerTokens <= tokenBudget) {
-      const entryLines = [];
-      tokensUsed += headerTokens;
-      for (const entry of decisions) {
-        const line = formatEntry(entry);
-        const lineTokens = estimateTokens(line);
-        if (tokensUsed + lineTokens > tokenBudget) break;
-        entryLines.push(line);
-        tokensUsed += lineTokens;
-      }
-      if (entryLines.length > 0) {
-        sections.push(header + entryLines.join('\n') + '\n');
-      }
-    }
+  // Build fast-path query: tag/title LIKE match for each keyword
+  const conditions: string[] = [];
+  const params: string[] = [];
+  for (const kw of keywords) {
+    conditions.push('(title LIKE ? OR tags LIKE ?)');
+    params.push(`%${kw}%`, `%${kw}%`);
   }
 
-  const recent = queryRecent(ctx, sinceDate, effectiveTags);
-  const seenIds = new Set(decisions.map((d: any) => d.id));
-  if (lastSession) seenIds.add(lastSession.id);
-  const deduped = recent.filter((r: any) => !seenIds.has(r.id));
+  const bucketClause = bucket ? ' AND tags LIKE ?' : '';
+  if (bucket) params.push(`%"bucket:${bucket}"%`);
 
-  if (deduped.length > 0) {
-    const header = `## Recent Entries (last ${RECENT_DAYS} days)\n`;
-    const headerTokens = estimateTokens(header);
-    if (tokensUsed + headerTokens <= tokenBudget) {
-      const entryLines = [];
-      tokensUsed += headerTokens;
-      for (const entry of deduped) {
-        const line = formatEntry(entry);
-        const lineTokens = estimateTokens(line);
-        if (tokensUsed + lineTokens > tokenBudget) break;
-        entryLines.push(line);
-        tokensUsed += lineTokens;
-      }
-      if (entryLines.length > 0) {
-        sections.push(header + entryLines.join('\n') + '\n');
-      }
-    }
+  const sql = `SELECT id, title, substr(body, 1, 100) as summary, kind, tags, tier
+    FROM vault
+    WHERE indexed = 1
+      AND (expires_at IS NULL OR expires_at > datetime('now'))
+      AND superseded_by IS NULL
+      AND (${conditions.join(' OR ')})${bucketClause}
+    LIMIT 20`;
+
+  let rows: any[];
+  try {
+    rows = ctx.db.prepare(sql).all(...params);
+  } catch {
+    rows = [];
   }
 
-  // Remote entries: pull recent from hosted API if configured
+  // Session dedup
+  let suppressed = 0;
+  const bypassDedup = signal_type === 'error';
+  const sessionSet = session_id
+    ? (sessionSurfaced.get(session_id) ?? (() => { const s = new Set<string>(); sessionSurfaced.set(session_id, s); return s; })())
+    : null;
+
+  const hints: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    relevance: 'high' | 'medium';
+    kind: string;
+    tags: string[];
+  }> = [];
+
+  for (const row of rows) {
+    if (hints.length >= limit) break;
+
+    // Dedup check
+    if (sessionSet && !bypassDedup && sessionSet.has(row.id)) {
+      suppressed++;
+      continue;
+    }
+
+    const entryTags: string[] = row.tags ? JSON.parse(row.tags) : [];
+
+    // Score relevance: count how many keywords match title or tags
+    let matchCount = 0;
+    const titleLower = (row.title || '').toLowerCase();
+    const tagsLower = (row.tags || '').toLowerCase();
+    for (const kw of keywords) {
+      if (titleLower.includes(kw) || tagsLower.includes(kw)) matchCount++;
+    }
+    const isDurable = row.tier === 'durable';
+    const relevance: 'high' | 'medium' = (matchCount >= 2 || (isDurable && matchCount >= 1)) ? 'high' : 'medium';
+
+    hints.push({
+      id: row.id,
+      title: row.title || '(untitled)',
+      summary: row.summary || '',
+      relevance,
+      kind: row.kind || 'knowledge',
+      tags: entryTags,
+    });
+
+    // Track surfaced
+    if (sessionSet) sessionSet.add(row.id);
+  }
+
+  // Remote recall: merge hints from hosted API
   const remoteClient = getRemoteClient(ctx.config);
-  let remoteCount = 0;
-  if (remoteClient && tokensUsed < tokenBudget) {
+  if (remoteClient && hints.length < limit) {
     try {
-      const seenIds = new Set([
-        ...decisions.map((d: any) => d.id),
-        ...deduped.map((d: any) => d.id),
-        ...(lastSession ? [lastSession.id] : []),
-      ]);
-      const remoteTags = effectiveTags.length ? effectiveTags : undefined;
-      const remoteResults = await remoteClient.search({
-        tags: remoteTags,
-        limit: 10,
-        since: sinceDate,
+      const remoteHints = await remoteClient.recall({
+        signal,
+        signal_type,
+        bucket,
+        max_hints: limit - hints.length,
       });
-      const uniqueRemote = remoteResults.filter((r: any) => !seenIds.has(r.id));
-      if (uniqueRemote.length > 0) {
-        const header = '## Remote Entries\n';
-        const headerTokens = estimateTokens(header);
-        if (tokensUsed + headerTokens <= tokenBudget) {
-          const entryLines: string[] = [];
-          tokensUsed += headerTokens;
-          for (const entry of uniqueRemote) {
-            const line = formatEntry(entry);
-            const lineTokens = estimateTokens(line);
-            if (tokensUsed + lineTokens > tokenBudget) break;
-            entryLines.push(line);
-            tokensUsed += lineTokens;
-            remoteCount++;
-          }
-          if (entryLines.length > 0) {
-            sections.push(header + entryLines.join('\n') + '\n');
-          }
+      const localIds = new Set(hints.map(h => h.id));
+      for (const rh of remoteHints) {
+        if (hints.length >= limit) break;
+        if (localIds.has(rh.id)) continue;
+        if (sessionSet && !bypassDedup && sessionSet.has(rh.id)) {
+          suppressed++;
+          continue;
         }
+        hints.push(rh);
+        if (sessionSet) sessionSet.add(rh.id);
       }
     } catch (e) {
-      console.warn(`[context-vault] Remote session_start failed: ${(e as Error).message}`);
+      console.warn(`[context-vault] Remote recall failed: ${(e as Error).message}`);
     }
   }
 
-  // Team vault entries: include team knowledge in brief if teamId is configured
-  let teamCount = 0;
+  // Team vault recall: include team results if teamId is configured
   const teamId = getTeamId(ctx.config);
-  if (remoteClient && teamId && tokensUsed < tokenBudget) {
+  if (remoteClient && teamId && hints.length < limit) {
     try {
-      const allSeenIds = new Set([
-        ...decisions.map((d: any) => d.id),
-        ...deduped.map((d: any) => d.id),
-        ...(lastSession ? [lastSession.id] : []),
-      ]);
-      const teamResults = await remoteClient.teamSearch(teamId, {
-        tags: effectiveTags.length ? effectiveTags : undefined,
-        limit: 10,
-        since: sinceDate,
+      const teamHints = await remoteClient.teamRecall(teamId, {
+        signal,
+        signal_type,
+        bucket,
+        max_hints: limit - hints.length,
       });
-      const uniqueTeam = teamResults.filter((r: any) => !allSeenIds.has(r.id));
-      if (uniqueTeam.length > 0) {
-        const header = '## Team Knowledge\n';
-        const headerTokens = estimateTokens(header);
-        if (tokensUsed + headerTokens <= tokenBudget) {
-          const entryLines: string[] = [];
-          tokensUsed += headerTokens;
-          for (const entry of uniqueTeam) {
-            const line = formatEntry(entry) + ' `[team]`';
-            const lineTokens = estimateTokens(line);
-            if (tokensUsed + lineTokens > tokenBudget) break;
-            entryLines.push(line);
-            tokensUsed += lineTokens;
-            teamCount++;
-          }
-          if (entryLines.length > 0) {
-            sections.push(header + entryLines.join('\n') + '\n');
-          }
+      const existingIds = new Set(hints.map(h => h.id));
+      for (const th of teamHints) {
+        if (hints.length >= limit) break;
+        if (existingIds.has(th.id)) continue;
+        if (sessionSet && !bypassDedup && sessionSet.has(th.id)) {
+          suppressed++;
+          continue;
         }
+        hints.push({ ...th, tags: [...(th.tags || []), '[team]'] });
+        if (sessionSet) sessionSet.add(th.id);
       }
     } catch (e) {
-      console.warn(`[context-vault] Team session_start failed: ${(e as Error).message}`);
+      console.warn(`[context-vault] Team recall failed: ${(e as Error).message}`);
     }
   }
 
-  // Public vault entries: include public knowledge if publicVaults are configured
-  let publicCount = 0;
+  // Public vault recall: query each configured public vault
   const publicVaultSlugs = getPublicVaults(ctx.config);
-  if (remoteClient && publicVaultSlugs.length > 0 && tokensUsed < tokenBudget) {
+  if (remoteClient && publicVaultSlugs.length > 0 && hints.length < limit) {
+    const publicRecalls = publicVaultSlugs.map(slug =>
+      remoteClient.publicRecall(slug, {
+        signal,
+        signal_type,
+        bucket,
+        max_hints: limit - hints.length,
+      }).catch(e => {
+        console.warn(`[context-vault] Public vault "${slug}" recall failed: ${(e as Error).message}`);
+        return [];
+      })
+    );
     try {
-      const allPublicSeenIds = new Set([
-        ...decisions.map((d: any) => d.id),
-        ...deduped.map((d: any) => d.id),
-        ...(lastSession ? [lastSession.id] : []),
-      ]);
-      const publicSearches = publicVaultSlugs.map(slug =>
-        remoteClient.publicSearch(slug, {
-          tags: effectiveTags.length ? effectiveTags : undefined,
-          limit: 5,
-          since: sinceDate,
-        }).catch(() => [])
-      );
-      const allPublicResults = await Promise.all(publicSearches);
-      const flatPublic = allPublicResults.flat().filter((r: any) => !allPublicSeenIds.has(r.id));
-      if (flatPublic.length > 0) {
-        const header = '## Public Knowledge\n';
-        const headerTokens = estimateTokens(header);
-        if (tokensUsed + headerTokens <= tokenBudget) {
-          const entryLines: string[] = [];
-          tokensUsed += headerTokens;
-          for (const entry of flatPublic) {
-            const slug = (entry as any).vault_slug || 'public';
-            const line = formatEntry(entry) + ` \`[public:${slug}]\``;
-            const lineTokens = estimateTokens(line);
-            if (tokensUsed + lineTokens > tokenBudget) break;
-            entryLines.push(line);
-            tokensUsed += lineTokens;
-            publicCount++;
+      const allPublicHints = await Promise.all(publicRecalls);
+      const existingIds = new Set(hints.map(h => h.id));
+      for (const publicHints of allPublicHints) {
+        for (const ph of publicHints) {
+          if (hints.length >= limit) break;
+          if (existingIds.has(ph.id)) continue;
+          if (sessionSet && !bypassDedup && sessionSet.has(ph.id)) {
+            suppressed++;
+            continue;
           }
-          if (entryLines.length > 0) {
-            sections.push(header + entryLines.join('\n') + '\n');
-          }
+          hints.push({ ...ph, tags: [...(ph.tags || []), '[public]'] });
+          if (sessionSet) sessionSet.add(ph.id);
         }
       }
     } catch (e) {
-      console.warn(`[context-vault] Public vault session_start failed: ${(e as Error).message}`);
+      console.warn(`[context-vault] Public vault recall failed: ${(e as Error).message}`);
     }
   }
 
-  const totalEntries =
-    (lastSession ? 1 : 0) +
-    decisions.length +
-    deduped.filter((_d: any) => {
-      return true;
-    }).length +
-    remoteCount +
-    teamCount +
-    publicCount;
+  let method: 'tag_match' | 'semantic' | 'durable_semantic' | 'none' = hints.length > 0 ? 'tag_match' : 'none';
 
-  if (indexWarning) {
-    sections.push(indexWarning);
+  // Associative recall: always search durables semantically (regardless of keyword hits)
+  if (signal_type !== 'file' && isEmbedAvailable()) {
+    try {
+      const durableCount = (
+        ctx.db.prepare("SELECT COUNT(*) as c FROM vault_vec v JOIN vault e ON e.rowid = v.rowid WHERE e.tier = 'durable'").get() as { c: number }
+      ).c;
+
+      if (durableCount > 0) {
+        const queryVec = await ctx.embed(signal);
+        if (queryVec) {
+          // KNN against all vectors, then filter to durables in hydration
+          const vecRows = ctx.db
+            .prepare(
+              'SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT 15'
+            )
+            .all(queryVec) as { rowid: number; distance: number }[];
+
+          // Merge content vectors (vault_vec) and context vectors (vault_ctx_vec)
+          // Content vectors match on what the entry says; context vectors match on
+          // when/where the decision applies (encoding_context), bridging vocabulary gaps.
+          let ctxVecRows: { rowid: number; distance: number }[] = [];
+          try {
+            const ctxVecCount = (
+              ctx.db.prepare('SELECT COUNT(*) as c FROM vault_ctx_vec').get() as { c: number }
+            ).c;
+            if (ctxVecCount > 0) {
+              ctxVecRows = ctx.db
+                .prepare(
+                  'SELECT v.rowid, v.distance FROM vault_ctx_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT 15'
+                )
+                .all(queryVec) as { rowid: number; distance: number }[];
+            }
+          } catch {
+            // vault_ctx_vec may not exist or be empty
+          }
+
+          // Combine both vector result sets, keeping best distance per rowid
+          const mergedDistMap = new Map<number, number>();
+          for (const vr of vecRows) {
+            mergedDistMap.set(vr.rowid, vr.distance);
+          }
+          for (const cr of ctxVecRows) {
+            const existing = mergedDistMap.get(cr.rowid);
+            if (existing === undefined || cr.distance < existing) {
+              mergedDistMap.set(cr.rowid, cr.distance);
+            }
+          }
+
+          const allRowids = [...mergedDistMap.keys()];
+          if (allRowids.length) {
+            const placeholders = allRowids.map(() => '?').join(',');
+
+            const hydrated = ctx.db
+              .prepare(
+                `SELECT rowid, id, title, substr(body, 1, 150) as summary, kind, tags, tier FROM vault
+                 WHERE rowid IN (${placeholders})
+                 AND tier = 'durable'
+                 AND indexed = 1
+                 AND (expires_at IS NULL OR expires_at > datetime('now'))
+                 AND superseded_by IS NULL`
+              )
+              .all(...allRowids) as any[];
+
+            const byRowid = new Map<number, any>();
+            for (const row of hydrated) byRowid.set(row.rowid, row);
+            const existingIds = new Set(hints.map(h => h.id));
+
+            // Sort by distance (best first)
+            const sorted = allRowids
+              .map(rowid => ({ rowid, distance: mergedDistMap.get(rowid)! }))
+              .sort((a, b) => a.distance - b.distance);
+
+            for (const { rowid, distance } of sorted) {
+              if (hints.length >= limit + 2) break;
+              const row = byRowid.get(rowid);
+              if (!row) continue;
+              if (existingIds.has(row.id)) continue;
+
+              const similarity = Math.max(0, 1 - distance / 2);
+              if (similarity < 0.45) continue;
+
+              if (sessionSet && !bypassDedup && sessionSet.has(row.id)) {
+                suppressed++;
+                continue;
+              }
+
+              hints.push({
+                id: row.id,
+                title: row.title || '(untitled)',
+                summary: row.summary || '',
+                relevance: similarity >= 0.6 ? 'high' : 'medium',
+                kind: row.kind || 'knowledge',
+                tags: row.tags ? JSON.parse(row.tags) : [],
+              });
+
+              if (sessionSet) sessionSet.add(row.id);
+            }
+
+            if (method === 'none' && hints.length > 0) method = 'durable_semantic';
+          }
+        }
+      }
+    } catch {
+      // Associative recall is best-effort
+    }
   }
 
-  sections.push('---');
-  sections.push(
-    `_${tokensUsed} / ${tokenBudget} tokens used | project: ${effectiveProject || 'unscoped'}_`
-  );
+  // Semantic fallback: when fast-path returns 0 results and signal is not file-based
+  if (hints.length === 0 && signal_type !== 'file' && isEmbedAvailable()) {
+    try {
+      const vecCount = (
+        ctx.db.prepare('SELECT COUNT(*) as c FROM vault_vec').get() as { c: number }
+      ).c;
 
-  const result: ToolResult = ok(sections.join('\n'));
+      if (vecCount > 0) {
+        const queryVec = await ctx.embed(signal);
+        if (queryVec) {
+          const vecRows = ctx.db
+            .prepare(
+              'SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT 5'
+            )
+            .all(queryVec) as { rowid: number; distance: number }[];
+
+          if (vecRows.length) {
+            const rowids = vecRows.map((vr) => vr.rowid);
+            const placeholders = rowids.map(() => '?').join(',');
+
+            let bucketFilter = '';
+            const hydrateParams: any[] = [...rowids];
+            if (bucket) {
+              bucketFilter = ' AND tags LIKE ?';
+              hydrateParams.push(`%"bucket:${bucket}"%`);
+            }
+
+            const hydrated = ctx.db
+              .prepare(
+                `SELECT rowid, id, title, substr(body, 1, 100) as summary, kind, tags FROM vault WHERE rowid IN (${placeholders}) AND indexed = 1 AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL${bucketFilter}`
+              )
+              .all(...hydrateParams) as any[];
+
+            const byRowid = new Map<number, any>();
+            for (const row of hydrated) byRowid.set(row.rowid, row);
+
+            for (const vr of vecRows) {
+              if (hints.length >= limit) break;
+              const row = byRowid.get(vr.rowid);
+              if (!row) continue;
+
+              const similarity = Math.max(0, 1 - vr.distance / 2);
+              if (similarity < SEMANTIC_SIMILARITY_THRESHOLD) continue;
+
+              // Session dedup
+              if (sessionSet && !bypassDedup && sessionSet.has(row.id)) {
+                suppressed++;
+                continue;
+              }
+
+              const entryTags: string[] = row.tags ? JSON.parse(row.tags) : [];
+              hints.push({
+                id: row.id,
+                title: row.title || '(untitled)',
+                summary: row.summary || '',
+                relevance: similarity >= 0.8 ? 'high' : 'medium',
+                kind: row.kind || 'knowledge',
+                tags: entryTags,
+              });
+
+              if (sessionSet) sessionSet.add(row.id);
+            }
+
+            if (hints.length > 0) method = 'semantic';
+          }
+        }
+      }
+    } catch {
+      // Semantic fallback is best-effort; fast path already ran
+    }
+  }
+
+  const latency = Date.now() - start;
+
+  if (hints.length === 0) {
+    const result = ok('No relevant entries found.');
+    result._meta = {
+      latency_ms: latency,
+      method,
+      signal_keywords: keywords,
+      suppressed,
+    };
+    return result;
+  }
+
+  // Record co-retrieval pairs (fire and forget, non-blocking)
+  if (hints.length >= 2) {
+    recordCoRetrieval(ctx, hints.map((h) => h.id));
+  }
+
+  // Check for auto-memory overlap to avoid redundant surfacing
+  let autoMemoryOverlaps: Array<{ hint_id: string; memory_file: string; memory_name: string }> = [];
+  try {
+    const autoMemory = getAutoMemory();
+    if (autoMemory.detected && autoMemory.entries.length > 0) {
+      for (const h of hints) {
+        const searchText = [h.title, h.summary].filter(Boolean).join(' ');
+        const overlaps = findAutoMemoryOverlaps(autoMemory, searchText, 0.3);
+        if (overlaps.length > 0) {
+          autoMemoryOverlaps.push({
+            hint_id: h.id,
+            memory_file: overlaps[0].file,
+            memory_name: overlaps[0].name,
+          });
+        }
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  // Format output
+  const lines = [`[Vault: ${hints.length} ${hints.length === 1 ? 'entry' : 'entries'} may be relevant]`];
+  for (const h of hints) {
+    const overlap = autoMemoryOverlaps.find(o => o.hint_id === h.id);
+    const overlapNote = overlap ? ` [also in auto-memory: ${overlap.memory_name}]` : '';
+    lines.push(`- "${h.title}" (${h.kind}, ${h.relevance})${overlapNote}`);
+  }
+  lines.push('Use get_context to retrieve full details.');
+
+  const result = ok(lines.join('\n'));
   result._meta = {
-    project: effectiveProject || null,
-    buckets: buckets || null,
-    tokens_used: tokensUsed,
-    tokens_budget: tokenBudget,
-    sections: {
-      last_session: lastSession ? 1 : 0,
-      decisions: decisions.length,
-      recent: deduped.length,
-    },
-    auto_memory: {
-      detected: autoMemory.detected,
-      path: autoMemory.path,
-      entries: autoMemory.entries.length,
-      lines_used: autoMemory.linesUsed,
-      topics_extracted: topicsExtracted,
-    },
+    latency_ms: latency,
+    method,
+    signal_keywords: keywords,
+    suppressed,
+    hints,
+    auto_memory_overlaps: autoMemoryOverlaps.length > 0 ? autoMemoryOverlaps : undefined,
   };
   return result;
 }
 
-function queryLastSession(ctx: LocalCtx, effectiveTags: string[]): any {
-  const clauses = [`kind = '${SESSION_SUMMARY_KIND}'`];
-  const params: any[] = [];
-
-  if (false) {
-  }
-  clauses.push("(expires_at IS NULL OR expires_at > datetime('now'))");
-  clauses.push('superseded_by IS NULL');
-
-  const where = `WHERE ${clauses.join(' AND ')}`;
-  const rows = ctx.db
-    .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 5`)
-    .all(...params);
-
-  if (effectiveTags.length) {
-    const match = rows.find((r: any) => {
-      const tags = r.tags ? JSON.parse(r.tags) : [];
-      return effectiveTags.some((t: string) => tags.includes(t));
-    });
-    if (match) return match;
-  }
-  return rows[0] || null;
-}
-
-function queryByKinds(
-  ctx: LocalCtx,
-  kinds: string[],
-  since: string,
-  effectiveTags: string[],
-  autoMemoryContext = ''
-): any[] {
-  const kindPlaceholders = kinds.map(() => '?').join(',');
-  const clauses = [`kind IN (${kindPlaceholders})`];
-  const params = [...kinds];
-
-  clauses.push('created_at >= ?');
-  params.push(since);
-
-  if (false) {
-  }
-  clauses.push("(expires_at IS NULL OR expires_at > datetime('now'))");
-  clauses.push('superseded_by IS NULL');
-
-  const where = `WHERE ${clauses.join(' AND ')}`;
-  let rows = ctx.db
-    .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 50`)
-    .all(...params) as any[];
-
-  if (effectiveTags.length) {
-    const tagged = rows.filter((r: any) => {
-      const tags = r.tags ? JSON.parse(r.tags) : [];
-      return effectiveTags.some((t: string) => tags.includes(t));
-    });
-    if (tagged.length > 0) rows = tagged;
-  }
-
-  // When auto-memory context is available, boost results by FTS relevance
-  // to surface vault entries that match what the user's auto-memory says they care about
-  if (autoMemoryContext && rows.length > 1) {
-    rows = boostByAutoMemory(ctx, rows, autoMemoryContext);
-  }
-
-  return rows;
-}
-
-/**
- * Re-rank vault entries by FTS relevance to auto-memory context.
- * Entries matching auto-memory topics float to the top while preserving
- * all original entries (non-matching ones keep their original order at the end).
- */
-function boostByAutoMemory(ctx: LocalCtx, rows: any[], context: string): any[] {
-  // Extract meaningful keywords from auto-memory context for FTS
-  const keywords = extractKeywords(context);
-  if (keywords.length === 0) return rows;
-
-  // Build FTS query from auto-memory keywords
-  const ftsTerms = keywords.slice(0, 10).map((k) => `"${k}"`).join(' OR ');
-  const rowIds = new Set(rows.map((r: any) => r.id));
-
+function recordCoRetrieval(ctx: LocalCtx, ids: string[]): void {
   try {
-    const ftsRows = ctx.db
-      .prepare(
-        `SELECT e.id, rank FROM vault_fts f JOIN vault e ON f.rowid = e.rowid WHERE vault_fts MATCH ? ORDER BY rank LIMIT 50`
-      )
-      .all(ftsTerms) as { id: string; rank: number }[];
-
-    // Build a boost map: entries matching auto-memory context get priority
-    const boostMap = new Map<string, number>();
-    for (const fr of ftsRows) {
-      if (rowIds.has(fr.id)) {
-        boostMap.set(fr.id, fr.rank);
+    const now = new Date().toISOString();
+    const upsert = ctx.db.prepare(
+      `INSERT INTO co_retrievals (entry_a, entry_b, count, last_at) VALUES (?, ?, 1, ?)
+       ON CONFLICT(entry_a, entry_b) DO UPDATE SET count = MIN(count + 1, ?), last_at = ?`
+    );
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const [a, b] = ids[i] < ids[j] ? [ids[i], ids[j]] : [ids[j], ids[i]];
+        upsert.run(a, b, now, CO_RETRIEVAL_WEIGHT_CAP, now);
       }
     }
-
-    if (boostMap.size === 0) return rows;
-
-    // Sort: boosted entries first (by FTS rank), then unboosted in original order
-    const boosted = rows.filter((r: any) => boostMap.has(r.id));
-    const unboosted = rows.filter((r: any) => !boostMap.has(r.id));
-    boosted.sort((a: any, b: any) => (boostMap.get(a.id) ?? 0) - (boostMap.get(b.id) ?? 0));
-    return [...boosted, ...unboosted];
   } catch {
-    // FTS errors are non-fatal; return original order
-    return rows;
+    // Non-fatal: co-retrieval recording is best-effort
   }
 }
 
-/**
- * Extract meaningful keywords from auto-memory context text.
- * Filters out common stop words and short tokens.
- */
-function extractKeywords(text: string): string[] {
-  const stopWords = new Set([
-    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-    'should', 'may', 'might', 'shall', 'can', 'need', 'must', 'ought',
-    'and', 'but', 'or', 'nor', 'not', 'so', 'yet', 'for', 'with',
-    'from', 'into', 'during', 'before', 'after', 'above', 'below',
-    'to', 'of', 'in', 'on', 'at', 'by', 'about', 'between', 'through',
-    'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them',
-    'their', 'we', 'our', 'you', 'your', 'he', 'she', 'him', 'her',
-    'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other',
-    'some', 'such', 'no', 'only', 'own', 'same', 'than', 'too', 'very',
-    'just', 'also', 'now', 'then', 'here', 'there', 'when', 'where',
-    'how', 'what', 'which', 'who', 'whom', 'why', 'if', 'because',
-    'as', 'until', 'while', 'use', 'using', 'used',
-  ]);
-
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length >= 3 && !stopWords.has(w));
-
-  // Deduplicate while preserving order
-  const seen = new Set<string>();
-  return words.filter((w) => {
-    if (seen.has(w)) return false;
-    seen.add(w);
-    return true;
-  });
-}
-
-function queryRecent(ctx: LocalCtx, since: string, effectiveTags: string[]): any[] {
-  const clauses = ['created_at >= ?'];
-  const params = [since];
-
-  if (false) {
-  }
-  clauses.push("(expires_at IS NULL OR expires_at > datetime('now'))");
-  clauses.push('superseded_by IS NULL');
-
-  const where = `WHERE ${clauses.join(' AND ')}`;
-  const rows = ctx.db
-    .prepare(`SELECT * FROM vault ${where} ORDER BY created_at DESC LIMIT 50`)
-    .all(...params);
-
-  if (effectiveTags.length) {
-    const tagged = rows.filter((r: any) => {
-      const tags = r.tags ? JSON.parse(r.tags) : [];
-      return effectiveTags.some((t: string) => tags.includes(t));
-    });
-    if (tagged.length > 0) return tagged;
-  }
-  return rows;
+/** Reset session dedup state (for testing) */
+export function _resetSessionState(): void {
+  sessionSurfaced.clear();
 }
