@@ -31,6 +31,7 @@ import {
 } from '@context-vault/core/db';
 import { registerTools } from './register-tools.js';
 import { pruneExpired } from '@context-vault/core/index';
+import { startWatcher } from '@context-vault/core/watch';
 import { setSessionId } from '@context-vault/core/search';
 
 const DAEMON_PORT = 3377;
@@ -373,6 +374,22 @@ async function main(): Promise<void> {
       console.error(
         `[context-vault] Warning: startup prune failed: ${(pruneErr as Error).message}`
       );
+    }
+
+    if (config.watch?.enabled !== false && config.vaultDirExists) {
+      try {
+        const vaultWatcher = startWatcher(ctx, {
+          vaultDir: config.watch?.path || config.vaultDir,
+          debounceMs: config.watch?.debounceMs ?? 500,
+          indexingConfig: config.indexing,
+          onError: (err) => console.error(`[context-vault] Watcher error: ${err.message}`),
+        });
+        process.on('exit', () => vaultWatcher.close());
+        console.error('[context-vault] Filesystem watcher active');
+      } catch (err) {
+        console.error(`[context-vault] Watcher failed to start: ${(err as Error).message}`);
+        console.error('[context-vault] Falling back to manual reindex.');
+      }
     }
 
     phase = 'SERVER';

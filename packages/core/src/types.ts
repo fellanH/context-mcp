@@ -22,6 +22,12 @@ export interface RemoteConfig {
   teamId?: string;
 }
 
+export interface WatchConfig {
+  enabled: boolean;
+  path?: string;
+  debounceMs?: number;
+}
+
 export interface VaultConfig {
   vaultDir: string;
   dataDir: string;
@@ -39,6 +45,7 @@ export interface VaultConfig {
   autoInsights: AutoInsightsConfig;
   indexing: IndexingConfig;
   remote?: RemoteConfig;
+  watch?: WatchConfig;
 }
 
 export interface RecallConfig {

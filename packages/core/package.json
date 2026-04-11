@@ -77,6 +77,10 @@
     "./tier-analysis": {
       "types": "./dist/tier-analysis.d.ts",
       "import": "./dist/tier-analysis.js"
+    },
+    "./watch": {
+      "types": "./dist/watch.d.ts",
+      "import": "./dist/watch.js"
     }
   },
   "files": [

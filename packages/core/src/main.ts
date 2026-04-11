@@ -1,6 +1,7 @@
 // Types
 export type {
   VaultConfig,
+  WatchConfig,
   RemoteConfig,
   RecallConfig,
   ConsolidationConfig,
@@ -112,3 +113,7 @@ export type { CompactCtx, CompactOptions, CompactResult } from './compact.js';
 
 // Ingest URL
 export { htmlToMarkdown, extractHtmlContent, ingestUrl } from './ingest-url.js';
+
+// Watch
+export { startWatcher } from './watch.js';
+export type { WatcherOptions, VaultWatcher } from './watch.js';

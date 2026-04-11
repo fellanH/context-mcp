@@ -73,6 +73,7 @@ export function resolveConfig(): VaultConfig {
     lifecycle: structuredClone(DEFAULT_LIFECYCLE),
     autoInsights: { ...DEFAULT_AUTO_INSIGHTS },
     indexing: { ...DEFAULT_INDEXING },
+    watch: { enabled: true },
   };
 
   const configPath = join(dataDir, 'config.json');
@@ -161,6 +162,13 @@ export function resolveConfig(): VaultConfig {
         if (Array.isArray(ix.excludeCategories)) config.indexing.excludeCategories = ix.excludeCategories;
         if (ix.maxBodySize != null) config.indexing.maxBodySize = Number(ix.maxBodySize);
         if (ix.autoIndexEvents != null) config.indexing.autoIndexEvents = ix.autoIndexEvents === true;
+      }
+      if (fc.watch && typeof fc.watch === 'object') {
+        const w = fc.watch;
+        if (!config.watch) config.watch = { enabled: true };
+        if (w.enabled != null) config.watch.enabled = w.enabled === true;
+        if (typeof w.path === 'string') config.watch.path = w.path;
+        if (w.debounceMs != null) config.watch.debounceMs = Number(w.debounceMs);
       }
       if (fc.remote && typeof fc.remote === 'object') {
         const r = fc.remote;
