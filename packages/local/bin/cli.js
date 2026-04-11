@@ -453,6 +453,7 @@ ${bold('Commands:')}
   ${cyan('ingest')} <url>               Fetch URL and save as vault entry
   ${cyan('ingest-project')} <path>      Scan project directory and register as project entity
   ${cyan('reindex')}                    Rebuild search index from knowledge files
+  ${cyan('reclassify')}                 Move prompt-history entries from knowledge to event category
   ${cyan('sync')} [dir]                  Index .context/ files into vault DB (use --dry-run to preview)
   ${cyan('migrate-dirs')} [--dry-run]   Rename plural vault dirs to singular (post-2.18.0)
   ${cyan('archive')}                    Archive old ephemeral/event entries (use --dry-run to preview)
@@ -2186,6 +2187,101 @@ async function runReindex() {
       console.log(`  ${dim('⊘')} ${stats.embeddingsCleared} embeddings cleared`);
     }
   }
+}
+
+async function runReclassify() {
+  const dryRun = flags.has('--dry-run');
+  const kindFilter = getFlag('--kind');
+
+  const EVENT_KINDS = [
+    'events', 'activity', 'user-prompts', 'agent',
+    'handoff', 'outcome', 'session-review', 'session-summary',
+  ];
+
+  const kinds = kindFilter ? [kindFilter] : EVENT_KINDS;
+  const placeholders = kinds.map(() => '?').join(', ');
+
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const { initDatabase, prepareStatements, deleteVec } =
+    await import('@context-vault/core/db');
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red(`Vault directory not found: ${config.vaultDir}`));
+    console.error('Run ' + cyan('context-vault setup') + ' to configure.');
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+
+  const countRow = db
+    .prepare(
+      `SELECT COUNT(*) as cnt FROM vault WHERE kind IN (${placeholders}) AND category = 'knowledge'`
+    )
+    .get(...kinds);
+  const total = countRow.cnt;
+
+  if (total === 0) {
+    console.log(green('  No entries need reclassification.'));
+    db.close();
+    return;
+  }
+
+  if (dryRun) {
+    console.log(`\n  ${bold(String(total))} entries would be reclassified from ${yellow('knowledge')} to ${green('event')}:\n`);
+    const breakdown = db
+      .prepare(
+        `SELECT kind, COUNT(*) as cnt FROM vault WHERE kind IN (${placeholders}) AND category = 'knowledge' GROUP BY kind ORDER BY cnt DESC`
+      )
+      .all(...kinds);
+    for (const row of breakdown) {
+      console.log(`    ${row.kind}: ${bold(String(row.cnt))}`);
+    }
+    console.log(dim('\n  Dry run, no changes made.'));
+    db.close();
+    return;
+  }
+
+  const stmts = prepareStatements(db);
+  const BATCH_SIZE = 1000;
+  let reclassified = 0;
+  let embeddingsRemoved = 0;
+
+  console.log(dim(`  Reclassifying ${total} entries...`));
+
+  while (true) {
+    const batch = db
+      .prepare(
+        `SELECT rowid, id FROM vault WHERE kind IN (${placeholders}) AND category = 'knowledge' LIMIT ${BATCH_SIZE}`
+      )
+      .all(...kinds);
+
+    if (batch.length === 0) break;
+
+    const rowids = batch.map((r) => r.rowid);
+    const batchPlaceholders = rowids.map(() => '?').join(', ');
+
+    db.prepare(
+      `UPDATE vault SET category = 'event', indexed = 0 WHERE rowid IN (${batchPlaceholders})`
+    ).run(...rowids);
+
+    for (const rowid of rowids) {
+      try {
+        deleteVec(stmts, rowid);
+        embeddingsRemoved++;
+      } catch {
+        // Entry may not have had an embedding
+      }
+    }
+
+    reclassified += batch.length;
+    process.stdout.write(`\r  Progress: ${reclassified}/${total}`);
+  }
+
+  db.close();
+  console.log('');
+  console.log(green(`  Reclassified ${reclassified} entries from knowledge to event`));
+  console.log(`    Embeddings removed: ${embeddingsRemoved}`);
 }
 
 async function runSync() {
