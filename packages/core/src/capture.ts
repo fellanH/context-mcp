@@ -296,6 +296,10 @@ export async function captureAndIndex(
   }
 
   const entry = writeEntry(ctx, data);
+  // Tell the watcher to skip this file (we just wrote and indexed it ourselves)
+  if (typeof (ctx as any).markSelfWrite === 'function') {
+    (ctx as any).markSelfWrite(entry.filePath);
+  }
   try {
     await indexEntry(ctx, entry, precomputedEmbedding);
     if (entry.supersedes?.length && ctx.stmts.updateSupersededBy) {

@@ -1,4 +1,4 @@
-import { watch, readFileSync, existsSync, statSync } from 'node:fs';
+import { watch, readFileSync, existsSync, statSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join, relative, extname, basename, dirname } from 'node:path';
 import type { FSWatcher } from 'node:fs';
 import type { BaseCtx, IndexingConfig } from './types.js';
@@ -14,13 +14,23 @@ export interface WatcherOptions {
   indexingConfig?: IndexingConfig;
   onIndex?: (filePath: string, action: 'upsert' | 'delete') => void;
   onError?: (err: Error) => void;
+  /** Max concurrent file processing operations. Default 3. */
+  maxConcurrency?: number;
+  /** Max events queued before dropping oldest. Default 200. */
+  maxQueueSize?: number;
+  /** Data directory for the lock file (e.g. ~/.context-mcp). */
+  dataDir?: string;
 }
 
 export interface VaultWatcher {
   close: () => void;
+  /** Mark a path as self-written so the watcher skips it. TTL: 2 seconds. */
+  markSelfWrite: (filePath: string) => void;
 }
 
 const EXCLUDED_DIRS = new Set(['_archive', 'projects']);
+const SELF_WRITE_TTL_MS = 2_000;
+const LOCK_STALE_MS = 60_000;
 
 function isExcluded(relPath: string): boolean {
   if (relPath.startsWith('.')) return true;
@@ -32,11 +42,52 @@ function isExcluded(relPath: string): boolean {
   return false;
 }
 
-function extractIdFromPath(filePath: string): string | null {
-  const name = basename(filePath, '.md');
-  if (/^[0-9A-Z]{26}$/.test(name)) return name;
-  const match = name.match(/^([0-9A-Z]{26})/);
-  return match ? match[1] : null;
+/**
+ * Acquire a watcher lock file so only one instance watches per vault.
+ * Returns a release function, or null if another instance holds the lock.
+ */
+function acquireWatcherLock(dataDir: string): (() => void) | null {
+  const lockPath = join(dataDir, 'watcher.lock');
+  mkdirSync(dataDir, { recursive: true });
+
+  if (existsSync(lockPath)) {
+    try {
+      const content = readFileSync(lockPath, 'utf-8').trim();
+      const [pidStr, tsStr] = content.split(':');
+      const pid = parseInt(pidStr, 10);
+      const ts = parseInt(tsStr, 10);
+
+      // Check if the lock holder is still alive
+      if (pid && !isNaN(pid)) {
+        try {
+          process.kill(pid, 0); // signal 0 = check if alive
+          // Process is alive. Check if lock is stale (>60s without refresh).
+          if (Date.now() - ts < LOCK_STALE_MS) {
+            return null; // another live instance holds the lock
+          }
+          // Stale lock from a live process that stopped refreshing. Take over.
+        } catch {
+          // Process is dead. Safe to take over the lock.
+        }
+      }
+    } catch {
+      // Unreadable lock file. Overwrite it.
+    }
+  }
+
+  const writeLock = () => {
+    try { writeFileSync(lockPath, `${process.pid}:${Date.now()}`); } catch {}
+  };
+  writeLock();
+
+  // Refresh lock periodically so other instances know we're alive
+  const refreshInterval = setInterval(writeLock, 15_000);
+  refreshInterval.unref();
+
+  return () => {
+    clearInterval(refreshInterval);
+    try { unlinkSync(lockPath); } catch {}
+  };
 }
 
 async function processFile(ctx: BaseCtx, filePath: string, opts: WatcherOptions): Promise<void> {
@@ -48,8 +99,8 @@ async function processFile(ctx: BaseCtx, filePath: string, opts: WatcherOptions)
     const content = readFileSync(filePath, 'utf-8');
     const { meta: fmMeta, body: rawBody } = parseFrontmatter(content);
 
-    const id = (fmMeta.id as string) || extractIdFromPath(filePath);
-    if (!id) return;
+    const id = fmMeta.id as string | undefined;
+    if (!id) return; // no frontmatter id = not a vault entry
 
     const relPath = relative(opts.vaultDir, filePath);
     const topDir = relPath.split('/')[0];
@@ -123,8 +174,49 @@ function processDelete(ctx: BaseCtx, filePath: string, opts: WatcherOptions): vo
 
 export function startWatcher(ctx: BaseCtx, opts: WatcherOptions): VaultWatcher {
   const debounceMs = opts.debounceMs ?? 500;
+  const maxConcurrency = opts.maxConcurrency ?? 3;
+  const maxQueueSize = opts.maxQueueSize ?? 200;
+
+  // Singleton lock: only one watcher per vault directory
+  const dataDir = opts.dataDir || dirname(opts.vaultDir);
+  const releaseLock = acquireWatcherLock(dataDir);
+  if (!releaseLock) {
+    throw new Error('Another instance is already watching this vault. Skipping watcher.');
+  }
+
   const pending = new Map<string, NodeJS.Timeout>();
+  const selfWrites = new Map<string, number>(); // path -> expiry timestamp
+  let activeOps = 0;
+  const queue: Array<{ fullPath: string; isDelete: boolean }> = [];
   let watcher: FSWatcher;
+
+  function drainQueue(): void {
+    while (activeOps < maxConcurrency && queue.length > 0) {
+      const item = queue.shift()!;
+      activeOps++;
+      if (item.isDelete) {
+        processDelete(ctx, item.fullPath, opts);
+        activeOps--;
+        drainQueue();
+      } else {
+        processFile(ctx, item.fullPath, opts)
+          .finally(() => {
+            activeOps--;
+            drainQueue();
+          });
+      }
+    }
+  }
+
+  function enqueue(fullPath: string, isDelete: boolean): void {
+    // Drop oldest if queue is full (back-pressure under bulk operations)
+    if (queue.length >= maxQueueSize) {
+      const dropped = queue.length - maxQueueSize + 1;
+      queue.splice(0, dropped);
+    }
+    queue.push({ fullPath, isDelete });
+    drainQueue();
+  }
 
   try {
     watcher = watch(opts.vaultDir, { recursive: true }, (eventType, filename) => {
@@ -136,18 +228,20 @@ export function startWatcher(ctx: BaseCtx, opts: WatcherOptions): VaultWatcher {
 
       const fullPath = join(opts.vaultDir, relPath);
 
+      // Skip self-written files (written by this MCP server via save_context)
+      const selfExpiry = selfWrites.get(fullPath);
+      if (selfExpiry && Date.now() < selfExpiry) {
+        selfWrites.delete(fullPath);
+        return;
+      }
+
       if (pending.has(fullPath)) clearTimeout(pending.get(fullPath)!);
       pending.set(
         fullPath,
         setTimeout(() => {
           pending.delete(fullPath);
-          if (existsSync(fullPath)) {
-            processFile(ctx, fullPath, opts).catch((err) => {
-              opts.onError?.(err as Error);
-            });
-          } else {
-            processDelete(ctx, fullPath, opts);
-          }
+          const isDelete = !existsSync(fullPath);
+          enqueue(fullPath, isDelete);
         }, debounceMs)
       );
     });
@@ -156,6 +250,7 @@ export function startWatcher(ctx: BaseCtx, opts: WatcherOptions): VaultWatcher {
       opts.onError?.(err);
     });
   } catch (err) {
+    releaseLock();
     throw new Error(`Failed to start vault watcher: ${(err as Error).message}`);
   }
 
@@ -163,7 +258,12 @@ export function startWatcher(ctx: BaseCtx, opts: WatcherOptions): VaultWatcher {
     close() {
       for (const timer of pending.values()) clearTimeout(timer);
       pending.clear();
+      queue.length = 0;
       watcher.close();
+      releaseLock();
+    },
+    markSelfWrite(filePath: string) {
+      selfWrites.set(filePath, Date.now() + SELF_WRITE_TTL_MS);
     },
   };
 }

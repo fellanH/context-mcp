@@ -376,19 +376,21 @@ async function main(): Promise<void> {
       );
     }
 
-    if (config.watch?.enabled !== false && config.vaultDirExists) {
+    if (config.watch?.enabled === true && config.vaultDirExists) {
       try {
         const vaultWatcher = startWatcher(ctx, {
           vaultDir: config.watch?.path || config.vaultDir,
           debounceMs: config.watch?.debounceMs ?? 500,
           indexingConfig: config.indexing,
-          onError: (err) => console.error(`[context-vault] Watcher error: ${err.message}`),
+          dataDir: config.dataDir,
+          onError: (err) => console.error(`[context-vault] Watcher: ${err.message}`),
         });
+        // Expose markSelfWrite on ctx so save_context can suppress re-indexing
+        (ctx as any).markSelfWrite = vaultWatcher.markSelfWrite;
         process.on('exit', () => vaultWatcher.close());
-        console.error('[context-vault] Filesystem watcher active');
+        console.error('[context-vault] Filesystem watcher active (opt-in via config)');
       } catch (err) {
-        console.error(`[context-vault] Watcher failed to start: ${(err as Error).message}`);
-        console.error('[context-vault] Falling back to manual reindex.');
+        console.error(`[context-vault] Watcher skipped: ${(err as Error).message}`);
       }
     }
 

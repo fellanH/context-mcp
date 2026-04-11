@@ -73,7 +73,7 @@ export function resolveConfig(): VaultConfig {
     lifecycle: structuredClone(DEFAULT_LIFECYCLE),
     autoInsights: { ...DEFAULT_AUTO_INSIGHTS },
     indexing: { ...DEFAULT_INDEXING },
-    watch: { enabled: true },
+    watch: { enabled: false },
   };
 
   const configPath = join(dataDir, 'config.json');
