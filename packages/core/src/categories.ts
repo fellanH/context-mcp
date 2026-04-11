@@ -20,6 +20,14 @@ const KIND_CATEGORY: Record<string, string> = {
   log: 'event',
   feedback: 'event',
   inbox: 'event',
+  events: 'event',
+  activity: 'event',
+  'user-prompts': 'event',
+  agent: 'event',
+  handoff: 'event',
+  outcome: 'event',
+  'session-review': 'event',
+  'session-summary': 'event',
 };
 
 const CATEGORY_DIR_NAMES: Record<string, string> = {
