@@ -66,6 +66,10 @@
       "types": "./dist/context.d.ts",
       "import": "./dist/context.js"
     },
+    "./compact": {
+      "types": "./dist/compact.d.ts",
+      "import": "./dist/compact.js"
+    },
     "./indexing": {
       "types": "./dist/indexing.d.ts",
       "import": "./dist/indexing.js"

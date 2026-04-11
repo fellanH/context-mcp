@@ -106,5 +106,9 @@ export { writeEntry, updateEntryFile, captureAndIndex } from './capture.js';
 // Indexing
 export { shouldIndex } from './indexing.js';
 
+// Compact
+export { compact, restoreCompactedBody } from './compact.js';
+export type { CompactCtx, CompactOptions, CompactResult } from './compact.js';
+
 // Ingest URL
 export { htmlToMarkdown, extractHtmlContent, ingestUrl } from './ingest-url.js';

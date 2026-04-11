@@ -2793,6 +2793,7 @@ async function runRestore() {
     await import('@context-vault/core/db');
   const { embed } = await import('@context-vault/core/embed');
   const { restoreEntry } = await import('../dist/archive.js');
+  const { restoreCompactedBody } = await import('@context-vault/core/compact');
 
   const config = resolveConfig();
   if (!config.vaultDirExists) {
@@ -2812,6 +2813,26 @@ async function runRestore() {
     deleteVec: (r) => deleteVec(stmts, r),
   };
 
+  // First try restoring from compacted gz archive
+  const fullBody = restoreCompactedBody(config.vaultDir, entryId);
+  if (fullBody !== null) {
+    // Entry was compacted, restore its body and re-enable indexing
+    db.prepare('UPDATE vault SET body = ?, indexed = 1, updated_at = ? WHERE id = ?')
+      .run(fullBody, new Date().toISOString(), entryId);
+
+    // Remove the gz archive file
+    const { unlinkSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const gzPath = join(config.vaultDir, '_archive', `${entryId}.md.gz`);
+    try { unlinkSync(gzPath); } catch {}
+
+    db.close();
+    console.log(green(`  ✓ Restored compacted entry: ${entryId}`));
+    console.log(dim('  Full body recovered from gzip archive. Entry will be re-indexed on next search.'));
+    return;
+  }
+
+  // Fall back to standard archive restore
   const result = await restoreEntry(ctx, entryId);
   db.close();
 
@@ -2822,6 +2843,65 @@ async function runRestore() {
     console.error(red(`  ✗ ${result.reason}`));
     process.exit(1);
   }
+}
+
+async function runCompact() {
+  const dryRun = flags.has('--dry-run');
+  const tierFlag = getFlag('--tier');
+
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const { initDatabase, prepareStatements, deleteVec, deleteCtxVec } =
+    await import('@context-vault/core/db');
+  const { compact } = await import('@context-vault/core/compact');
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red(`Vault directory not found: ${config.vaultDir}`));
+    console.error('Run ' + cyan('context-vault setup') + ' to configure.');
+    process.exit(1);
+  }
+
+  const db = await initDatabase(config.dbPath);
+  const stmts = prepareStatements(db);
+  const ctx = {
+    db,
+    config,
+    stmts,
+    deleteVec: (r) => deleteVec(stmts, r),
+    deleteCtxVec: (r) => deleteCtxVec(stmts, r),
+  };
+
+  const options = { dryRun, tier: tierFlag === 'cold' ? 'cold' : undefined };
+  const result = await compact(ctx, options);
+  db.close();
+
+  if (result.candidates === 0) {
+    console.log(green('  No entries eligible for compaction.'));
+    console.log(dim(`\n  Criteria: recall_count=0, heat_tier cold/null, age > ${tierFlag === 'cold' ? '30' : '90'} days`));
+    return;
+  }
+
+  if (dryRun) {
+    console.log(
+      `\n  ${bold(String(result.candidates))} ${result.candidates === 1 ? 'entry' : 'entries'} eligible for compaction:\n`
+    );
+    let totalBytes = 0;
+    for (const e of result.entries) {
+      const label = e.title ? `${e.kind}: ${e.title.slice(0, 60)}` : `${e.kind} (${e.id})`;
+      const sizeKb = (e.bodySize / 1024).toFixed(1);
+      console.log(`  ${dim('-')} ${label} ${dim(`(heat=${e.heat}, age=${e.ageDays}d, body=${sizeKb}KB)`)}`);
+      totalBytes += e.bodySize;
+    }
+    const totalKb = (totalBytes / 1024).toFixed(1);
+    console.log(dim(`\n  Total body size: ${totalKb}KB`));
+    console.log(dim('  Dry run, no changes made. Remove --dry-run to compact.'));
+    return;
+  }
+
+  console.log(green(`  Compacted ${result.compacted} ${result.compacted === 1 ? 'entry' : 'entries'}.`));
+  const reclaimedKb = (result.bytesReclaimed / 1024).toFixed(1);
+  console.log(dim(`  Reclaimed ~${reclaimedKb}KB. Bodies archived to _archive/<id>.md.gz`));
+  console.log(dim('  Use context-vault restore <id> to recover full body.'));
 }
 
 async function runStatus() {
@@ -8560,6 +8640,9 @@ async function main() {
       break;
     case 'public':
       await runPublic();
+      break;
+    case 'compact':
+      await runCompact();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));
