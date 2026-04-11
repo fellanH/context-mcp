@@ -3,6 +3,20 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.16.0] — 2026-04-11
+
+### Added
+
+- **Reclassify CLI command**: `context-vault reclassify` batch-migrates prompt-history entries (events, activity, user-prompts, agent, handoff, outcome, session-review, session-summary) from knowledge to event category. Clears embeddings and FTS index for reclassified entries. Supports `--dry-run` and `--kind` filters.
+- **Heat tier scoring**: `computeHeatForEntry()` computes a continuous heat score (recall_count * 3 + recall_sessions * 2 + recency_bonus) and classifies entries as hot (>10), warm (1-10), or cold (0, age >30d). `trackAccess` writes heat_tier to DB on every retrieval.
+- **Compact CLI command**: `context-vault compact` compresses frozen vault entries. Archives full body to `_archive/<id>.md.gz`, replaces with 500-char summary, drops embeddings. Supports `--dry-run` and `--tier cold`. Reversible via `context-vault restore <id>`.
+- **Filesystem watcher**: Auto-indexes new/changed/deleted .md files in the vault directory. Uses Node.js `fs.watch` with recursive:true and 500ms debounce. Opt-in via `watch.enabled: true` in config.
+
+### Fixed
+
+- **Event category mappings**: 8 kinds previously defaulting to knowledge now correctly map to event category, preventing embeddings from being generated for non-retrievable data.
+- **Watcher safety**: Singleton lock (one watcher per vault), self-write suppression (save_context marks own writes), concurrency limiter (max 3 concurrent ops, queue capped at 200), default OFF with config kill-switch.
+
 ## [3.15.0] — 2026-04-06
 
 ### Added
