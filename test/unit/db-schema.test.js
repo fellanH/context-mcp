@@ -163,8 +163,8 @@ describe('initDatabase', () => {
     }
   });
 
-  it('sets version to CURRENT_VERSION (18)', () => {
-    expect(getVersion(db)).toBe(18);
+  it('sets version to CURRENT_VERSION (19)', () => {
+    expect(getVersion(db)).toBe(19);
   });
 
   it('does not create user or team indexes', () => {
@@ -183,7 +183,7 @@ describe('initDatabase', () => {
     expect(indexDef.sql).toContain("category = 'entity'");
   });
 
-  it('rebuilds an outdated schema (v13 → v15)', async () => {
+  it('rebuilds an outdated schema (v13 → v19)', async () => {
     const tmp2 = makeTmp();
     try {
       // Create a fresh DB and force version back to simulate outdated schema
@@ -191,9 +191,9 @@ describe('initDatabase', () => {
       oldDb.exec('PRAGMA user_version = 13');
       oldDb.close();
 
-      // Re-open — migration should rebuild to v18
+      // Re-open — migration should rebuild to v19
       const newDb = await initDatabase(tmp2.dbPath);
-      expect(getVersion(newDb)).toBe(18);
+      expect(getVersion(newDb)).toBe(19);
       const cols = getColumns(newDb);
       expect(cols).toContain('id');
       expect(cols).toContain('kind');

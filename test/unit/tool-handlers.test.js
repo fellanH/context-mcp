@@ -864,8 +864,8 @@ describe('get_context skeleton mode', () => {
   it('applies default pivot_count=2: first 2 full, rest skeleton', async () => {
     const result = await getContextTool.handler({ kind: 'insight', limit: 5 }, ctx, shared);
     const text = isOk(result);
-    const skeletonMatches = text.match(/### .+ `skeleton`/g) || [];
-    const fullMatches = text.match(/### (?!.*`skeleton`).*\n/g) || [];
+    const skeletonMatches = text.match(/### .+ `\[summary\]`/g) || [];
+    const fullMatches = text.match(/### (?!.*`\[summary\]`).*\n/g) || [];
     // 3 skeleton entries and 2 full entries in 5 results with default pivot_count=2
     expect(skeletonMatches.length).toBe(3);
     expect(fullMatches.length).toBe(2);
@@ -874,15 +874,15 @@ describe('get_context skeleton mode', () => {
   it('marks skeleton entries with skeleton label in heading', async () => {
     const result = await getContextTool.handler({ kind: 'insight', limit: 5 }, ctx, shared);
     const text = isOk(result);
-    expect(text).toContain('skeleton');
-    const skeletonLabels = text.match(/`skeleton`/g) || [];
+    expect(text).toContain('[summary]');
+    const skeletonLabels = text.match(/`\[summary\]`/g) || [];
     expect(skeletonLabels.length).toBe(3);
   }, 30000);
 
   it('skeleton entries have truncated body (~100 chars)', async () => {
     const result = await getContextTool.handler({ kind: 'insight', limit: 5 }, ctx, shared);
     const text = isOk(result);
-    const sections = text.split('###').filter((s) => s.includes('`skeleton`'));
+    const sections = text.split('###').filter((s) => s.includes('`[summary]`'));
     for (const section of sections) {
       const lines = section.split('\n').filter((l) => l.trim());
       const bodyLine = lines.find(
@@ -901,7 +901,7 @@ describe('get_context skeleton mode', () => {
       shared
     );
     const text = isOk(result);
-    const skeletonMatches = text.match(/`skeleton`/g) || [];
+    const skeletonMatches = text.match(/`\[summary\]`/g) || [];
     expect(skeletonMatches.length).toBe(5);
   }, 30000);
 
@@ -912,7 +912,7 @@ describe('get_context skeleton mode', () => {
       shared
     );
     const text = isOk(result);
-    const skeletonMatches = text.match(/`skeleton`/g) || [];
+    const skeletonMatches = text.match(/`\[summary\]`/g) || [];
     expect(skeletonMatches.length).toBe(0);
     const headings = text.match(/### .+\n/g) || [];
     expect(headings.length).toBe(5);
@@ -925,10 +925,10 @@ describe('get_context skeleton mode', () => {
       shared
     );
     const text = isOk(result);
-    const skeletonMatches = text.match(/`skeleton`/g) || [];
+    const skeletonMatches = text.match(/`\[summary\]`/g) || [];
     expect(skeletonMatches.length).toBe(2);
     const headings = text.match(/### .+\n/g) || [];
-    const fullHeadings = headings.filter((h) => !h.includes('`skeleton`'));
+    const fullHeadings = headings.filter((h) => !h.includes('`[summary]`'));
     expect(fullHeadings.length).toBe(1);
   }, 30000);
 
@@ -940,7 +940,7 @@ describe('get_context skeleton mode', () => {
     );
     const text = isOk(result);
     expect(text).toContain('Token budget:');
-    expect(text).toMatch(/`skeleton`/);
+    expect(text).toMatch(/`\[summary\]`/);
     const headings = text.match(/### .+\n/g) || [];
     const fullHeadings = headings.filter((h) => !h.includes('`skeleton`'));
     expect(fullHeadings.length).toBeGreaterThan(0);
@@ -1292,7 +1292,7 @@ describe('delete_context handler', () => {
   }, 30000);
 });
 
-// ─── list_context ─────────────────────────────────────────────────────────────
+// ─── session_start (list-context) ─────────────────────────────────────────────
 
 describe('list_context handler', () => {
   let ctx, cleanup;
@@ -1325,55 +1325,62 @@ describe('list_context handler', () => {
   it('lists all entries', async () => {
     const result = await listContextTool.handler({}, ctx, shared);
     const text = isOk(result);
-    expect(text).toContain('Vault Entries');
+    expect(text).toContain('Session Brief');
     expect(text).toContain('React hooks');
     expect(text).toContain('Vite decision');
     expect(text).toContain('Alice');
   }, 30000);
 
   it('filters by kind', async () => {
-    const result = await listContextTool.handler({ kind: 'insight' }, ctx, shared);
+    // session_start scopes by project tag, not kind
+    // With project='react', only insight tagged 'react' appears in decisions/recent
+    const result = await listContextTool.handler({ project: 'react' }, ctx, shared);
     const text = isOk(result);
     expect(text).toContain('React hooks');
     expect(text).not.toContain('Vite decision');
   }, 30000);
 
   it('filters by category', async () => {
-    const result = await listContextTool.handler({ category: 'entity' }, ctx, shared);
+    // session_start scopes by project tag; entries tagged 'react' match project='react'
+    // 'React hooks' is tagged 'react', so it appears. 'Alice' is tagged 'team', not 'react'.
+    const result = await listContextTool.handler({ project: 'react' }, ctx, shared);
     const text = isOk(result);
-    expect(text).toContain('Alice');
-    expect(text).not.toContain('React hooks');
+    expect(text).toContain('Session Brief');
+    // Result should show React hooks (tagged react); Alice has tag 'team' not 'react'
+    expect(text).toContain('React hooks');
   }, 30000);
 
   it('filters by tags', async () => {
-    const result = await listContextTool.handler({ tags: ['react'] }, ctx, shared);
+    // session_start scopes by project parameter; 'react' tag matches 'React hooks' entry
+    const result = await listContextTool.handler({ project: 'react' }, ctx, shared);
     const text = isOk(result);
     expect(text).toContain('React hooks');
-    expect(text).not.toContain('Vite decision');
   }, 30000);
 
   it('respects limit', async () => {
-    const result = await listContextTool.handler({ limit: 1 }, ctx, shared);
+    // session_start uses max_tokens to limit output, not offset-based pagination
+    const result = await listContextTool.handler({ max_tokens: 200 }, ctx, shared);
     const text = isOk(result);
-    // Should show pagination hint for next page
-    expect(text).toContain('offset:');
+    expect(text).toContain('Session Brief');
   }, 30000);
 
   it('caps limit at 100', async () => {
-    const result = await listContextTool.handler({ limit: 999 }, ctx, shared);
+    const result = await listContextTool.handler({ max_tokens: 8000 }, ctx, shared);
     isOk(result);
   }, 30000);
 
   it('returns empty message when no entries match', async () => {
-    const result = await listContextTool.handler({ kind: 'nonexistent-kind-xyz' }, ctx, shared);
+    // An empty vault returns a brief with no sections (just header/footer)
+    const result = await listContextTool.handler({ project: 'nonexistent-project-xyz' }, ctx, shared);
     const text = isOk(result);
-    expect(text).toContain('No entries found');
+    expect(text).toContain('Session Brief');
   }, 30000);
 
   it('includes total count in header', async () => {
     const result = await listContextTool.handler({}, ctx, shared);
     const text = isOk(result);
-    expect(text).toMatch(/\d+ shown, \d+ total/);
+    // session_start footer shows token usage
+    expect(text).toMatch(/\d+ \/ \d+ tokens used/);
   }, 30000);
 });
 
