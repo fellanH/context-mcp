@@ -451,6 +451,7 @@ ${bold('Commands:')}
   ${cyan('export')}                     Export vault entries (JSON, CSV, or portable ZIP)
   ${cyan('ingest')} <url>               Fetch URL and save as vault entry
   ${cyan('ingest-project')} <path>      Scan project directory and register as project entity
+  ${cyan('ingest-comms')}              Ingest structured comms from stdin (JSON lines, with dedup)
   ${cyan('reindex')}                    Rebuild search index from knowledge files
   ${cyan('reclassify')}                 Move prompt-history entries from knowledge to event category
   ${cyan('sync')} [dir]                  Index .context/ files into vault DB (use --dry-run to preview)
@@ -3959,6 +3960,185 @@ async function runIngest() {
   console.log(`\n  ${green('✓')} Saved → ${relPath}`);
   console.log(`    id: ${result.id}`);
   console.log();
+}
+
+async function runIngestComms() {
+  if (flags.has('--help')) {
+    console.log(`
+  ${bold('context-vault ingest-comms')}
+
+  Read structured communications from stdin (JSON lines) and save to vault with dedup.
+
+${bold('Flags:')}
+  --source <name>    Source identifier (gmail, slack, etc.) — required if not in JSON
+  --kind <kind>      Vault entry kind (default: event)
+  --tags t1,t2       Additional tags (merged with per-line tags)
+  --dry-run          Parse and validate without saving
+  --verbose          Print each entry as it's processed
+
+${bold('JSON line schema:')}
+  { "id": "msg-123", "body": "text", "source": "gmail", "subject": "...", "from": "...",
+    "to": [...], "date": "...", "thread_id": "...", "channel": "...", "tags": [...] }
+  Required fields: id, body. source from JSON overrides --source flag.
+
+${bold('Examples:')}
+  cat emails.jsonl | context-vault ingest-comms --source gmail
+  echo '{"id":"1","body":"hi","source":"slack"}' | context-vault ingest-comms
+`);
+    return;
+  }
+
+  const sourceFlag = getFlag('--source');
+  const kindFlag = getFlag('--kind') || 'event';
+  const tagsFlag = getFlag('--tags');
+  const extraTags = tagsFlag ? tagsFlag.split(',').map((t) => t.trim()) : [];
+  const dryRun = flags.has('--dry-run');
+  const verbose = flags.has('--verbose');
+
+  // Read all of stdin
+  let input;
+  if (!process.stdin.isTTY) {
+    input = await new Promise((res) => {
+      let data = '';
+      process.stdin.on('data', (chunk) => (data += chunk));
+      process.stdin.on('end', () => res(data));
+    });
+  } else {
+    console.log(`\n  ${bold('context-vault ingest-comms')}`);
+    console.log(`\n  Pipe JSON lines to stdin. Example:`);
+    console.log(`    cat emails.jsonl | context-vault ingest-comms --source gmail\n`);
+    return;
+  }
+
+  const lines = input.split('\n').filter((l) => l.trim());
+  if (!lines.length) {
+    console.log(`\n  No input lines received.\n`);
+    return;
+  }
+
+  // Bootstrap DB (unless dry-run)
+  let ctx, db;
+  if (!dryRun) {
+    const { resolveConfig } = await import('@context-vault/core/config');
+    const { initDatabase, prepareStatements, insertVec, deleteVec } =
+      await import('@context-vault/core/db');
+    const { embed } = await import('@context-vault/core/embed');
+
+    const config = resolveConfig();
+    if (!config.vaultDirExists) {
+      console.error(red(`\n  Vault directory not found: ${config.vaultDir}`));
+      process.exit(1);
+    }
+
+    db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+    ctx = {
+      db,
+      config,
+      stmts,
+      embed,
+      insertVec: (r, e) => insertVec(stmts, r, e),
+      deleteVec: (r) => deleteVec(stmts, r),
+    };
+  }
+
+  const { captureAndIndex } = dryRun ? {} : await import('@context-vault/core/capture');
+
+  let saved = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  console.log(dim(`\n  Processing stdin...`));
+
+  for (let i = 0; i < lines.length; i++) {
+    let parsed;
+    try {
+      parsed = JSON.parse(lines[i]);
+    } catch {
+      errors++;
+      if (verbose) console.log(`  ${red('!')} Invalid JSON on line ${i + 1}`);
+      continue;
+    }
+
+    if (!parsed.id || !parsed.body) {
+      errors++;
+      if (verbose) console.log(`  ${red('!')} Missing required field (id, body) on line ${i + 1}`);
+      continue;
+    }
+
+    const source = parsed.source || sourceFlag;
+    if (!source) {
+      errors++;
+      if (verbose) console.log(`  ${red('!')} No source for line ${i + 1} (use --source flag or include in JSON)`);
+      continue;
+    }
+
+    const identityKey = `comms:${source}:${parsed.id}`;
+
+    // Dedup check
+    if (!dryRun) {
+      const exists = db.prepare('SELECT 1 FROM vault WHERE identity_key = ? LIMIT 1').get(identityKey);
+      if (exists) {
+        skipped++;
+        if (verbose) console.log(`  ${dim('=')} [${source}] Already exists (${parsed.id})`);
+        continue;
+      }
+    }
+
+    const title = parsed.subject
+      ? `[${source}] ${parsed.subject}`
+      : parsed.from
+        ? `[${source}] Message from ${parsed.from}`
+        : `[${source}] ${parsed.id}`;
+
+    const lineTags = Array.isArray(parsed.tags) ? parsed.tags : [];
+    const allTags = [...new Set([...lineTags, ...extraTags, `source:${source}`])];
+
+    const meta = {};
+    if (parsed.from) meta.from = parsed.from;
+    if (parsed.to) meta.to = parsed.to;
+    if (parsed.date) meta.date = parsed.date;
+    if (parsed.thread_id) meta.thread_id = parsed.thread_id;
+    if (parsed.channel) meta.channel = parsed.channel;
+
+    if (dryRun) {
+      saved++;
+      if (verbose) console.log(`  ${green('+')} [${source}] ${parsed.subject || parsed.id}`);
+      continue;
+    }
+
+    try {
+      await captureAndIndex(ctx, {
+        kind: kindFlag,
+        title,
+        body: parsed.body,
+        tags: allTags,
+        source,
+        identity_key: identityKey,
+        meta: Object.keys(meta).length ? meta : null,
+      });
+      saved++;
+      if (verbose) console.log(`  ${green('+')} [${source}] ${parsed.subject || parsed.id} (${parsed.id})`);
+    } catch (e) {
+      errors++;
+      if (verbose) console.log(`  ${red('!')} [${source}] Error saving ${parsed.id}: ${e.message}`);
+    }
+  }
+
+  if (db) db.close();
+
+  // Summary
+  if (dryRun) {
+    console.log(`  Dry run: ${saved} would be saved, ${skipped} duplicates, ${errors} errors\n`);
+  } else {
+    console.log(`  ${green('✓')} ${saved} saved, ${skipped} skipped (duplicates), ${errors} errors\n`);
+  }
+
+  const summaryParts = [];
+  if (sourceFlag) summaryParts.push(`Source: ${sourceFlag}`);
+  summaryParts.push(`Kind: ${kindFlag}`);
+  if (extraTags.length) summaryParts.push(`Tags: ${extraTags.join(', ')}`);
+  if (summaryParts.length) console.log(`  ${dim(summaryParts.join(' | '))}\n`);
 }
 
 async function runIngestProject() {
@@ -8068,7 +8248,7 @@ async function main() {
 
   if (flags.has('--help') || command === 'help') {
     // Commands with their own --help handling: delegate to them
-    const commandsWithHelp = new Set(['save', 'search', 'rules', 'hooks', 'team', 'remote']);
+    const commandsWithHelp = new Set(['save', 'search', 'rules', 'hooks', 'team', 'remote', 'ingest-comms']);
     if (!command || command === 'help' || !commandsWithHelp.has(command)) {
       showHelp(flags.has('--all'));
       return;
@@ -8147,6 +8327,9 @@ async function main() {
       break;
     case 'ingest-project':
       await runIngestProject();
+      break;
+    case 'ingest-comms':
+      await runIngestComms();
       break;
     case 'reindex':
       await runReindex();
