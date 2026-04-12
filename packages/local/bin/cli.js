@@ -452,6 +452,8 @@ ${bold('Commands:')}
   ${cyan('ingest')} <url>               Fetch URL and save as vault entry
   ${cyan('ingest-project')} <path>      Scan project directory and register as project entity
   ${cyan('ingest-comms')}              Ingest structured comms from stdin (JSON lines, with dedup)
+  ${cyan('gmail-bridge')}              Fetch recent emails via gmail-cli and ingest into vault
+  ${cyan('slack-bridge')}              Fetch Slack messages from allowed channels and ingest
   ${cyan('reindex')}                    Rebuild search index from knowledge files
   ${cyan('reclassify')}                 Move prompt-history entries from knowledge to event category
   ${cyan('sync')} [dir]                  Index .context/ files into vault DB (use --dry-run to preview)
@@ -4314,6 +4316,200 @@ ${bold('Examples:')}
     console.log(`\n  Dry run: ${saved} would be saved, ${skipped} duplicates, ${errors} errors\n`);
   } else {
     console.log(`\n  ${green('✓')} ${saved} saved, ${skipped} skipped (duplicates), ${errors} errors\n`);
+  }
+}
+
+async function runSlackBridge() {
+  const SLACK_CLI_PATH = '/Users/admin/omni/workspaces/_archive/agent-tools/slack-cli/cli.ts';
+
+  if (flags.has('--help') || (!flags.has('--list-channels') && !getFlag('--channels'))) {
+    console.log(`
+  ${bold('context-vault slack-bridge')}
+
+  Fetch recent Slack messages from allowed channels and ingest into the vault.
+
+${bold('Flags:')}
+  --channels <ids>     Comma-separated channel IDs (required, explicit allowlist)
+  --limit <n>          Messages per channel (default: 50)
+  --dry-run            Show what would be ingested without saving
+  --verbose            Print each entry as it's processed
+  --list-channels      List available channels and exit
+
+${bold('Examples:')}
+  context-vault slack-bridge --list-channels
+  context-vault slack-bridge --channels C123,C456 --dry-run
+  context-vault slack-bridge --channels C123 --limit 10
+`);
+    return;
+  }
+
+  // --list-channels: show available channels and exit
+  if (flags.has('--list-channels')) {
+    console.log(dim('\n  Fetching Slack channels...'));
+    let raw;
+    try {
+      raw = execFileSync('npx', ['tsx', SLACK_CLI_PATH, 'channels', '--limit', '100'], {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 60000,
+      });
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.trim() : '';
+      const msg = stderr || e.message;
+      console.error(red(`\n  Failed to list channels: ${msg}`));
+      process.exit(1);
+    }
+
+    let result;
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      console.error(red('\n  Failed to parse slack-cli output as JSON.'));
+      process.exit(1);
+    }
+
+    const channels = Array.isArray(result.channels) ? result.channels : Array.isArray(result) ? result : [];
+    if (!channels.length) {
+      console.log('\n  No channels found.\n');
+      return;
+    }
+
+    console.log(`\n  ${bold('Available channels:')}\n`);
+    for (const ch of channels) {
+      const id = ch.id || ch.channel_id || '?';
+      const name = ch.name || ch.channel_name || '?';
+      console.log(`  ${cyan(id)}  ${name}`);
+    }
+    console.log();
+    return;
+  }
+
+  // Parse flags
+  const channelsRaw = getFlag('--channels');
+  const channelIds = channelsRaw.split(',').map((c) => c.trim()).filter(Boolean);
+  if (!channelIds.length) {
+    console.error(red('\n  --channels requires at least one channel ID.'));
+    process.exit(1);
+  }
+
+  const limit = getFlag('--limit') || '50';
+  const dryRun = flags.has('--dry-run');
+  const verbose = flags.has('--verbose');
+
+  // Bootstrap DB (unless dry-run)
+  let ctx, db, captureAndIndex;
+  if (!dryRun) {
+    const { resolveConfig } = await import('@context-vault/core/config');
+    const { initDatabase, prepareStatements, insertVec, deleteVec } =
+      await import('@context-vault/core/db');
+    const { embed } = await import('@context-vault/core/embed');
+    const captureMod = await import('@context-vault/core/capture');
+    captureAndIndex = captureMod.captureAndIndex;
+
+    const config = resolveConfig();
+    if (!config.vaultDirExists) {
+      console.error(red(`\n  Vault directory not found: ${config.vaultDir}`));
+      process.exit(1);
+    }
+
+    db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+    ctx = {
+      db,
+      config,
+      stmts,
+      embed,
+      insertVec: (r, e) => insertVec(stmts, r, e),
+      deleteVec: (r) => deleteVec(stmts, r),
+    };
+  }
+
+  const extraTags = ['bucket:comms'];
+  const opts = { ctx, db, captureAndIndex, dryRun, verbose, sourceFlag: 'slack', kindFlag: 'event', extraTags };
+
+  let totalSaved = 0;
+  let totalSkipped = 0;
+  let totalErrors = 0;
+
+  for (const channelId of channelIds) {
+    console.log(dim(`\n  Fetching messages from ${channelId} (limit: ${limit})...`));
+
+    let raw;
+    try {
+      raw = execFileSync('npx', ['tsx', SLACK_CLI_PATH, 'channel-history', channelId, '--limit', limit], {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 60000,
+      });
+    } catch (e) {
+      const stderr = e.stderr ? e.stderr.trim() : '';
+      const msg = stderr || e.message;
+      console.error(red(`  Failed to fetch channel ${channelId}: ${msg}`));
+      totalErrors++;
+      continue;
+    }
+
+    let result;
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      console.error(red(`  Failed to parse output for channel ${channelId}.`));
+      totalErrors++;
+      continue;
+    }
+
+    if (!result.ok || !Array.isArray(result.messages)) {
+      console.error(red(`  slack-cli returned an error for channel ${channelId}.`));
+      if (result.error) console.error(red(`  ${result.error}`));
+      totalErrors++;
+      continue;
+    }
+
+    // Filter out bot messages
+    const messages = result.messages.filter((m) => !m.bot_id);
+    const botCount = result.messages.length - messages.length;
+    if (botCount > 0 && verbose) {
+      console.log(dim(`  Filtered out ${botCount} bot messages`));
+    }
+
+    if (!messages.length) {
+      console.log(dim(`  No messages to ingest for ${channelId}.`));
+      continue;
+    }
+
+    console.log(dim(`  ${messages.length} messages to process...`));
+
+    for (const msg of messages) {
+      const ts = msg.ts || '';
+      const epochSec = parseFloat(ts) || 0;
+      const isoDate = epochSec ? new Date(epochSec * 1000).toISOString() : '';
+
+      const parsed = {
+        id: `${channelId}:${ts}`,
+        source: 'slack',
+        from: msg.user || '',
+        to: [],
+        subject: null,
+        body: msg.text || '',
+        date: isoDate,
+        thread_id: msg.thread_ts || null,
+        channel: channelId,
+        tags: [...extraTags, `channel:${channelId}`],
+      };
+
+      const res = await ingestCommLine(parsed, opts);
+      if (res === 'saved') totalSaved++;
+      else if (res === 'skipped') totalSkipped++;
+      else totalErrors++;
+    }
+  }
+
+  if (db) db.close();
+
+  if (dryRun) {
+    console.log(`\n  Dry run: ${totalSaved} would be saved, ${totalSkipped} duplicates, ${totalErrors} errors\n`);
+  } else {
+    console.log(`\n  ${green('✓')} ${totalSaved} saved, ${totalSkipped} skipped (duplicates), ${totalErrors} errors\n`);
   }
 }
 
@@ -8424,7 +8620,7 @@ async function main() {
 
   if (flags.has('--help') || command === 'help') {
     // Commands with their own --help handling: delegate to them
-    const commandsWithHelp = new Set(['save', 'search', 'rules', 'hooks', 'team', 'remote', 'ingest-comms', 'gmail-bridge']);
+    const commandsWithHelp = new Set(['save', 'search', 'rules', 'hooks', 'team', 'remote', 'ingest-comms', 'gmail-bridge', 'slack-bridge']);
     if (!command || command === 'help' || !commandsWithHelp.has(command)) {
       showHelp(flags.has('--all'));
       return;
@@ -8509,6 +8705,9 @@ async function main() {
       break;
     case 'gmail-bridge':
       await runGmailBridge();
+      break;
+    case 'slack-bridge':
+      await runSlackBridge();
       break;
     case 'reindex':
       await runReindex();
