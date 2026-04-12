@@ -5,7 +5,8 @@
   "type": "module",
   "workspaces": [
     "packages/core",
-    "packages/local"
+    "packages/local",
+    "packages/sdk"
   ],
   "scripts": {
     "build": "npm run build --workspace packages/core && npm run build --workspace packages/local",
