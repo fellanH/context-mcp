@@ -3,6 +3,17 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.17.0] — 2026-04-12
+
+### Added
+
+- **Freshness scoring**: `computeFreshnessScore()` produces a 0-100 lifecycle score combining recency, recall frequency, session spread, and update freshness. Labels: fresh (75-100), aging (50-74), stale (25-49), dormant (0-24). Integrated into search results and context-status.
+- **`context-vault stale` CLI command**: List entries by freshness score ascending. Supports `--threshold`, `--kind`, `--format json` filters.
+- **`context-vault contacts` CLI command**: Manage contact entities with `list`, `show <key>`, and `add` subcommands. Supports `--tags` filter and `--format json` output. Duplicate identity_key detection on add.
+- **`context-vault ingest-comms` CLI command**: Ingest structured communications from stdin as JSON lines with deduplication.
+- **`context-vault gmail-bridge` CLI command**: Fetch recent emails via gmail-cli and ingest into vault.
+- **`context-vault slack-bridge` CLI command**: Fetch Slack messages from allowed channels and ingest into vault.
+
 ## [3.16.1] — 2026-04-12
 
 ### Fixed
