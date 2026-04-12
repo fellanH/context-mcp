@@ -3,6 +3,12 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.18.0] — 2026-04-12
+
+### Added
+
+- **`@context-vault/sdk` package**: Dual-mode SDK for AI agent developers. `ContextVault.local()` for embedded SQLite mode, `ContextVault.hosted({ apiKey })` for cloud mode. Four methods: `save()`, `search()`, `health()`, `delete()`. Zero native dependencies in hosted mode. Apache 2.0 licensed.
+
 ## [3.17.0] — 2026-04-12
 
 ### Added
