@@ -3,6 +3,16 @@
 All notable changes to context-vault are documented here.
 
 
+## [3.16.1] — 2026-04-12
+
+### Fixed
+
+- **registerTools() double-call bug**: Added WeakSet idempotency guard to prevent tool re-registration on the same McpServer instance. Added session recovery concurrency lock (503 Retry-After) to prevent race conditions when concurrent requests arrive for the same stale session ID. Removed orphaned `createServer()` call that was dead code in HTTP mode.
+
+### Removed
+
+- **HTTP daemon architecture**: Stripped auto-daemonize, LaunchAgent, PID management, self-healing loops, auto-update with graceful restart, and all HTTP/Express transport code. The MCP server now runs in stdio mode only. All supported clients (Claude Code, Cursor, Windsurf, Gemini CLI, Cline, Roo Code) manage server lifecycle natively. server.ts reduced from 796 to 353 lines (-56%). Deprecated `daemon` and `restart` CLI commands print migration messages. `postinstall.js` automatically cleans up legacy LaunchAgent, PID file, and daemon.log on upgrade.
+
 ## [3.16.0] — 2026-04-11
 
 ### Added
