@@ -454,6 +454,7 @@ ${bold('Commands:')}
   ${cyan('ingest-comms')}              Ingest structured comms from stdin (JSON lines, with dedup)
   ${cyan('gmail-bridge')}              Fetch recent emails via gmail-cli and ingest into vault
   ${cyan('slack-bridge')}              Fetch Slack messages from allowed channels and ingest
+  ${cyan('contacts')} list|show|add     Manage contact entities in the vault
   ${cyan('reindex')}                    Rebuild search index from knowledge files
   ${cyan('reclassify')}                 Move prompt-history entries from knowledge to event category
   ${cyan('sync')} [dir]                  Index .context/ files into vault DB (use --dry-run to preview)
@@ -8612,6 +8613,202 @@ async function drainOfflineQueue(apiUrl, apiKey) {
   }
 }
 
+async function runContacts() {
+  const sub = args[1];
+
+  if (flags.has('--help') || !sub) {
+    console.log(`
+  ${bold('context-vault contacts')} <subcommand> [options]
+
+  Manage contact entities in the vault.
+
+${bold('Subcommands:')}
+  ${cyan('list')}                       List all contacts
+  ${cyan('show')} <identity_key>        Show a specific contact by identity key
+  ${cyan('add')}                        Add a new contact
+
+${bold('List options:')}
+  --tags <a,b,c>             Filter by tags (comma-separated)
+  --format <fmt>             Output format: plain (default), json
+
+${bold('Show options:')}
+  --format <fmt>             Output format: plain (default), json
+
+${bold('Add options:')}
+  --name <name>              Contact name (required)
+  --key <identity_key>       Identity key for lookup (required)
+  --email <email>            Email address
+  --role <role>              Role or title
+  --tags <a,b,c>             Additional tags (comma-separated)
+  --notes <text>             Free-form notes
+
+${bold('Examples:')}
+  context-vault contacts list
+  context-vault contacts list --tags "bucket:stormfors" --format json
+  context-vault contacts show felix-hellstrom
+  context-vault contacts add --name "Jane Doe" --key "jane-doe" --email "jane@example.com" --role "Engineer"
+`);
+    return;
+  }
+
+  const format = getFlag('--format') || 'plain';
+
+  let db;
+  try {
+    const { resolveConfig } = await import('@context-vault/core/config');
+    const config = resolveConfig();
+    if (!config.vaultDirExists) {
+      console.error(red('Error: vault not initialised — run `context-vault setup` first'));
+      process.exit(1);
+    }
+    const { initDatabase, prepareStatements, insertVec, deleteVec } =
+      await import('@context-vault/core/db');
+    db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+
+    if (sub === 'list') {
+      const tagsStr = getFlag('--tags');
+      let rows = db.prepare(
+        `SELECT id, title, identity_key, tags, body FROM vault WHERE kind = 'contact' AND superseded_by IS NULL ORDER BY title`
+      ).all();
+
+      if (tagsStr) {
+        const filterTags = tagsStr.split(',').map((t) => t.trim().toLowerCase());
+        rows = rows.filter((r) => {
+          const entryTags = r.tags ? JSON.parse(r.tags).map((t) => t.toLowerCase()) : [];
+          return filterTags.some((ft) => entryTags.includes(ft));
+        });
+      }
+
+      if (rows.length === 0) {
+        console.log(dim('No contacts found.'));
+        return;
+      }
+
+      if (format === 'json') {
+        const output = rows.map((r) => ({
+          id: r.id,
+          title: r.title,
+          identity_key: r.identity_key,
+          tags: r.tags ? JSON.parse(r.tags) : [],
+          body: r.body || '',
+        }));
+        console.log(JSON.stringify(output, null, 2));
+      } else {
+        const nameW = 30;
+        const keyW = 25;
+        console.log(`  ${bold('Name'.padEnd(nameW))} ${bold('Key'.padEnd(keyW))} ${bold('Tags')}`);
+        console.log(`  ${'─'.repeat(nameW)} ${'─'.repeat(keyW)} ${'─'.repeat(30)}`);
+        for (const r of rows) {
+          const name = (r.title || '').slice(0, nameW).padEnd(nameW);
+          const key = (r.identity_key || '').slice(0, keyW).padEnd(keyW);
+          const tags = r.tags ? JSON.parse(r.tags).join(', ') : '';
+          console.log(`  ${name} ${dim(key)} ${dim(tags)}`);
+        }
+        console.log(dim(`\n  ${rows.length} contact(s)`));
+      }
+
+    } else if (sub === 'show') {
+      const identityKey = args[2];
+      if (!identityKey || identityKey.startsWith('--')) {
+        console.error(red('Error: provide an identity_key, e.g. context-vault contacts show felix-hellstrom'));
+        process.exit(1);
+      }
+      const row = stmts.getByIdentityKey.get('contact', identityKey);
+      if (!row) {
+        console.error(red(`Error: no contact found with identity_key "${identityKey}"`));
+        process.exit(1);
+      }
+
+      if (format === 'json') {
+        console.log(JSON.stringify({
+          id: row.id,
+          title: row.title,
+          identity_key: row.identity_key,
+          tags: row.tags ? JSON.parse(row.tags) : [],
+          body: row.body || '',
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        }, null, 2));
+      } else {
+        console.log(`\n  ${bold(row.title || identityKey)}`);
+        console.log(`  ${dim('Key:')} ${row.identity_key}`);
+        const tags = row.tags ? JSON.parse(row.tags) : [];
+        if (tags.length) console.log(`  ${dim('Tags:')} ${tags.join(', ')}`);
+        if (row.created_at) console.log(`  ${dim('Created:')} ${row.created_at}`);
+        if (row.updated_at) console.log(`  ${dim('Updated:')} ${row.updated_at}`);
+        console.log(`\n${row.body || dim('(no body)')}\n`);
+      }
+
+    } else if (sub === 'add') {
+      const name = getFlag('--name');
+      const key = getFlag('--key');
+      const email = getFlag('--email');
+      const role = getFlag('--role');
+      const tagsStr = getFlag('--tags');
+      const notes = getFlag('--notes');
+
+      if (!name) {
+        console.error(red('Error: --name is required'));
+        process.exit(1);
+      }
+      if (!key) {
+        console.error(red('Error: --key is required'));
+        process.exit(1);
+      }
+
+      const existing = stmts.getByIdentityKey.get('contact', key);
+      if (existing) {
+        console.error(red(`Error: a contact with identity_key "${key}" already exists (id: ${existing.id}).`));
+        console.error(`Use ${cyan('context-vault save --kind contact --identity-key "' + key + '" --body "..."')} to update.`);
+        process.exit(1);
+      }
+
+      let body = `# ${name}\n`;
+      if (email) body += `\n## Contact\n${email}\n`;
+      if (role) body += `\n## Role\n${role}\n`;
+      if (notes) body += `\n## Notes\n${notes}\n`;
+
+      const parsedTags = ['contact'];
+      if (tagsStr) {
+        for (const t of tagsStr.split(',').map((t) => t.trim()).filter(Boolean)) {
+          if (!parsedTags.includes(t)) parsedTags.push(t);
+        }
+      }
+
+      const { embed } = await import('@context-vault/core/embed');
+      const { captureAndIndex } = await import('@context-vault/core/capture');
+      const ctx = {
+        db,
+        config,
+        stmts,
+        embed,
+        insertVec: (rowid, embedding) => insertVec(stmts, rowid, embedding),
+        deleteVec: (rowid) => deleteVec(stmts, rowid),
+      };
+      const entry = await captureAndIndex(ctx, {
+        kind: 'contact',
+        title: name,
+        body: body.trim(),
+        tags: parsedTags,
+        source: 'cli',
+        identity_key: key,
+      });
+      console.log(`${green('✓')} Contact saved — id: ${entry.id}, key: ${key}`);
+
+    } else {
+      console.error(red(`Unknown contacts subcommand: ${sub}`));
+      console.error(`Run ${cyan('context-vault contacts --help')} for usage.`);
+      process.exit(1);
+    }
+  } catch (e) {
+    console.error(`${red('x')} contacts ${sub} failed: ${e.message}`);
+    process.exit(1);
+  } finally {
+    try { db?.close(); } catch {}
+  }
+}
+
 async function main() {
   if (flags.has('--version') || command === 'version') {
     console.log(VERSION);
@@ -8620,7 +8817,7 @@ async function main() {
 
   if (flags.has('--help') || command === 'help') {
     // Commands with their own --help handling: delegate to them
-    const commandsWithHelp = new Set(['save', 'search', 'rules', 'hooks', 'team', 'remote', 'ingest-comms', 'gmail-bridge', 'slack-bridge']);
+    const commandsWithHelp = new Set(['save', 'search', 'rules', 'hooks', 'team', 'remote', 'ingest-comms', 'gmail-bridge', 'slack-bridge', 'contacts']);
     if (!command || command === 'help' || !commandsWithHelp.has(command)) {
       showHelp(flags.has('--all'));
       return;
@@ -8708,6 +8905,9 @@ async function main() {
       break;
     case 'slack-bridge':
       await runSlackBridge();
+      break;
+    case 'contacts':
+      await runContacts();
       break;
     case 'reindex':
       await runReindex();
