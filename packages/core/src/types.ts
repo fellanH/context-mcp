@@ -114,6 +114,8 @@ export interface VaultEntry {
   recall_sessions: number;
   last_recalled_at: string | null;
   heat_tier: string | null;
+  summary_condensed: string | null;
+  summary_keypoint: string | null;
   rowid?: number;
 }
 

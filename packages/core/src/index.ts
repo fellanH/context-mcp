@@ -7,6 +7,7 @@ import { embedBatch } from './embed.js';
 import type { BaseCtx, IndexEntryInput, IndexingConfig, ReindexStats } from './types.js';
 import { shouldIndex } from './indexing.js';
 import { DEFAULT_INDEXING } from './constants.js';
+import { generateSummaryTiers } from './summarize.js';
 
 const EXCLUDED_DIRS = new Set(['projects', '_archive']);
 const EXCLUDED_FILES = new Set(['context.md', 'memory.md', 'README.md']);
@@ -135,6 +136,14 @@ export async function indexEntry(
       `Invalid rowid retrieved: ${rowidResult.rowid} (type: ${typeof rowidResult.rowid})`
     );
   }
+
+  // Generate and store precomputed summary tiers
+  try {
+    const { condensed, keypoint } = generateSummaryTiers(body);
+    ctx.db
+      .prepare('UPDATE vault SET summary_condensed = ?, summary_keypoint = ? WHERE id = ?')
+      .run(condensed || null, keypoint || null, id);
+  } catch {}
 
   if (indexed && cat !== 'event') {
     let embedding: Float32Array | null = null;

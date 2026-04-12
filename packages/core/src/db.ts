@@ -148,7 +148,9 @@ export const SCHEMA_DDL = `
     recall_count    INTEGER DEFAULT 0,
     recall_sessions INTEGER DEFAULT 0,
     last_recalled_at TEXT,
-    heat_tier       TEXT CHECK(heat_tier IN ('hot', 'warm', 'cold'))
+    heat_tier       TEXT CHECK(heat_tier IN ('hot', 'warm', 'cold')),
+    summary_condensed TEXT,
+    summary_keypoint  TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_vault_kind ON vault(kind);
@@ -205,7 +207,7 @@ export const SCHEMA_DDL = `
   CREATE INDEX IF NOT EXISTS idx_access_log_goal ON access_log(session_goal) WHERE session_goal IS NOT NULL;
 `;
 
-const CURRENT_VERSION = 19;
+const CURRENT_VERSION = 20;
 
 export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
   const sqliteVec = await loadSqliteVec();
@@ -308,10 +310,23 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
         db.exec(`CREATE INDEX IF NOT EXISTS idx_access_log_goal ON access_log(session_goal) WHERE session_goal IS NOT NULL`);
         db.exec(`ALTER TABLE vault ADD COLUMN heat_tier TEXT CHECK(heat_tier IN ('hot', 'warm', 'cold'))`);
         db.exec(`CREATE INDEX IF NOT EXISTS idx_vault_heat_tier ON vault(heat_tier) WHERE heat_tier IS NOT NULL`);
-        db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
+        db.exec(`PRAGMA user_version = 19`);
       } catch (e) {
         console.error(`[context-vault] v18->v19 migration failed: ${(e as Error).message}`);
+        return db;
       }
+      // Fall through to v19->v20 migration
+    }
+
+    // v19 -> v20: add precomputed summary tier columns
+    if (version >= 15 && version <= 19) {
+      try {
+        db.exec('ALTER TABLE vault ADD COLUMN summary_condensed TEXT');
+      } catch {}
+      try {
+        db.exec('ALTER TABLE vault ADD COLUMN summary_keypoint TEXT');
+      } catch {}
+      db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
       return db;
     }
 
@@ -356,7 +371,7 @@ export async function initDatabase(dbPath: string): Promise<DatabaseSync> {
       return freshDb;
     }
 
-    if (version < 19) {
+    if (version < 20) {
       db.exec(SCHEMA_DDL);
       db.exec(`PRAGMA user_version = ${CURRENT_VERSION}`);
     }

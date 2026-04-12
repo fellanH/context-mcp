@@ -81,6 +81,10 @@
     "./watch": {
       "types": "./dist/watch.d.ts",
       "import": "./dist/watch.js"
+    },
+    "./summarize": {
+      "types": "./dist/summarize.d.ts",
+      "import": "./dist/summarize.js"
     }
   },
   "files": [

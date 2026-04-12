@@ -5387,6 +5387,8 @@ ${bold('Options:')}
         created_at: r.created_at,
         updated_at: r.updated_at,
         body: showFull ? r.body : r.body?.slice(0, 200) || '',
+        summary_condensed: r.summary_condensed || null,
+        summary_keypoint: r.summary_keypoint || null,
       }));
       console.log(JSON.stringify(output, null, 2));
     } else if (format === 'table') {
@@ -8810,6 +8812,97 @@ ${bold('Examples:')}
   }
 }
 
+async function runSummarize() {
+  if (flags.has('--help')) {
+    console.log(`
+  ${bold('context-vault summarize')} [options]
+
+  Backfill precomputed summary tiers for vault entries.
+
+${bold('Usage:')}
+  context-vault summarize              # backfill entries missing summaries
+  context-vault summarize --force      # regenerate all summaries
+  context-vault summarize --dry-run    # show count of entries needing summaries
+
+${bold('Options:')}
+  --dry-run       Show count without processing
+  --force         Regenerate summaries for all entries (not just missing)
+`);
+    return;
+  }
+
+  const dryRun = flags.has('--dry-run');
+  const force = flags.has('--force');
+
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const { initDatabase } = await import('@context-vault/core/db');
+  const { generateSummaryTiers } = await import('@context-vault/core/summarize');
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red('No vault found. Run: context-vault setup'));
+    process.exit(1);
+  }
+
+  let db;
+  try {
+    db = await initDatabase(config.dbPath);
+  } catch (e) {
+    console.error(red(`Database error: ${e.message}`));
+    process.exit(1);
+  }
+
+  try {
+    const whereClause = force
+      ? 'WHERE superseded_by IS NULL'
+      : 'WHERE summary_condensed IS NULL AND superseded_by IS NULL';
+    const rows = db.prepare(`SELECT id, body FROM vault ${whereClause}`).all();
+
+    if (dryRun) {
+      console.log(`${rows.length} entries need summary generation${force ? ' (force mode)' : ''}`);
+      db.close();
+      return;
+    }
+
+    if (rows.length === 0) {
+      console.log(green('All entries already have summaries.'));
+      db.close();
+      return;
+    }
+
+    const updateStmt = db.prepare(
+      'UPDATE vault SET summary_condensed = ?, summary_keypoint = ? WHERE id = ?'
+    );
+    const BATCH = 50;
+    let processed = 0;
+
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      db.exec('BEGIN');
+      try {
+        for (const row of batch) {
+          const { condensed, keypoint } = generateSummaryTiers(row.body || '');
+          updateStmt.run(condensed || null, keypoint || null, row.id);
+          processed++;
+        }
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+      process.stderr.write(`\r  Processing: ${processed}/${rows.length}`);
+    }
+
+    process.stderr.write('\n');
+    console.log(green(`Done. Generated summaries for ${processed} entries.`));
+  } catch (e) {
+    console.error(red(`Summarize failed: ${e.message}`));
+    process.exit(1);
+  } finally {
+    try { db?.close(); } catch {}
+  }
+}
+
 async function runStale() {
   if (flags.has('--help')) {
     console.log(`
@@ -9093,6 +9186,9 @@ async function main() {
       break;
     case 'stale':
       await runStale();
+      break;
+    case 'summarize':
+      await runSummarize();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));
