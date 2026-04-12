@@ -10,7 +10,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, unlinkSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -47,6 +47,31 @@ async function main() {
   // ── 2. Ensure data dir exists ────────────────────────────────────────
   const DATA_DIR = join(homedir(), '.context-mcp');
   mkdirSync(DATA_DIR, { recursive: true });
+
+  // ── 3. Clean up legacy daemon if present ────────────────────────────
+  // v3.16.1 removed the HTTP daemon. Clean up LaunchAgent and PID file
+  // left by previous versions.
+  if (process.platform === 'darwin') {
+    const plistPath = join(homedir(), 'Library', 'LaunchAgents', 'com.context-vault.daemon.plist');
+    if (existsSync(plistPath)) {
+      try { execSync('launchctl unload "' + plistPath + '" 2>/dev/null', { stdio: 'pipe' }); } catch {}
+      try { unlinkSync(plistPath); } catch {}
+      console.log('[context-vault] Removed legacy daemon LaunchAgent.');
+    }
+  }
+  const pidPath = join(homedir(), '.context-mcp', 'daemon.pid');
+  if (existsSync(pidPath)) {
+    try {
+      const { pid } = JSON.parse(readFileSync(pidPath, 'utf-8'));
+      process.kill(pid, 'SIGTERM');
+    } catch {}
+    try { unlinkSync(pidPath); } catch {}
+    console.log('[context-vault] Removed legacy daemon PID file.');
+  }
+  const daemonLog = join(homedir(), '.context-mcp', 'daemon.log');
+  if (existsSync(daemonLog)) {
+    try { unlinkSync(daemonLog); } catch {}
+  }
 }
 
 main().catch(() => {});
