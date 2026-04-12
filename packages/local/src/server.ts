@@ -426,8 +426,6 @@ async function main(): Promise<void> {
       return s;
     }
 
-    const server = createServer();
-
     function closeDb(): void {
       try {
         if ((db as any).inTransaction) {
@@ -500,6 +498,7 @@ async function main(): Promise<void> {
 
       const app = createMcpExpressApp();
       const transports: Record<string, StreamableHTTPServerTransport> = {};
+      const recoveringSessions = new Set<string>();
 
       app.get('/health', (_req: IncomingMessage, res: ServerResponse) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -544,35 +543,49 @@ async function main(): Promise<void> {
             await sessionServer.connect(transport);
             await transport.handleRequest(req, res, (req as any).body);
             return;
-          } else if (sessionId) {
+          } else if (sessionId && !recoveringSessions.has(sessionId)) {
             // Stale session (e.g., daemon restarted). Claude Code's MCP client
             // does not auto-reinitialize on 404, so we recover transparently:
             // create a new transport reusing the stale session ID, force it into
             // initialized state, and handle the request as if nothing happened.
-            console.error(`[context-vault] Recovering stale session ${sessionId.slice(0, 8)}...`);
+            recoveringSessions.add(sessionId);
+            try {
+              console.error(`[context-vault] Recovering stale session ${sessionId.slice(0, 8)}...`);
 
-            transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => sessionId,
-              onsessioninitialized: (sid: string) => {
-                transports[sid] = transport;
-              },
-            });
-            transport.onclose = () => {
-              if (transports[sessionId]) delete transports[sessionId];
-            };
+              transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: () => sessionId,
+                onsessioninitialized: (sid: string) => {
+                  transports[sid] = transport;
+                },
+              });
+              transport.onclose = () => {
+                if (transports[sessionId]) delete transports[sessionId];
+              };
 
-            const sessionServer = createServer();
-            await sessionServer.connect(transport);
+              const sessionServer = createServer();
+              await sessionServer.connect(transport);
 
-            // Force transport into initialized state, bypassing the initialize
-            // handshake. The inner WebStandardStreamableHTTPServerTransport holds
-            // the _initialized flag and sessionId.
-            const inner = (transport as any)._webStandardTransport;
-            inner._initialized = true;
-            inner.sessionId = sessionId;
-            transports[sessionId] = transport;
+              // Force transport into initialized state, bypassing the initialize
+              // handshake. The inner WebStandardStreamableHTTPServerTransport holds
+              // the _initialized flag and sessionId.
+              const inner = (transport as any)._webStandardTransport;
+              inner._initialized = true;
+              inner.sessionId = sessionId;
+              transports[sessionId] = transport;
+            } finally {
+              recoveringSessions.delete(sessionId);
+            }
 
             // Fall through to handleRequest below
+          } else if (sessionId && recoveringSessions.has(sessionId)) {
+            // Recovery already in progress for this session, ask client to retry
+            res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '1' });
+            res.end(JSON.stringify({
+              jsonrpc: '2.0',
+              error: { code: -32000, message: 'Session recovery in progress, retry shortly' },
+              id: null,
+            }));
+            return;
           } else {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
@@ -658,6 +671,7 @@ async function main(): Promise<void> {
         process.exit(1);
       });
     } else {
+      const server = createServer();
       const transport = new StdioServerTransport();
       await server.connect(transport);
 

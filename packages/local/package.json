@@ -1,6 +1,6 @@
 {
   "name": "context-vault",
-  "version": "3.16.0",
+  "version": "3.16.1",
   "type": "module",
   "description": "Persistent memory for AI agents — saves and searches knowledge across sessions",
   "bin": {

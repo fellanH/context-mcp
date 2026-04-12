@@ -84,7 +84,11 @@ let reindexAttempts = 0;
 let reindexFailed = false;
 const MAX_REINDEX_ATTEMPTS = 2;
 
+const registeredServers = new WeakSet<object>();
+
 export function registerTools(server: any, ctx: LocalCtx): void {
+  if (registeredServers.has(server)) return;
+  registeredServers.add(server);
   function tracked(
     handler: (...args: any[]) => Promise<ToolResult>,
     toolName: string
