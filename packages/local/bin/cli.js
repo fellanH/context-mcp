@@ -3962,6 +3962,71 @@ async function runIngest() {
   console.log();
 }
 
+/**
+ * Shared ingest helper: dedup-check, build entry, save to vault.
+ * Returns 'saved' | 'skipped' | 'error'.
+ */
+async function ingestCommLine(parsed, { ctx, db, captureAndIndex, dryRun, verbose, sourceFlag, kindFlag, extraTags }) {
+  if (!parsed.id || !parsed.body) {
+    if (verbose) console.log(`  ${red('!')} Missing required field (id, body)`);
+    return 'error';
+  }
+
+  const source = parsed.source || sourceFlag;
+  if (!source) {
+    if (verbose) console.log(`  ${red('!')} No source (use --source flag or include in JSON)`);
+    return 'error';
+  }
+
+  const identityKey = `comms:${source}:${parsed.id}`;
+
+  if (!dryRun) {
+    const exists = db.prepare('SELECT 1 FROM vault WHERE identity_key = ? LIMIT 1').get(identityKey);
+    if (exists) {
+      if (verbose) console.log(`  ${dim('=')} [${source}] Already exists (${parsed.id})`);
+      return 'skipped';
+    }
+  }
+
+  const title = parsed.subject
+    ? `[${source}] ${parsed.subject}`
+    : parsed.from
+      ? `[${source}] Message from ${parsed.from}`
+      : `[${source}] ${parsed.id}`;
+
+  const lineTags = Array.isArray(parsed.tags) ? parsed.tags : [];
+  const allTags = [...new Set([...lineTags, ...extraTags, `source:${source}`])];
+
+  const meta = {};
+  if (parsed.from) meta.from = parsed.from;
+  if (parsed.to) meta.to = parsed.to;
+  if (parsed.date) meta.date = parsed.date;
+  if (parsed.thread_id) meta.thread_id = parsed.thread_id;
+  if (parsed.channel) meta.channel = parsed.channel;
+
+  if (dryRun) {
+    if (verbose) console.log(`  ${green('+')} [${source}] ${parsed.subject || parsed.id}`);
+    return 'saved';
+  }
+
+  try {
+    await captureAndIndex(ctx, {
+      kind: kindFlag,
+      title,
+      body: parsed.body,
+      tags: allTags,
+      source,
+      identity_key: identityKey,
+      meta: Object.keys(meta).length ? meta : null,
+    });
+    if (verbose) console.log(`  ${green('+')} [${source}] ${parsed.subject || parsed.id} (${parsed.id})`);
+    return 'saved';
+  } catch (e) {
+    if (verbose) console.log(`  ${red('!')} [${source}] Error saving ${parsed.id}: ${e.message}`);
+    return 'error';
+  }
+}
+
 async function runIngestComms() {
   if (flags.has('--help')) {
     console.log(`
@@ -4050,6 +4115,8 @@ ${bold('Examples:')}
 
   console.log(dim(`\n  Processing stdin...`));
 
+  const opts = { ctx, db, captureAndIndex, dryRun, verbose, sourceFlag, kindFlag, extraTags };
+
   for (let i = 0; i < lines.length; i++) {
     let parsed;
     try {
@@ -4060,69 +4127,10 @@ ${bold('Examples:')}
       continue;
     }
 
-    if (!parsed.id || !parsed.body) {
-      errors++;
-      if (verbose) console.log(`  ${red('!')} Missing required field (id, body) on line ${i + 1}`);
-      continue;
-    }
-
-    const source = parsed.source || sourceFlag;
-    if (!source) {
-      errors++;
-      if (verbose) console.log(`  ${red('!')} No source for line ${i + 1} (use --source flag or include in JSON)`);
-      continue;
-    }
-
-    const identityKey = `comms:${source}:${parsed.id}`;
-
-    // Dedup check
-    if (!dryRun) {
-      const exists = db.prepare('SELECT 1 FROM vault WHERE identity_key = ? LIMIT 1').get(identityKey);
-      if (exists) {
-        skipped++;
-        if (verbose) console.log(`  ${dim('=')} [${source}] Already exists (${parsed.id})`);
-        continue;
-      }
-    }
-
-    const title = parsed.subject
-      ? `[${source}] ${parsed.subject}`
-      : parsed.from
-        ? `[${source}] Message from ${parsed.from}`
-        : `[${source}] ${parsed.id}`;
-
-    const lineTags = Array.isArray(parsed.tags) ? parsed.tags : [];
-    const allTags = [...new Set([...lineTags, ...extraTags, `source:${source}`])];
-
-    const meta = {};
-    if (parsed.from) meta.from = parsed.from;
-    if (parsed.to) meta.to = parsed.to;
-    if (parsed.date) meta.date = parsed.date;
-    if (parsed.thread_id) meta.thread_id = parsed.thread_id;
-    if (parsed.channel) meta.channel = parsed.channel;
-
-    if (dryRun) {
-      saved++;
-      if (verbose) console.log(`  ${green('+')} [${source}] ${parsed.subject || parsed.id}`);
-      continue;
-    }
-
-    try {
-      await captureAndIndex(ctx, {
-        kind: kindFlag,
-        title,
-        body: parsed.body,
-        tags: allTags,
-        source,
-        identity_key: identityKey,
-        meta: Object.keys(meta).length ? meta : null,
-      });
-      saved++;
-      if (verbose) console.log(`  ${green('+')} [${source}] ${parsed.subject || parsed.id} (${parsed.id})`);
-    } catch (e) {
-      errors++;
-      if (verbose) console.log(`  ${red('!')} [${source}] Error saving ${parsed.id}: ${e.message}`);
-    }
+    const result = await ingestCommLine(parsed, opts);
+    if (result === 'saved') saved++;
+    else if (result === 'skipped') skipped++;
+    else errors++;
   }
 
   if (db) db.close();
@@ -4139,6 +4147,174 @@ ${bold('Examples:')}
   summaryParts.push(`Kind: ${kindFlag}`);
   if (extraTags.length) summaryParts.push(`Tags: ${extraTags.join(', ')}`);
   if (summaryParts.length) console.log(`  ${dim(summaryParts.join(' | '))}\n`);
+}
+
+async function runGmailBridge() {
+  if (flags.has('--help')) {
+    console.log(`
+  ${bold('context-vault gmail-bridge')}
+
+  Fetch recent emails via gmail-cli and ingest into the vault with dedup.
+
+${bold('Flags:')}
+  --account <name>   Gmail account (default: personal)
+  --max <n>          Maximum messages to fetch (default: 50)
+  --query <q>        Gmail search query (default: newer_than:1d)
+  --dry-run          Show what would be ingested without saving
+  --verbose          Print each entry as it's processed
+
+${bold('Examples:')}
+  context-vault gmail-bridge --dry-run --max 3
+  context-vault gmail-bridge --account stormfors --max 10
+  context-vault gmail-bridge --query "is:unread newer_than:3d"
+`);
+    return;
+  }
+
+  const account = getFlag('--account') || 'personal';
+  const max = getFlag('--max') || '50';
+  const query = getFlag('--query') || 'newer_than:1d';
+  const dryRun = flags.has('--dry-run');
+  const verbose = flags.has('--verbose');
+
+  const GMAIL_CLI_PATH = '/Users/admin/omni/workspaces/_archive/agent-tools/gmail-cli/cli.ts';
+  const SKIP_LABELS = new Set([
+    'CATEGORY_PROMOTIONS',
+    'CATEGORY_SOCIAL',
+    'CATEGORY_UPDATES',
+    'CATEGORY_FORUMS',
+  ]);
+  const SKIP_FROM_PATTERNS = [/noreply/i, /newsletter/i, /marketing/i, /digest/i];
+
+  console.log(dim(`\n  Fetching emails (account: ${account}, max: ${max}, query: ${query})...`));
+
+  let listOutput;
+  try {
+    listOutput = execFileSync('npx', ['tsx', GMAIL_CLI_PATH, 'list', '--account', account, '--max', max, '--query', query], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 60000,
+    });
+  } catch (e) {
+    const stderr = e.stderr ? e.stderr.trim() : '';
+    const msg = stderr || e.message;
+    console.error(red(`\n  Failed to list emails: ${msg}`));
+    process.exit(1);
+  }
+
+  let listResult;
+  try {
+    listResult = JSON.parse(listOutput);
+  } catch {
+    console.error(red(`\n  Failed to parse gmail-cli output as JSON.`));
+    if (verbose) console.error(dim(`  Raw output: ${listOutput.slice(0, 500)}`));
+    process.exit(1);
+  }
+
+  if (!listResult.ok || !Array.isArray(listResult.messages)) {
+    console.error(red(`\n  gmail-cli returned an error or unexpected format.`));
+    if (listResult.error) console.error(red(`  ${listResult.error}`));
+    process.exit(1);
+  }
+
+  const allMessages = listResult.messages;
+  const filtered = allMessages.filter((msg) => {
+    const labels = Array.isArray(msg.labels) ? msg.labels : [];
+    if (labels.some((l) => SKIP_LABELS.has(l))) return false;
+    const from = msg.from || '';
+    if (SKIP_FROM_PATTERNS.some((p) => p.test(from))) return false;
+    return true;
+  });
+
+  const skippedNewsletter = allMessages.length - filtered.length;
+  if (skippedNewsletter > 0) {
+    console.log(dim(`  Filtered out ${skippedNewsletter} newsletter/promo messages`));
+  }
+
+  if (!filtered.length) {
+    console.log(`\n  No messages to ingest after filtering.\n`);
+    return;
+  }
+
+  console.log(dim(`  ${filtered.length} messages to process...`));
+
+  // Bootstrap DB (unless dry-run)
+  let ctx, db, captureAndIndex;
+  if (!dryRun) {
+    const { resolveConfig } = await import('@context-vault/core/config');
+    const { initDatabase, prepareStatements, insertVec, deleteVec } =
+      await import('@context-vault/core/db');
+    const { embed } = await import('@context-vault/core/embed');
+    const captureMod = await import('@context-vault/core/capture');
+    captureAndIndex = captureMod.captureAndIndex;
+
+    const config = resolveConfig();
+    if (!config.vaultDirExists) {
+      console.error(red(`\n  Vault directory not found: ${config.vaultDir}`));
+      process.exit(1);
+    }
+
+    db = await initDatabase(config.dbPath);
+    const stmts = prepareStatements(db);
+    ctx = {
+      db,
+      config,
+      stmts,
+      embed,
+      insertVec: (r, e) => insertVec(stmts, r, e),
+      deleteVec: (r) => deleteVec(stmts, r),
+    };
+  }
+
+  const extraTags = ['bucket:comms', `account:${account}`];
+  const opts = { ctx, db, captureAndIndex, dryRun, verbose, sourceFlag: 'gmail', kindFlag: 'event', extraTags };
+
+  let saved = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  for (const msg of filtered) {
+    // Fetch full body for each message
+    let body = msg.snippet || '';
+    if (!dryRun) {
+      try {
+        const getOutput = execFileSync('npx', ['tsx', GMAIL_CLI_PATH, 'get', msg.id, '--account', account], {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: 30000,
+        });
+        const fullMsg = JSON.parse(getOutput);
+        if (fullMsg.body) body = fullMsg.body;
+      } catch {
+        if (verbose) console.log(`  ${yellow('!')} Could not fetch body for ${msg.id}, using snippet`);
+      }
+    }
+
+    const parsed = {
+      id: msg.id,
+      source: 'gmail',
+      from: msg.from || '',
+      to: Array.isArray(msg.to) ? msg.to : [],
+      subject: msg.subject || '',
+      body,
+      date: msg.date || '',
+      thread_id: msg.threadId || '',
+      tags: extraTags,
+    };
+
+    const result = await ingestCommLine(parsed, opts);
+    if (result === 'saved') saved++;
+    else if (result === 'skipped') skipped++;
+    else errors++;
+  }
+
+  if (db) db.close();
+
+  if (dryRun) {
+    console.log(`\n  Dry run: ${saved} would be saved, ${skipped} duplicates, ${errors} errors\n`);
+  } else {
+    console.log(`\n  ${green('✓')} ${saved} saved, ${skipped} skipped (duplicates), ${errors} errors\n`);
+  }
 }
 
 async function runIngestProject() {
@@ -8248,7 +8424,7 @@ async function main() {
 
   if (flags.has('--help') || command === 'help') {
     // Commands with their own --help handling: delegate to them
-    const commandsWithHelp = new Set(['save', 'search', 'rules', 'hooks', 'team', 'remote', 'ingest-comms']);
+    const commandsWithHelp = new Set(['save', 'search', 'rules', 'hooks', 'team', 'remote', 'ingest-comms', 'gmail-bridge']);
     if (!command || command === 'help' || !commandsWithHelp.has(command)) {
       showHelp(flags.has('--all'));
       return;
@@ -8330,6 +8506,9 @@ async function main() {
       break;
     case 'ingest-comms':
       await runIngestComms();
+      break;
+    case 'gmail-bridge':
+      await runGmailBridge();
       break;
     case 'reindex':
       await runReindex();
