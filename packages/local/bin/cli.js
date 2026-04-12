@@ -462,6 +462,7 @@ ${bold('Commands:')}
   ${cyan('archive')}                    Archive old ephemeral/event entries (use --dry-run to preview)
   ${cyan('restore')} <id>               Restore an archived entry back into the vault
   ${cyan('prune')}                      Remove expired entries (use --dry-run to preview)
+  ${cyan('stale')}                      List entries with low freshness scores
   ${cyan('stats')} recall|co-retrieval  Measure recall ratio and co-retrieval graph
   ${cyan('remote')} setup|status|sync|pull  Connect to hosted vault (cloud sync)
   ${cyan('team')} join|leave|status|browse  Join or manage a team vault
@@ -8809,6 +8810,117 @@ ${bold('Examples:')}
   }
 }
 
+async function runStale() {
+  if (flags.has('--help')) {
+    console.log(`
+  ${bold('context-vault stale')} [options]
+
+  List vault entries with low freshness scores (context that may need attention).
+
+${bold('Usage:')}
+  context-vault stale                    # Entries scoring < 50 (stale + dormant)
+  context-vault stale --threshold 25     # Only dormant entries
+  context-vault stale --kind insight     # Filter by kind
+  context-vault stale --format json      # Structured output
+
+${bold('Options:')}
+  --threshold <n>    Score threshold (default: 50, entries below this are shown)
+  --kind <kind>      Filter by kind
+  --format <fmt>     Output format: plain (default), json
+  --limit <n>        Max entries to show (default: 50)
+`);
+    return;
+  }
+
+  const threshold = parseInt(getFlag('--threshold') || '50', 10);
+  const kind = getFlag('--kind');
+  const format = getFlag('--format') || 'plain';
+  const limit = parseInt(getFlag('--limit') || '50', 10);
+
+  const { resolveConfig } = await import('@context-vault/core/config');
+  const { initDatabase } = await import('@context-vault/core/db');
+  const { computeFreshnessScore } = await import('@context-vault/core/search');
+
+  const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red('No vault found. Run: context-vault setup'));
+    process.exit(1);
+  }
+
+  let db;
+  try {
+    db = await initDatabase(config.dbPath);
+  } catch (e) {
+    console.error(red(`Database error: ${e.message}`));
+    process.exit(1);
+  }
+
+  try {
+    let sql = `SELECT * FROM vault WHERE superseded_by IS NULL AND (expires_at IS NULL OR expires_at > datetime('now'))`;
+    const params = [];
+    if (kind) {
+      sql += ' AND kind = ?';
+      params.push(kind);
+    }
+
+    const rows = db.prepare(sql).all(...params);
+
+    const scored = rows.map((row) => {
+      const { score, label } = computeFreshnessScore(row);
+      return { ...row, freshness_score: score, freshness_label: label };
+    });
+
+    const staleEntries = scored
+      .filter((e) => e.freshness_score < threshold)
+      .sort((a, b) => a.freshness_score - b.freshness_score)
+      .slice(0, limit);
+
+    if (format === 'json') {
+      const output = staleEntries.map((e) => ({
+        id: e.id,
+        kind: e.kind,
+        title: e.title,
+        freshness_score: e.freshness_score,
+        freshness_label: e.freshness_label,
+        created_at: e.created_at,
+        updated_at: e.updated_at,
+        last_accessed_at: e.last_accessed_at,
+        recall_count: e.recall_count,
+        recall_sessions: e.recall_sessions,
+      }));
+      console.log(JSON.stringify(output, null, 2));
+    } else {
+      console.log();
+      console.log(`  ${bold('Stale Entries')} ${dim(`(freshness < ${threshold})`)}`);
+      console.log();
+
+      if (staleEntries.length === 0) {
+        console.log(`  ${dim('No entries below threshold.')}`);
+      } else {
+        const labelColor = (label) => {
+          if (label === 'dormant') return red(label);
+          if (label === 'stale') return yellow(label);
+          return dim(label);
+        };
+
+        for (const entry of staleEntries) {
+          const title = entry.title || '(untitled)';
+          const score = String(entry.freshness_score).padStart(3);
+          console.log(`  ${dim(score)} ${labelColor(entry.freshness_label).padEnd(18)} ${entry.kind.padEnd(12)} ${title}`);
+        }
+
+        console.log();
+        const dormantCount = staleEntries.filter((e) => e.freshness_label === 'dormant').length;
+        const staleCount = staleEntries.filter((e) => e.freshness_label === 'stale').length;
+        console.log(`  ${dim('Total:')} ${staleEntries.length} entries (${dormantCount} dormant, ${staleCount} stale)`);
+      }
+      console.log();
+    }
+  } finally {
+    db.close();
+  }
+}
+
 async function main() {
   if (flags.has('--version') || command === 'version') {
     console.log(VERSION);
@@ -8978,6 +9090,9 @@ async function main() {
       break;
     case 'compact':
       await runCompact();
+      break;
+    case 'stale':
+      await runStale();
       break;
     default:
       console.error(red(`Unknown command: ${command}`));

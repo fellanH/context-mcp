@@ -121,6 +121,8 @@ export interface SearchResult extends VaultEntry {
   score: number;
   stale?: boolean;
   stale_reason?: string;
+  freshness_score?: number;
+  freshness_label?: 'fresh' | 'aging' | 'stale' | 'dormant';
 }
 
 export interface CaptureInput {

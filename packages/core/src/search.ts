@@ -391,14 +391,24 @@ export async function hybridSearch(
       if (vec) selectedVecs.push(vec);
     }
     const dedupedPage = injectDiscoverySlots(selected.slice(offset, offset + limit), candidates);
+    attachFreshnessScores(dedupedPage);
     trackAccess(ctx, dedupedPage, trackMeta);
     return dedupedPage;
   }
 
   const page = candidates.slice(offset, offset + limit);
   const finalPage = injectDiscoverySlots(page, candidates);
+  attachFreshnessScores(finalPage);
   trackAccess(ctx, finalPage, trackMeta);
   return finalPage;
+}
+
+function attachFreshnessScores(results: SearchResult[]): void {
+  for (const entry of results) {
+    const { score, label } = computeFreshnessScore(entry);
+    entry.freshness_score = score;
+    entry.freshness_label = label;
+  }
 }
 
 function injectDiscoverySlots(
@@ -508,6 +518,55 @@ export function trackAccess(ctx: BaseCtx, entries: SearchResult[], meta?: { quer
   } catch {
     // Non-fatal
   }
+}
+
+export function computeFreshnessScore(entry: {
+  created_at: string;
+  updated_at: string | null;
+  last_accessed_at: string | null;
+  last_recalled_at: string | null;
+  recall_count: number;
+  recall_sessions: number;
+  hit_count: number;
+  kind: string;
+}): { score: number; label: 'fresh' | 'aging' | 'stale' | 'dormant' } {
+  const now = Date.now();
+
+  // Recency (0-25): most recent of updated_at, last_accessed_at, last_recalled_at
+  // Full score if < 7 days, linear decay to 0 at 90 days
+  const candidates = [entry.updated_at, entry.last_accessed_at, entry.last_recalled_at]
+    .filter((d): d is string => d != null)
+    .map((d) => new Date(d).getTime());
+  const mostRecent = candidates.length > 0 ? Math.max(...candidates) : new Date(entry.created_at).getTime();
+  const recencyDays = (now - mostRecent) / 86400000;
+  const recency = recencyDays <= 7 ? 25 : recencyDays >= 90 ? 0 : Math.round(25 * (1 - (recencyDays - 7) / 83));
+
+  // Recall frequency (0-25): based on recall_count
+  const rc = entry.recall_count ?? 0;
+  const recallFreq = rc === 0 ? 0 : rc <= 3 ? 10 : rc <= 10 ? 18 : 25;
+
+  // Session spread (0-25): based on recall_sessions
+  const rs = entry.recall_sessions ?? 0;
+  const sessionSpread = rs === 0 ? 0 : rs === 1 ? 5 : rs <= 3 ? 12 : rs <= 7 ? 18 : 25;
+
+  // Update freshness (0-25): entries that are updated stay fresh
+  const createdAt = new Date(entry.created_at).getTime();
+  const updatedAt = entry.updated_at ? new Date(entry.updated_at).getTime() : createdAt;
+  const wasUpdated = updatedAt > createdAt + 60000; // more than 1 min difference counts as updated
+  let updateFreshness: number;
+  if (wasUpdated) {
+    const updateAgeDays = (now - updatedAt) / 86400000;
+    updateFreshness = updateAgeDays <= 7 ? 25 : updateAgeDays >= 90 ? 5 : Math.round(5 + 20 * (1 - (updateAgeDays - 7) / 83));
+  } else {
+    const ageDays = (now - createdAt) / 86400000;
+    updateFreshness = ageDays <= 7 ? 15 : ageDays >= 90 ? 0 : Math.round(15 * (1 - (ageDays - 7) / 83));
+  }
+
+  const score = Math.max(0, Math.min(100, recency + recallFreq + sessionSpread + updateFreshness));
+  const label: 'fresh' | 'aging' | 'stale' | 'dormant' =
+    score >= 75 ? 'fresh' : score >= 50 ? 'aging' : score >= 25 ? 'stale' : 'dormant';
+
+  return { score, label };
 }
 
 export function computeHeatForEntry(entry: { recall_count: number; recall_sessions: number; last_recalled_at: string | null; created_at: string }): { heat: number; tier: 'hot' | 'warm' | 'cold' | null } {

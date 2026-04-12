@@ -5,6 +5,7 @@ import { gatherRecallSummary } from '../stats/recall.js';
 import { errorLogPath, errorLogCount, embedRelatedLogTail } from '../error-log.js';
 import { getAutoMemory } from '../auto-memory.js';
 import { ok, err, kindIcon } from '../helpers.js';
+import { computeFreshnessScore } from '@context-vault/core/search';
 import type { LocalCtx, ToolResult } from '../types.js';
 
 function relativeTime(ts: number): string {
@@ -185,6 +186,43 @@ export function handler(_args: Record<string, any>, ctx: LocalCtx): ToolResult {
         lines.push('');
         lines.push('_Very low save rate. Consider using `session_end` to capture learnings._');
       }
+    }
+
+    // Freshness distribution
+    try {
+      const allEntries = ctx.db.prepare(
+        `SELECT created_at, updated_at, last_accessed_at, last_recalled_at, recall_count, recall_sessions, hit_count, kind FROM vault WHERE superseded_by IS NULL AND (expires_at IS NULL OR expires_at > datetime('now'))`
+      ).all() as Array<{ created_at: string; updated_at: string | null; last_accessed_at: string | null; last_recalled_at: string | null; recall_count: number; recall_sessions: number; hit_count: number; kind: string }>;
+
+      if (allEntries.length > 0) {
+        const dist: Record<'fresh' | 'aging' | 'stale' | 'dormant', number> = { fresh: 0, aging: 0, stale: 0, dormant: 0 };
+        let totalScore = 0;
+        for (const entry of allEntries) {
+          const { score, label } = computeFreshnessScore(entry);
+          dist[label]++;
+          totalScore += score;
+        }
+        const avgScore = Math.round(totalScore / allEntries.length);
+        const needsAttention = dist.stale + dist.dormant;
+
+        lines.push(``, `### Freshness`);
+        lines.push(`| Label | Count |`);
+        lines.push(`|---|---|`);
+        lines.push(`| **Fresh** (75-100) | ${dist.fresh} |`);
+        lines.push(`| **Aging** (50-74) | ${dist.aging} |`);
+        lines.push(`| **Stale** (25-49) | ${dist.stale} |`);
+        lines.push(`| **Dormant** (0-24) | ${dist.dormant} |`);
+        lines.push(`| **Average score** | ${avgScore} |`);
+        if (needsAttention > 0) {
+          lines.push(`| **Needs attention** | ${needsAttention} entries |`);
+        }
+        if (needsAttention > allEntries.length * 0.5) {
+          lines.push('');
+          lines.push('_Over half your vault is stale or dormant. Run `context-vault stale` to review._');
+        }
+      }
+    } catch {
+      // non-fatal
     }
 
     // Auto-memory detection
