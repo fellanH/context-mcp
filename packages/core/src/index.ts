@@ -8,6 +8,7 @@ import type { BaseCtx, IndexEntryInput, IndexingConfig, ReindexStats } from './t
 import { shouldIndex } from './indexing.js';
 import { DEFAULT_INDEXING } from './constants.js';
 import { generateSummaryTiers } from './summarize.js';
+import { buildEmbeddingText } from './search.js';
 
 const EXCLUDED_DIRS = new Set(['projects', '_archive']);
 const EXCLUDED_FILES = new Set(['context.md', 'memory.md', 'README.md']);
@@ -151,7 +152,7 @@ export async function indexEntry(
       embedding = precomputedEmbedding;
     } else {
       try {
-        embedding = await ctx.embed([title, body].filter(Boolean).join(' '));
+        embedding = await ctx.embed(buildEmbeddingText(title, body, tagsJson, kind));
       } catch (embedErr) {
         console.warn(
           `[context-vault] embed() failed for entry ${id} — skipping vec insert: ${(embedErr as Error).message}`
@@ -345,10 +346,9 @@ export async function reindex(
             if (entryIndexed && category !== 'event') {
               const rowidResult = ctx.stmts.getRowid.get(id) as { rowid: number } | undefined;
               if (rowidResult?.rowid) {
-                const embeddingText = [parsed.title, parsed.body].filter(Boolean).join(' ');
                 pendingEmbeds.push({
                   rowid: rowidResult.rowid,
-                  text: embeddingText,
+                  text: buildEmbeddingText(parsed.title, parsed.body, tagsJson, kind),
                 });
               }
             }
@@ -393,13 +393,12 @@ export async function reindex(
                 try { ctx.deleteVec(rowid); stats.embeddingsCleared!++; } catch {}
               }
               stats.skippedIndexing!++;
-            } else if ((bodyChanged || titleChanged) && category !== 'event') {
+            } else if ((bodyChanged || titleChanged || tagsChanged) && category !== 'event') {
               const rowid = (
                 ctx.stmts.getRowid.get(existing.id as string) as { rowid: number } | undefined
               )?.rowid;
               if (rowid) {
-                const embeddingText = [parsed.title, parsed.body].filter(Boolean).join(' ');
-                pendingEmbeds.push({ rowid, text: embeddingText });
+                pendingEmbeds.push({ rowid, text: buildEmbeddingText(parsed.title, parsed.body, tagsJson, kind) });
               }
             }
             stats.updated++;
@@ -496,17 +495,17 @@ export async function reindex(
     if (fullSync) {
       const missingVec = ctx.db
         .prepare(
-          `SELECT v.rowid, v.title, v.body FROM vault v
+          `SELECT v.rowid, v.title, v.body, v.tags, v.kind FROM vault v
            WHERE v.category != 'event'
              AND v.indexed = 1
              AND v.rowid NOT IN (SELECT rowid FROM vault_vec)`
         )
-        .all() as { rowid: number; title: string | null; body: string }[];
+        .all() as { rowid: number; title: string | null; body: string; tags: string | null; kind: string }[];
 
       if (missingVec.length > 0) {
         const missingEmbeds = missingVec.map((r) => ({
           rowid: r.rowid,
-          text: [r.title, r.body].filter(Boolean).join(' '),
+          text: buildEmbeddingText(r.title, r.body, r.tags, r.kind),
         }));
 
         for (let i = 0; i < missingEmbeds.length; i += EMBED_BATCH_SIZE) {

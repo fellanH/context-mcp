@@ -3,6 +3,33 @@ import { embedBatch } from './embed.js';
 
 const NEAR_DUP_THRESHOLD = 0.92;
 const RRF_K = 60;
+
+/**
+ * Build text used for embedding generation. Includes tags and kind so the
+ * vector representation captures metadata, not just title/body content.
+ */
+export function buildEmbeddingText(
+  title: string | null | undefined,
+  body: string | null | undefined,
+  tags: string | null | undefined,
+  kind: string | null | undefined
+): string {
+  const parts: string[] = [];
+  if (title) parts.push(title);
+  if (body) parts.push(body);
+  if (tags) {
+    try {
+      const parsed = JSON.parse(tags);
+      if (Array.isArray(parsed)) {
+        parts.push(`[tags: ${parsed.join(', ')}]`);
+      }
+    } catch {
+      parts.push(`[tags: ${tags}]`);
+    }
+  }
+  if (kind) parts.push(`[kind: ${kind}]`);
+  return parts.join(' ');
+}
 const RECALL_BOOST_CAP = 2.0;
 const RECALL_HALF_LIFE_DAYS = 30;
 const DISCOVERY_SLOTS = 2;
@@ -29,7 +56,8 @@ export function buildFtsQuery(query: string): string | null {
   const phrase = `"${words.join(' ')}"`;
   const near = `NEAR(${words.map((w) => `"${w}"`).join(' ')}, 10)`;
   const and = words.map((w) => `"${w}"`).join(' AND ');
-  return `${phrase} OR ${near} OR ${and}`;
+  const or = words.map((w) => `"${w}"`).join(' OR ');
+  return `${phrase} OR ${near} OR ${and} OR ${or}`;
 }
 
 export function recencyBoost(createdAt: string, category: string, decayDays = 30): number {
@@ -202,7 +230,7 @@ export async function hybridSearch(
           if (missing.length > 0) {
             const entries = missing.map((r) => {
               const entry = rowMap.get(r.id);
-              return { rowid: r.rowid, text: [entry?.title, entry?.body].filter(Boolean).join(' ') };
+              return { rowid: r.rowid, text: buildEmbeddingText(entry?.title, entry?.body, entry?.tags, entry?.kind) };
             });
             const embeddings = await embedBatch(entries.map((e) => e.text));
             for (let i = 0; i < entries.length; i++) {
@@ -232,7 +260,7 @@ export async function hybridSearch(
     if (vecCount > 0) {
       queryVec = await ctx.embed(query);
       if (queryVec) {
-        const vecLimit = kindFilter ? 30 : 15;
+        const vecLimit = kindFilter ? 60 : 40;
         const vecRows = ctx.db
           .prepare(
             `SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT ?`
@@ -327,10 +355,73 @@ export async function hybridSearch(
     }
   }
 
+  // Tag-based search lane: match query keywords against tags JSON and kind
+  const tagRankedIds: string[] = [];
+  try {
+    const tagWords = query
+      .split(/[\s-]+/)
+      .map((w) => w.replace(/[*"():^~{}]/g, '').toLowerCase())
+      .filter((w) => w.length > 1);
+    if (tagWords.length > 0) {
+      const tagWhereParts = ['indexed = 1', "(expires_at IS NULL OR expires_at > datetime('now'))", 'superseded_by IS NULL'];
+      const tagParams: (string | number | null)[] = [];
+
+      const likeClauses = tagWords.map((w) => {
+        tagParams.push(`%${w}%`);
+        return `tags LIKE ?`;
+      });
+      const kindClauses = tagWords.map((w) => {
+        tagParams.push(`%${w}%`);
+        return `kind LIKE ?`;
+      });
+      tagWhereParts.push(`(${[...likeClauses, ...kindClauses].join(' OR ')})`);
+
+      if (kindFilter) {
+        tagWhereParts.push('kind = ?');
+        tagParams.push(kindFilter);
+      }
+      if (categoryFilter) {
+        tagWhereParts.push('category = ?');
+        tagParams.push(categoryFilter);
+      }
+      if (excludeEvents && !categoryFilter) {
+        tagWhereParts.push("category != 'event'");
+      }
+      if (since) {
+        tagWhereParts.push('created_at >= ?');
+        tagParams.push(since);
+      }
+      if (until) {
+        tagWhereParts.push('created_at <= ?');
+        tagParams.push(until);
+      }
+      if (!includeSuperseeded) {
+        // already have superseded_by IS NULL above
+      }
+      if (!includeEphemeral) {
+        tagWhereParts.push("tier != 'ephemeral'");
+      }
+
+      const tagSQL = `SELECT id FROM vault WHERE ${tagWhereParts.join(' AND ')} ORDER BY recall_count DESC LIMIT 20`;
+      const tagRows = ctx.db.prepare(tagSQL).all(...tagParams) as { id: string }[];
+
+      for (const row of tagRows) {
+        tagRankedIds.push(row.id);
+        if (!rowMap.has(row.id)) {
+          const full = ctx.db.prepare('SELECT * FROM vault WHERE id = ?').get(row.id) as VaultEntry | undefined;
+          if (full) rowMap.set(full.id, full);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[retrieve] Tag search error: ${(err as Error).message}`);
+  }
+
   if (rowMap.size === 0) return [];
 
-  // Build ranked lists for RRF: content FTS + content vec + optional context vec
+  // Build ranked lists for RRF: content FTS + content vec + tags + optional context vec
   const rankedLists = [ftsRankedIds, vecRankedIds];
+  if (tagRankedIds.length > 0) rankedLists.push(tagRankedIds);
   if (ctxRankedIds.length > 0) rankedLists.push(ctxRankedIds);
   const rrfScores = reciprocalRankFusion(rankedLists);
 
@@ -341,7 +432,13 @@ export async function hybridSearch(
       entry.last_recalled_at ?? null
     );
     const durable = entry.tier === 'durable' ? 1.3 : 1.0;
-    rrfScores.set(id, (rrfScores.get(id) ?? 0) * boost * recall * durable);
+    // Heat-tier ranking boost: frequently recalled entries rank higher
+    const heatMultiplier =
+      entry.heat_tier === 'hot' ? 1.4 :
+      entry.heat_tier === 'warm' ? 1.1 :
+      entry.heat_tier === 'cold' ? 0.9 :
+      entry.heat_tier === 'frozen' ? 0.7 : 1.0;
+    rrfScores.set(id, (rrfScores.get(id) ?? 0) * boost * recall * durable * heatMultiplier);
   }
 
   const candidates: SearchResult[] = [...rowMap.values()].map((entry) => ({

@@ -14,21 +14,21 @@ import { captureAndIndex } from '@context-vault/core/capture';
 // ─── buildFtsQuery ──────────────────────────────────────────────────────────
 
 describe('buildFtsQuery', () => {
-  it('uses tiered phrase/NEAR/AND for multi-word queries', () => {
+  it('uses tiered phrase/NEAR/AND/OR for multi-word queries', () => {
     expect(buildFtsQuery('sqlite wal mode')).toBe(
-      '"sqlite wal mode" OR NEAR("sqlite" "wal" "mode", 10) OR "sqlite" AND "wal" AND "mode"'
+      '"sqlite wal mode" OR NEAR("sqlite" "wal" "mode", 10) OR "sqlite" AND "wal" AND "mode" OR "sqlite" OR "wal" OR "mode"'
     );
   });
 
   it('strips FTS5 metacharacters', () => {
     expect(buildFtsQuery('hello* "world" (test)')).toBe(
-      '"hello world test" OR NEAR("hello" "world" "test", 10) OR "hello" AND "world" AND "test"'
+      '"hello world test" OR NEAR("hello" "world" "test", 10) OR "hello" AND "world" AND "test" OR "hello" OR "world" OR "test"'
     );
   });
 
   it('strips colons, carets, tildes, braces', () => {
     expect(buildFtsQuery('col:on car^et til~de {brace}')).toBe(
-      '"colon caret tilde brace" OR NEAR("colon" "caret" "tilde" "brace", 10) OR "colon" AND "caret" AND "tilde" AND "brace"'
+      '"colon caret tilde brace" OR NEAR("colon" "caret" "tilde" "brace", 10) OR "colon" AND "caret" AND "tilde" AND "brace" OR "colon" OR "caret" OR "tilde" OR "brace"'
     );
   });
 
@@ -46,13 +46,13 @@ describe('buildFtsQuery', () => {
 
   it('handles extra whitespace', () => {
     expect(buildFtsQuery('  hello   world  ')).toBe(
-      '"hello world" OR NEAR("hello" "world", 10) OR "hello" AND "world"'
+      '"hello world" OR NEAR("hello" "world", 10) OR "hello" AND "world" OR "hello" OR "world"'
     );
   });
 
   it('splits hyphenated words into separate terms', () => {
     expect(buildFtsQuery('well-known')).toBe(
-      '"well known" OR NEAR("well" "known", 10) OR "well" AND "known"'
+      '"well known" OR NEAR("well" "known", 10) OR "well" AND "known" OR "well" OR "known"'
     );
   });
 
