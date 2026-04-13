@@ -18,10 +18,10 @@ import * as ingestUrl from './tools/ingest-url.js';
 import * as contextStatus from './tools/context-status.js';
 import * as clearContext from './tools/clear-context.js';
 import * as createSnapshot from './tools/create-snapshot.js';
-import * as sessionStart from './tools/session-start.js';
 import * as listBuckets from './tools/list-buckets.js';
 import * as ingestProject from './tools/ingest-project.js';
 import * as sessionEnd from './tools/session-end.js';
+import * as recall from './tools/recall.js';
 import * as publishToTeam from './tools/publish-to-team.js';
 
 const toolModules = [
@@ -34,9 +34,9 @@ const toolModules = [
   contextStatus,
   clearContext,
   createSnapshot,
-  sessionStart,
   sessionEnd,
   listBuckets,
+  recall,
   publishToTeam,
 ];
 
