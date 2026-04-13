@@ -117,3 +117,7 @@ export { htmlToMarkdown, extractHtmlContent, ingestUrl } from './ingest-url.js';
 // Watch
 export { startWatcher } from './watch.js';
 export type { WatcherOptions, VaultWatcher } from './watch.js';
+
+// Consolidation
+export { findDuplicates, mergeEntries, computeDecayScores } from './consolidation.js';
+export type { DuplicateGroup, MergeResult, DecayScore } from './consolidation.js';
