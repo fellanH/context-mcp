@@ -22,7 +22,6 @@ import * as sessionStart from './tools/session-start.js';
 import * as listBuckets from './tools/list-buckets.js';
 import * as ingestProject from './tools/ingest-project.js';
 import * as sessionEnd from './tools/session-end.js';
-import * as recall from './tools/recall.js';
 import * as publishToTeam from './tools/publish-to-team.js';
 
 const toolModules = [
@@ -38,7 +37,6 @@ const toolModules = [
   sessionStart,
   sessionEnd,
   listBuckets,
-  recall,
   publishToTeam,
 ];
 
