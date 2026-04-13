@@ -254,11 +254,11 @@ describe('co-retrieval', () => {
       // "relational", "datastore" don't appear in any tags or titles)
       // If embeddings are available, method should be "semantic"
       // If not (CI without model), method will be "none" which is acceptable
-      if (result._meta.method === 'semantic') {
+      if (result._meta.method === 'hybrid') {
         expect(result._meta.hints.length).toBeGreaterThan(0);
       } else {
-        // No embedding model available, or no semantic match, both acceptable
-        expect(['none', 'tag_match']).toContain(result._meta.method);
+        // No embedding model available, or no hybrid match, both acceptable
+        expect(['none', 'hybrid']).toContain(result._meta.method);
       }
     }, 60000);
 
@@ -269,8 +269,8 @@ describe('co-retrieval', () => {
         shared
       );
       isOk(result);
-      // File signals skip semantic fallback, so should get "none" (no tag match for this signal)
-      expect(result._meta.method).not.toBe('semantic');
+      // File signals still use hybrid search but extract path components as search terms
+      expect(['hybrid', 'none']).toContain(result._meta.method);
     }, 30000);
 
     it('does not fire when tag match already has results', async () => {
@@ -280,8 +280,8 @@ describe('co-retrieval', () => {
         shared
       );
       isOk(result);
-      // Tag match should find stripe entries, so method should be "tag_match"
-      expect(result._meta.method).toBe('tag_match');
+      // Hybrid search should find stripe entries
+      expect(result._meta.method).toBe('hybrid');
     }, 30000);
   });
 });

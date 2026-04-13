@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { ok } from '../helpers.js';
-import { isEmbedAvailable } from '@context-vault/core/embed';
+import { hybridSearch } from '@context-vault/core/search';
 import { getAutoMemory, findAutoMemoryOverlaps } from '../auto-memory.js';
 import { getRemoteClient, getTeamId, getPublicVaults } from '../remote.js';
 import type { LocalCtx, SharedCtx, ToolResult } from '../types.js';
+import type { SearchOptions } from '@context-vault/core/types';
 
-const SEMANTIC_SIMILARITY_THRESHOLD = 0.6;
 const CO_RETRIEVAL_WEIGHT_CAP = 50;
 
 const STOPWORDS = new Set([
@@ -31,14 +31,14 @@ const sessionSurfaced = new Map<string, Set<string>>();
 
 /**
  * Extract keywords from a signal string.
- * Split on whitespace, filter stopwords and words under 4 chars, keep top 10.
+ * Split on whitespace, filter stopwords and words under 2 chars, keep top 10.
  */
 export function extractKeywords(signal: string): string[] {
   const words = signal
     .toLowerCase()
     .replace(/[^a-z0-9\s_-]/g, ' ')
     .split(/\s+/)
-    .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+    .filter((w) => w.length >= 2 && !STOPWORDS.has(w));
 
   const seen = new Set<string>();
   const unique: string[] = [];
@@ -100,30 +100,48 @@ export async function handler(
     return result;
   }
 
-  // Build fast-path query: tag/title LIKE match for each keyword
-  const conditions: string[] = [];
-  const params: string[] = [];
-  for (const kw of keywords) {
-    conditions.push('(title LIKE ? OR tags LIKE ?)');
-    params.push(`%${kw}%`, `%${kw}%`);
+  // Build search query from signal, enriched by signal_type
+  let searchQuery = signal || '';
+  const searchOpts: SearchOptions = {
+    excludeEvents: true,
+    limit: limit * 3, // over-fetch to allow for session dedup + bucket filtering
+  };
+
+  // Signal-type aware search options
+  switch (signal_type) {
+    case 'error':
+      // Errors should boost recent entries
+      searchOpts.decayDays = 7;
+      break;
+    case 'file':
+      // Extract path components and extension as additional search terms
+      searchQuery = signal
+        .replace(/[/\\]/g, ' ')
+        .replace(/\./g, ' ')
+        .trim();
+      break;
+    case 'task':
+      // Tasks benefit from wider search
+      searchOpts.limit = Math.max(searchOpts.limit!, limit * 5);
+      break;
+    // 'prompt': standard hybrid search, no modifications
   }
 
-  const bucketClause = bucket ? ' AND tags LIKE ?' : '';
-  if (bucket) params.push(`%"bucket:${bucket}"%`);
+  // Run hybrid search (FTS + vector + tag lanes with RRF fusion)
+  let searchResults = await hybridSearch(ctx, searchQuery, searchOpts);
 
-  const sql = `SELECT id, title, substr(body, 1, 100) as summary, kind, tags
-    FROM vault
-    WHERE indexed = 1
-      AND (expires_at IS NULL OR expires_at > datetime('now'))
-      AND superseded_by IS NULL
-      AND (${conditions.join(' OR ')})${bucketClause}
-    LIMIT 20`;
-
-  let rows: any[];
-  try {
-    rows = ctx.db.prepare(sql).all(...params);
-  } catch {
-    rows = [];
+  // Bucket-aware post-filtering
+  if (bucket) {
+    const bucketTag = `bucket:${bucket}`;
+    searchResults = searchResults.filter((r) => {
+      if (!r.tags) return false;
+      try {
+        const tags: string[] = typeof r.tags === 'string' ? JSON.parse(r.tags) : r.tags;
+        return tags.some((t) => t === bucketTag);
+      } catch {
+        return String(r.tags).includes(bucketTag);
+      }
+    });
   }
 
   // Session dedup
@@ -142,7 +160,7 @@ export async function handler(
     tags: string[];
   }> = [];
 
-  for (const row of rows) {
+  for (const row of searchResults) {
     if (hints.length >= limit) break;
 
     // Dedup check
@@ -151,21 +169,16 @@ export async function handler(
       continue;
     }
 
-    const entryTags: string[] = row.tags ? JSON.parse(row.tags) : [];
+    const entryTags: string[] = row.tags
+      ? (typeof row.tags === 'string' ? JSON.parse(row.tags) : row.tags)
+      : [];
 
-    // Score relevance: count how many keywords match title or tags
-    let matchCount = 0;
-    const titleLower = (row.title || '').toLowerCase();
-    const tagsLower = (row.tags || '').toLowerCase();
-    for (const kw of keywords) {
-      if (titleLower.includes(kw) || tagsLower.includes(kw)) matchCount++;
-    }
-    const relevance: 'high' | 'medium' = matchCount >= 2 ? 'high' : 'medium';
+    const relevance: 'high' | 'medium' = row.score >= 0.02 ? 'high' : 'medium';
 
     hints.push({
       id: row.id,
       title: row.title || '(untitled)',
-      summary: row.summary || '',
+      summary: row.body ? row.body.slice(0, 100) : '',
       relevance,
       kind: row.kind || 'knowledge',
       tags: entryTags,
@@ -261,79 +274,7 @@ export async function handler(
     }
   }
 
-  let method: 'tag_match' | 'semantic' | 'none' = hints.length > 0 ? 'tag_match' : 'none';
-
-  // Semantic fallback: when fast-path returns 0 results and signal is not file-based
-  if (hints.length === 0 && signal_type !== 'file' && isEmbedAvailable()) {
-    try {
-      const vecCount = (
-        ctx.db.prepare('SELECT COUNT(*) as c FROM vault_vec').get() as { c: number }
-      ).c;
-
-      if (vecCount > 0) {
-        const queryVec = await ctx.embed(signal);
-        if (queryVec) {
-          const vecRows = ctx.db
-            .prepare(
-              'SELECT v.rowid, v.distance FROM vault_vec v WHERE embedding MATCH ? ORDER BY distance LIMIT 5'
-            )
-            .all(queryVec) as { rowid: number; distance: number }[];
-
-          if (vecRows.length) {
-            const rowids = vecRows.map((vr) => vr.rowid);
-            const placeholders = rowids.map(() => '?').join(',');
-
-            let bucketFilter = '';
-            const hydrateParams: any[] = [...rowids];
-            if (bucket) {
-              bucketFilter = ' AND tags LIKE ?';
-              hydrateParams.push(`%"bucket:${bucket}"%`);
-            }
-
-            const hydrated = ctx.db
-              .prepare(
-                `SELECT rowid, id, title, substr(body, 1, 100) as summary, kind, tags FROM vault WHERE rowid IN (${placeholders}) AND indexed = 1 AND (expires_at IS NULL OR expires_at > datetime('now')) AND superseded_by IS NULL${bucketFilter}`
-              )
-              .all(...hydrateParams) as any[];
-
-            const byRowid = new Map<number, any>();
-            for (const row of hydrated) byRowid.set(row.rowid, row);
-
-            for (const vr of vecRows) {
-              if (hints.length >= limit) break;
-              const row = byRowid.get(vr.rowid);
-              if (!row) continue;
-
-              const similarity = Math.max(0, 1 - vr.distance / 2);
-              if (similarity < SEMANTIC_SIMILARITY_THRESHOLD) continue;
-
-              // Session dedup
-              if (sessionSet && !bypassDedup && sessionSet.has(row.id)) {
-                suppressed++;
-                continue;
-              }
-
-              const entryTags: string[] = row.tags ? JSON.parse(row.tags) : [];
-              hints.push({
-                id: row.id,
-                title: row.title || '(untitled)',
-                summary: row.summary || '',
-                relevance: similarity >= 0.8 ? 'high' : 'medium',
-                kind: row.kind || 'knowledge',
-                tags: entryTags,
-              });
-
-              if (sessionSet) sessionSet.add(row.id);
-            }
-
-            if (hints.length > 0) method = 'semantic';
-          }
-        }
-      }
-    } catch {
-      // Semantic fallback is best-effort; fast path already ran
-    }
-  }
+  const method: 'hybrid' | 'none' = hints.length > 0 ? 'hybrid' : 'none';
 
   const latency = Date.now() - start;
 
