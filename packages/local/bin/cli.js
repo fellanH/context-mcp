@@ -8903,6 +8903,64 @@ ${bold('Options:')}
   }
 }
 
+
+async function runAssemble() {
+  if (flags.has("--help")) {
+    console.log(`\n  ${bold("context-vault assemble")} [options]\n\n  Assemble a role-aware, task-specific context payload.\n\n${bold("Usage:")}\n  context-vault assemble --role <role> --task <spec-path-or-text> --budget <tokens>\n\n${bold("Options:")}\n  --role <role>      Agent role (worker, pm, ceo, steer)\n  --task <text>      Task description or spec path\n  --budget <n>       Max tokens for the payload (default: 40000)\n  --format <fmt>     Output format: markdown (default), json\n  --dry-run          Show assembly plan but do not output full context\n`);
+    return;
+  }
+  
+  const role = getFlag("--role") || "worker";
+  const task = getFlag("--task");
+  const format = getFlag("--format") || "markdown";
+  const { resolveConfig } = await import("@context-vault/core/config");
+  const { initDatabase } = await import("@context-vault/core/db");
+  const { assembleContext } = await import("@context-vault/core");
+
+  const budget = parseInt(getFlag("--budget") || "40000", 10);
+  const dryRun = flags.has("--dry-run");
+
+  if (!task) {
+    console.error(`\n  ${red("Usage:")} context-vault assemble --role <role> --task <task>\n`);
+    process.exit(1);
+  }
+
+    const config = resolveConfig();
+  if (!config.vaultDirExists) {
+    console.error(red("No vault found."));
+    process.exit(1);
+  }
+  const db = await initDatabase(config.dbPath);
+  const result = await assembleContext(db, config, { role: role, task, budget });
+  if (format === "json") {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    if (dryRun) {
+      const lines = [
+        `Assembly Plan:`,
+        `- Role: ${result.metadata.role}`,
+        `- Budget: ${result.metadata.budget} tokens`,
+        `- Used: ${result.metadata.tokens_used} tokens`,
+        `- Entries Included: ${result.metadata.entries_included}`,
+      ];
+      const included = result.metadata.included_entries || [];
+      if (included.length > 0) {
+        lines.push(`\nIncluded Entries:`);
+        for (const e of included) {
+          lines.push(`  [${e.status}] ${e.title}`);
+        }
+      } else {
+        lines.push(`\nIncluded Entries: (none)`);
+      }
+      console.log(lines.join('\n'));
+    } else {
+      console.log(result.markdown);
+    }
+  }
+  try { db.close(); } catch {}
+
+}
+
 async function runStale() {
   if (flags.has('--help')) {
     console.log(`
@@ -9183,6 +9241,9 @@ async function main() {
       break;
     case 'compact':
       await runCompact();
+      break;
+    case 'assemble':
+      await runAssemble();
       break;
     case 'stale':
       await runStale();
