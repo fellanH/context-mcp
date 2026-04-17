@@ -3,6 +3,12 @@
 All notable changes to context-vault are documented here.
 
 
+## [Unreleased]
+
+### Fixed
+
+- **Graceful EPIPE shutdown on stdio client disconnect.** Previously, when an MCP client disconnected, Node raised `write EPIPE` as an `uncaughtException` and the handler called `process.exit(1)` directly, bypassing the `shutdown()` path. This left the WAL un-checkpointed and in-flight `save_context` transactions dead mid-flight. Now `process.stdout.on('error')` and the `uncaughtException` handler classify `EPIPE` (and kin) and route through `shutdown('EPIPE:…')`, which drains `ctx.activeOps`, runs `PRAGMA wal_checkpoint(TRUNCATE)`, closes the DB, and exits 0. `shutdown()` is now idempotent so concurrent pipe + uncaught signals on the same disconnect collapse into one clean exit. Regression test: `packages/local/scripts/validate-epipe-shutdown.mjs`.
+
 ## [3.18.0] — 2026-04-12
 
 ### Added

@@ -11,6 +11,50 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
 
+// Module-level shutdown coordination so pipe/uncaught handlers (below main())
+// can route through the graceful shutdown wired up inside main().
+let shutdownHandler: ((signal: string) => void) | null = null;
+let shutdownInProgress = false;
+
+function isPipeError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: string; message?: string };
+  if (e.code === 'EPIPE' || e.code === 'ERR_STREAM_DESTROYED' || e.code === 'ERR_STREAM_WRITE_AFTER_END') return true;
+  return typeof e.message === 'string' && /\bEPIPE\b/.test(e.message);
+}
+
+function handlePipeDisconnect(source: string): void {
+  if (shutdownInProgress) return;
+  if (shutdownHandler) {
+    try {
+      shutdownHandler(`EPIPE:${source}`);
+    } catch {
+      process.exit(0);
+    }
+  } else {
+    // Shutdown not wired yet (startup phase). Exit clean so WAL isn't dirtied.
+    process.exit(0);
+  }
+}
+
+// Catch broken-pipe writes to stdout/stderr so they route through graceful
+// shutdown instead of bubbling up as an `uncaughtException` that skips the
+// WAL checkpoint. Node raises EPIPE (not SIGPIPE) on pipe writes with no reader.
+process.stdout.on('error', (err) => {
+  if (isPipeError(err)) {
+    handlePipeDisconnect('stdout');
+  } else {
+    throw err;
+  }
+});
+process.stderr.on('error', (err) => {
+  if (isPipeError(err)) {
+    handlePipeDisconnect('stderr');
+  } else {
+    throw err;
+  }
+});
+
 import { resolveConfig } from '@context-vault/core/config';
 import type { LocalCtx } from './types.js';
 import { appendErrorLog } from './error-log.js';
@@ -206,7 +250,28 @@ async function main(): Promise<void> {
     }
 
     function shutdown(signal: string): void {
-      console.error(`[context-vault] Received ${signal}, shutting down...`);
+      // Idempotent: EPIPE from stdout error + uncaughtException can both fire
+      // during a single client disconnect. Second call becomes a no-op.
+      if (shutdownInProgress) return;
+      shutdownInProgress = true;
+
+      const isEpipe = signal.startsWith('EPIPE');
+      if (isEpipe) {
+        // Log a clean shutdown entry in place of the EPIPE uncaughtException
+        // that would otherwise have fired. Keeps the audit log readable.
+        appendErrorLog(config!.dataDir, {
+          timestamp: new Date().toISOString(),
+          error_type: 'EPIPE_shutdown',
+          message: `client pipe closed (${signal}); graceful shutdown`,
+          node_version: process.version,
+          platform: process.platform,
+          arch: process.arch,
+          cv_version: pkg.version,
+        });
+        console.error(`[context-vault] EPIPE shutdown: client disconnected (${signal})`);
+      } else {
+        console.error(`[context-vault] Received ${signal}, shutting down...`);
+      }
 
       if (ctx.activeOps.count > 0) {
         console.error(
@@ -231,6 +296,9 @@ async function main(): Promise<void> {
     }
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+    // Expose shutdown to module-level handlers (stdout error, uncaughtException).
+    shutdownHandler = shutdown;
 
     // RSS watchdog: kill the process if memory usage exceeds the cap.
     // Prevents runaway embedding/reindex operations from frying user systems.
@@ -310,6 +378,13 @@ async function main(): Promise<void> {
 }
 
 process.on('uncaughtException', (err) => {
+  // EPIPE from a dead client pipe is not a crash; it's a disconnect.
+  // Route through graceful shutdown so the WAL is checkpointed.
+  if (isPipeError(err)) {
+    handlePipeDisconnect('uncaught');
+    return;
+  }
+
   const dataDir = join(homedir(), '.context-mcp');
   const logEntry = {
     timestamp: new Date().toISOString(),
